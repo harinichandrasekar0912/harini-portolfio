@@ -28,13 +28,13 @@
 
   .section {
     min-height: auto;
-    padding-block: clamp(5rem, 14vw, 7rem);
+    padding-block: clamp(5.5rem, 16vw, 8rem);
   }
 
   .landing-section {
     min-height: 100svh;
     padding-top: 1.2rem;
-    padding-bottom: 6.5rem;
+    padding-bottom: 7rem;
   }
 
   .landing-media {
@@ -53,7 +53,7 @@
   }
 
   .work-list {
-    gap: clamp(4.5rem, 24vw, 8rem);
+    gap: clamp(5.5rem, 26vw, 9rem);
   }
 
   .work-row,
