@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" role="img" aria-labelledby="title desc">
+  <title id="title">project placeholder four</title>
+  <desc id="desc">diagrammatic frame placeholder</desc>
+  <rect width="1200" height="900" fill="#f4f2ed"/>
+  <rect x="214" y="172" width="772" height="548" fill="none" stroke="#111111" stroke-opacity="0.22"/>
+  <rect x="306" y="258" width="220" height="376" fill="none" stroke="#111111" stroke-opacity="0.62" stroke-width="2"/>
+  <rect x="674" y="258" width="220" height="376" fill="none" stroke="#111111" stroke-opacity="0.62" stroke-width="2"/>
+  <path d="M526 446h148M600 258v376M306 634l-92 86M894 258l92-86" fill="none" stroke="#111111" stroke-opacity="0.34" stroke-width="2"/>
+  <path d="M214 720h772" fill="none" stroke="#111111" stroke-opacity="0.2"/>
+  <circle cx="600" cy="446" r="54" fill="none" stroke="#111111" stroke-opacity="0.26" stroke-width="2"/>
+</svg>

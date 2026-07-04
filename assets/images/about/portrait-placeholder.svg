@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 900" role="img" aria-labelledby="title desc">
+  <title id="title">portrait placeholder</title>
+  <desc id="desc">minimal black and white line portrait placeholder</desc>
+  <rect width="720" height="900" fill="#f4f2ed"/>
+  <rect x="58" y="58" width="604" height="784" fill="none" stroke="#111111" stroke-opacity="0.2"/>
+  <circle cx="360" cy="318" r="96" fill="none" stroke="#111111" stroke-opacity="0.68" stroke-width="2"/>
+  <path d="M204 726c26-142 86-214 156-214s130 72 156 214" fill="none" stroke="#111111" stroke-opacity="0.68" stroke-width="2"/>
+  <path d="M248 292c44-86 186-91 230 0" fill="none" stroke="#111111" stroke-opacity="0.38" stroke-width="2"/>
+  <path d="M262 392c44 58 152 58 196 0" fill="none" stroke="#111111" stroke-opacity="0.34" stroke-width="2"/>
+  <path d="M188 166h344M188 772h344" fill="none" stroke="#111111" stroke-opacity="0.22"/>
+</svg>

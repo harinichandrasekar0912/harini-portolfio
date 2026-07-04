@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" role="img" aria-labelledby="title desc">
+  <title id="title">project placeholder five</title>
+  <desc id="desc">linear motion study placeholder</desc>
+  <rect width="1200" height="900" fill="#f4f2ed"/>
+  <path d="M170 664c144-74 254-78 330-12s176 54 300-36 198-104 284-42" fill="none" stroke="#111111" stroke-opacity="0.62" stroke-width="2"/>
+  <path d="M170 558c144-74 254-78 330-12s176 54 300-36 198-104 284-42" fill="none" stroke="#111111" stroke-opacity="0.38" stroke-width="2"/>
+  <path d="M170 452c144-74 254-78 330-12s176 54 300-36 198-104 284-42" fill="none" stroke="#111111" stroke-opacity="0.18" stroke-width="2"/>
+  <path d="M248 246h704v404H248z" fill="none" stroke="#111111" stroke-opacity="0.16"/>
+  <path d="M346 246v404M854 246v404" fill="none" stroke="#111111" stroke-opacity="0.16"/>
+  <circle cx="500" cy="652" r="7" fill="#f4f2ed" stroke="#111111" stroke-opacity="0.72" stroke-width="2"/>
+  <circle cx="800" cy="510" r="7" fill="#f4f2ed" stroke="#111111" stroke-opacity="0.72" stroke-width="2"/>
+</svg>

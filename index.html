@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta
+      name="description"
+      content="Personal portfolio website for Harini Chandrasekar."
+    >
+    <title>harini chandrasekar</title>
+    <link rel="stylesheet" href="styles/main.css">
+    <link rel="stylesheet" href="styles/motion.css">
+    <link rel="stylesheet" href="styles/responsive.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#work">skip to work</a>
+
+    <main id="main">
+      <section class="section landing-section" id="landing" tabindex="-1" aria-label="landing">
+        <h1 class="site-name">harini chandrasekar</h1>
+        <div
+          class="landing-media"
+          role="img"
+          aria-label="placeholder for a seamless black-and-white line sketch animation video"
+        >
+          <span class="sketch-line sketch-line-a" aria-hidden="true"></span>
+          <span class="sketch-line sketch-line-b" aria-hidden="true"></span>
+          <span class="sketch-line sketch-line-c" aria-hidden="true"></span>
+          <span class="sketch-point sketch-point-a" aria-hidden="true"></span>
+          <span class="sketch-point sketch-point-b" aria-hidden="true"></span>
+        </div>
+      </section>
+
+      <section class="section about-section" id="about" tabindex="-1" aria-labelledby="about-heading">
+        <h2 class="sr-only" id="about-heading">about</h2>
+        <div class="section-inner about-layout">
+          <figure class="about-portrait">
+            <img
+              src="assets/images/about/portrait-placeholder.svg"
+              alt="Portrait placeholder for Harini Chandrasekar"
+              width="720"
+              height="900"
+              loading="lazy"
+              decoding="async"
+            >
+          </figure>
+          <div class="about-copy">
+            <p>
+              short text placeholder for a precise design practice shaped by
+              architecture, motion, systems, and quiet visual decisions.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section work-section" id="work" tabindex="-1" aria-labelledby="work-heading">
+        <h2 class="sr-only" id="work-heading">work</h2>
+        <ol class="work-list" aria-label="selected work">
+          <li class="work-row work-row-left">
+            <button class="work-tile" type="button" data-project-trigger="project-01" aria-label="open project 01">
+              <img
+                src="assets/images/work/project-01.svg"
+                alt=""
+                width="1200"
+                height="900"
+                loading="lazy"
+                decoding="async"
+              >
+            </button>
+            <div class="work-space" aria-hidden="true"></div>
+          </li>
+          <li class="work-row work-row-right">
+            <div class="work-space" aria-hidden="true"></div>
+            <button class="work-tile" type="button" data-project-trigger="project-02" aria-label="open project 02">
+              <img
+                src="assets/images/work/project-02.svg"
+                alt=""
+                width="1200"
+                height="900"
+                loading="lazy"
+                decoding="async"
+              >
+            </button>
+          </li>
+          <li class="work-row work-row-left">
+            <button class="work-tile" type="button" data-project-trigger="project-03" aria-label="open project 03">
+              <img
+                src="assets/images/work/project-03.svg"
+                alt=""
+                width="1200"
+                height="900"
+                loading="lazy"
+                decoding="async"
+              >
+            </button>
+            <div class="work-space" aria-hidden="true"></div>
+          </li>
+          <li class="work-row work-row-right">
+            <div class="work-space" aria-hidden="true"></div>
+            <button class="work-tile" type="button" data-project-trigger="project-04" aria-label="open project 04">
+              <img
+                src="assets/images/work/project-04.svg"
+                alt=""
+                width="1200"
+                height="900"
+                loading="lazy"
+                decoding="async"
+              >
+            </button>
+          </li>
+          <li class="work-row work-row-left">
+            <button class="work-tile" type="button" data-project-trigger="project-05" aria-label="open project 05">
+              <img
+                src="assets/images/work/project-05.svg"
+                alt=""
+                width="1200"
+                height="900"
+                loading="lazy"
+                decoding="async"
+              >
+            </button>
+            <div class="work-space" aria-hidden="true"></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="section archive-section" id="archive" tabindex="-1" aria-labelledby="archive-heading">
+        <h2 class="sr-only" id="archive-heading">archive</h2>
+        <div class="section-inner archive-layout">
+          <div class="archive-empty" aria-hidden="true"></div>
+          <ol class="archive-timeline" aria-label="archive items">
+            <li>
+              <button class="archive-item" type="button">
+                <time datetime="2026">2026</time>
+                <span>animation test placeholder</span>
+              </button>
+            </li>
+            <li>
+              <button class="archive-item" type="button">
+                <time datetime="2025">2025</time>
+                <span>spatial sketch placeholder</span>
+              </button>
+            </li>
+            <li>
+              <button class="archive-item" type="button">
+                <time datetime="2024">2024</time>
+                <span>material study placeholder</span>
+              </button>
+            </li>
+            <li>
+              <button class="archive-item" type="button">
+                <time datetime="2023">2023</time>
+                <span>small project placeholder</span>
+              </button>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <section class="section contact-section" id="contact" tabindex="-1" aria-labelledby="contact-heading">
+        <h2 class="sr-only" id="contact-heading">contact</h2>
+        <div class="section-inner contact-layout">
+          <form class="contact-form" data-contact-form novalidate>
+            <label>
+              <span>name</span>
+              <input type="text" name="name" autocomplete="name">
+            </label>
+            <label>
+              <span>email</span>
+              <input type="email" name="email" autocomplete="email">
+            </label>
+            <label>
+              <span>message</span>
+              <textarea name="message" rows="4"></textarea>
+            </label>
+            <button class="submit-button" type="submit">submit</button>
+            <p class="form-response" data-form-response aria-live="polite"></p>
+          </form>
+
+          <nav class="contact-links" aria-label="contact links">
+            <a href="#" aria-label="LinkedIn placeholder">LinkedIn</a>
+            <a href="#" aria-label="Instagram placeholder">Instagram</a>
+            <a href="mailto:hello@harinichandrasekar.com">email</a>
+            <a href="assets/documents/harini-chandrasekar-resume.pdf" download>resume download</a>
+          </nav>
+        </div>
+      </section>
+    </main>
+
+    <nav class="nav-object" data-nav-object aria-label="section navigation">
+      <div class="radial-lines" aria-hidden="true">
+        <span class="radial-line radial-line-about"></span>
+        <span class="radial-line radial-line-work"></span>
+        <span class="radial-line radial-line-archive"></span>
+        <span class="radial-line radial-line-contact"></span>
+      </div>
+      <ul class="radial-menu" id="radial-menu" aria-hidden="true">
+        <li class="radial-item radial-item-about">
+          <button type="button" data-nav-target="about" tabindex="-1">about</button>
+        </li>
+        <li class="radial-item radial-item-work">
+          <button type="button" data-nav-target="work" tabindex="-1">work</button>
+        </li>
+        <li class="radial-item radial-item-archive">
+          <button type="button" data-nav-target="archive" tabindex="-1">archive</button>
+        </li>
+        <li class="radial-item radial-item-contact">
+          <button type="button" data-nav-target="contact" tabindex="-1">contact</button>
+        </li>
+      </ul>
+      <button
+        class="nav-core"
+        type="button"
+        data-nav-core
+        aria-label="open navigation"
+        aria-expanded="false"
+        aria-controls="radial-menu"
+      >
+        <span class="plus-stem" aria-hidden="true"></span>
+        <span class="plus-arm" aria-hidden="true"></span>
+      </button>
+    </nav>
+
+    <div class="nav-travel-ball" data-travel-ball aria-hidden="true">
+      <span class="travel-label" data-travel-label></span>
+      <span class="travel-shadow" aria-hidden="true"></span>
+    </div>
+
+    <div
+      class="project-viewer"
+      data-project-viewer
+      role="dialog"
+      aria-modal="true"
+      aria-hidden="true"
+      aria-label="focused project view"
+      tabindex="-1"
+    >
+      <div class="project-glass" aria-hidden="true"></div>
+      <figure class="project-hero-frame" data-project-frame>
+        <img alt="" data-project-hero>
+      </figure>
+      <div class="project-story" data-project-story>
+        <div class="project-track" data-project-track></div>
+      </div>
+      <button class="project-close" type="button" data-project-close aria-label="close project view">
+        <span aria-hidden="true"></span>
+        <span aria-hidden="true"></span>
+      </button>
+    </div>
+
+    <script src="scripts/project-data.js" defer></script>
+    <script src="scripts/navigation-ball.js" defer></script>
+    <script src="scripts/project-viewer.js" defer></script>
+    <script src="scripts/main.js" defer></script>
+  </body>
+</html>
