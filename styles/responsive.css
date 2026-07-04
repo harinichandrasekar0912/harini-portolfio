@@ -34,12 +34,13 @@
   .landing-section {
     min-height: 100svh;
     padding-top: 1.2rem;
-    padding-bottom: 7rem;
+    padding-bottom: 6.25rem;
   }
 
   .landing-media {
-    width: min(88vw, 560px);
-    aspect-ratio: 4 / 5;
+    width: var(--landing-media-mobile-width);
+    aspect-ratio: 5 / 6;
+    margin-top: 0;
   }
 
   .about-section,
@@ -142,11 +143,11 @@
 
 @media (max-width: 480px) {
   .site-name {
-    font-size: 0.82rem;
+    font-size: 0.68rem;
   }
 
   .landing-media {
-    width: min(86vw, 360px);
+    width: min(82vw, 340px);
   }
 
   .about-portrait {
