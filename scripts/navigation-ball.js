@@ -36,6 +36,7 @@
     var isOpen = false;
     var isTravelling = false;
     var resetTimer = 0;
+    var closeOnBlurTimer = 0;
 
     function setMenuA11y(open) {
       core.setAttribute("aria-expanded", String(open));
@@ -51,6 +52,7 @@
         return;
       }
 
+      window.clearTimeout(closeOnBlurTimer);
       isOpen = open;
       nav.classList.toggle("is-open", open);
       setMenuA11y(open);
@@ -198,9 +200,18 @@
     });
 
     nav.addEventListener("pointerleave", function () {
-      if (canHover.matches) {
+      if (canHover.matches && !nav.contains(document.activeElement)) {
         setOpen(false);
       }
+    });
+
+    nav.addEventListener("focusout", function () {
+      window.clearTimeout(closeOnBlurTimer);
+      closeOnBlurTimer = window.setTimeout(function () {
+        if (isOpen && !nav.contains(document.activeElement)) {
+          setOpen(false);
+        }
+      }, 0);
     });
 
     items.forEach(function (item) {
