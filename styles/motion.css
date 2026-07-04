@@ -223,6 +223,22 @@
   pointer-events: none;
 }
 
+.nav-object[data-nav-state="plus_restored"] .nav-core {
+  opacity: 1;
+  background: var(--color-paper);
+  pointer-events: auto;
+}
+
+.nav-object[data-nav-state="plus_restored"] .plus-stem,
+.nav-object[data-nav-state="plus_restored"] .plus-arm {
+  opacity: 1;
+  background: var(--color-ink);
+}
+
+.nav-object[data-nav-state="plus_restored"] .plus-stem {
+  transform: translate(-50%, -50%) rotate(90deg);
+}
+
 .nav-travel-ball {
   --ball-x: 50vw;
   --ball-y: calc(100vh - 42px);
@@ -236,7 +252,7 @@
   height: var(--ball-size);
   border: var(--line-thin) solid var(--color-ink);
   border-radius: 50%;
-  background: var(--color-paper);
+  background: #ffffff;
   opacity: 0;
   pointer-events: none;
   transform: translate3d(
@@ -244,6 +260,7 @@
     calc(var(--ball-y) - (var(--ball-size) / 2)),
     0
   );
+  will-change: transform, opacity;
 }
 
 .nav-travel-ball.is-visible {
@@ -251,7 +268,11 @@
 }
 
 .nav-travel-ball.is-moving {
-  background: var(--color-paper);
+  background: #ffffff;
+}
+
+.nav-travel-ball.is-moving .travel-label {
+  opacity: 0;
 }
 
 .nav-travel-ball.is-lifting {
@@ -260,6 +281,18 @@
     calc(var(--ball-y) - (var(--ball-size) / 2) - 6px),
     0
   );
+}
+
+.nav-travel-ball.is-paused {
+  background: #ffffff;
+}
+
+.nav-travel-ball.is-arrived {
+  transition-duration: var(--duration-slow);
+}
+
+.nav-travel-ball.is-restoring {
+  opacity: 0;
 }
 
 .travel-label {

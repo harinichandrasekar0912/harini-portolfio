@@ -19,6 +19,17 @@
     };
   }
 
+  var STATES = {
+    PLUS_IDLE: "plus_idle",
+    MENU_OPEN: "menu_open",
+    DESTINATION_SELECTED: "destination_selected",
+    BALL_TRAVELLING: "ball_travelling",
+    BALL_PAUSED: "ball_paused",
+    BALL_RESUMING: "ball_resuming",
+    BALL_ARRIVED: "ball_arrived",
+    PLUS_RESTORED: "plus_restored"
+  };
+
   function init() {
     var nav = document.querySelector("[data-nav-object]");
     var core = document.querySelector("[data-nav-core]");
@@ -37,6 +48,16 @@
     var isTravelling = false;
     var resetTimer = 0;
     var closeOnBlurTimer = 0;
+    var pauseTimer = 0;
+    var resumeTimer = 0;
+    var activeTravelLabel = "";
+    var navState = STATES.PLUS_IDLE;
+
+    function setState(nextState) {
+      navState = nextState;
+      nav.dataset.navState = nextState;
+      ball.dataset.ballState = nextState;
+    }
 
     function setMenuA11y(open) {
       core.setAttribute("aria-expanded", String(open));
@@ -55,10 +76,11 @@
       window.clearTimeout(closeOnBlurTimer);
       isOpen = open;
       nav.classList.toggle("is-open", open);
+      setState(open ? STATES.MENU_OPEN : STATES.PLUS_IDLE);
       setMenuA11y(open);
     }
 
-    function clearChoiceState() {
+    function clearChoiceState(finalState) {
       nav.classList.remove("is-open", "is-choosing", "is-travelling");
       items.forEach(function (item) {
         item.disabled = false;
@@ -67,6 +89,8 @@
       setMenuA11y(false);
       isOpen = false;
       isTravelling = false;
+      activeTravelLabel = "";
+      setState(finalState || STATES.PLUS_IDLE);
     }
 
     function setBallPosition(x, y) {
@@ -74,10 +98,86 @@
       ball.style.setProperty("--ball-y", y + "px");
     }
 
-    function finishTravel(label, targetId) {
-      ballLabel.textContent = label;
+    function pauseBall() {
+      if (!isTravelling || navState !== STATES.BALL_TRAVELLING) {
+        return;
+      }
+
+      setState(STATES.BALL_PAUSED);
+      ballLabel.textContent = activeTravelLabel;
       ball.classList.remove("is-moving", "is-lifting");
-      ball.classList.add("is-landed", "is-labelled");
+      ball.classList.add("is-visible", "is-landed", "is-labelled", "is-paused");
+    }
+
+    function resumeBall() {
+      if (!isTravelling || navState !== STATES.BALL_PAUSED) {
+        return;
+      }
+
+      setState(STATES.BALL_RESUMING);
+      ball.classList.remove("is-landed", "is-labelled", "is-paused");
+      ball.classList.add("is-lifting");
+
+      window.clearTimeout(resumeTimer);
+      resumeTimer = window.setTimeout(function () {
+        if (isTravelling && navState === STATES.BALL_RESUMING) {
+          setState(STATES.BALL_TRAVELLING);
+          ball.classList.remove("is-lifting");
+          ball.classList.add("is-moving");
+        }
+      }, reducedMotion.matches ? 1 : 140);
+    }
+
+    function noteScrollProgress() {
+      if (!isTravelling || !activeTravelLabel || navState === STATES.BALL_ARRIVED) {
+        return;
+      }
+
+      if (navState === STATES.BALL_PAUSED) {
+        resumeBall();
+      }
+
+      window.clearTimeout(pauseTimer);
+      pauseTimer = window.setTimeout(pauseBall, reducedMotion.matches ? 1 : 170);
+    }
+
+    function restorePlus() {
+      setState(STATES.PLUS_RESTORED);
+      ball.classList.remove("is-labelled", "is-arrived", "is-paused");
+      ball.classList.add("is-restoring");
+      clearChoiceState(STATES.PLUS_RESTORED);
+
+      window.clearTimeout(resetTimer);
+      resetTimer = window.setTimeout(function () {
+        ball.classList.remove(
+          "is-visible",
+          "is-landed",
+          "is-labelled",
+          "is-moving",
+          "is-lifting",
+          "is-paused",
+          "is-arrived",
+          "is-restoring"
+        );
+        ballLabel.textContent = "";
+        setState(STATES.PLUS_IDLE);
+      }, reducedMotion.matches ? 1 : 280);
+    }
+
+    function finishTravel(label, targetId, end) {
+      window.clearTimeout(pauseTimer);
+      window.clearTimeout(resumeTimer);
+      setState(STATES.BALL_ARRIVED);
+      ballLabel.textContent = label;
+      ball.classList.remove("is-moving", "is-lifting", "is-paused");
+      ball.classList.add("is-visible", "is-landed", "is-labelled", "is-arrived");
+
+      if (!reducedMotion.matches) {
+        setBallPosition(end.x + 7, end.y);
+        window.requestAnimationFrame(function () {
+          setBallPosition(end.x, end.y);
+        });
+      }
 
       var target = document.getElementById(targetId);
       if (target) {
@@ -89,19 +189,12 @@
       }
 
       window.clearTimeout(resetTimer);
-      resetTimer = window.setTimeout(function () {
-        ball.classList.remove("is-visible", "is-landed", "is-labelled");
-        ballLabel.textContent = "";
-        clearChoiceState();
-      }, reducedMotion.matches ? 80 : 850);
+      resetTimer = window.setTimeout(restorePlus, reducedMotion.matches ? 80 : 780);
     }
 
     function travelTo(button, target, label) {
       var start = getCenter(button);
-      var end = {
-        x: window.innerWidth / 2,
-        y: window.innerHeight - clamp(window.innerHeight * 0.065, 42, 70)
-      };
+      var end = getCenter(core);
       var startScroll = window.scrollY || window.pageYOffset;
       var targetTop = target.getBoundingClientRect().top + startScroll;
       var maxScroll = document.documentElement.scrollHeight - window.innerHeight;
@@ -109,21 +202,24 @@
       var distance = Math.abs(endScroll - startScroll);
       var duration = reducedMotion.matches ? 0 : clamp(distance * 0.48, 620, 1350);
 
+      activeTravelLabel = label;
       setBallPosition(start.x, start.y);
       ballLabel.textContent = label;
+      ball.classList.remove("is-restoring", "is-arrived", "is-moving", "is-lifting", "is-paused");
       ball.classList.add("is-visible", "is-labelled", "is-landed");
-
-      window.requestAnimationFrame(function () {
-        ball.classList.remove("is-labelled", "is-landed");
-        ball.classList.add("is-lifting");
-      });
 
       if (reducedMotion.matches || duration === 0) {
         window.scrollTo(0, endScroll);
         setBallPosition(end.x, end.y);
-        finishTravel(label, target.id);
+        finishTravel(label, target.id, end);
         return;
       }
+
+      window.requestAnimationFrame(function () {
+        setState(STATES.BALL_RESUMING);
+        ball.classList.remove("is-labelled", "is-landed");
+        ball.classList.add("is-lifting");
+      });
 
       var control = {
         x: mix(start.x, end.x, 0.5),
@@ -143,19 +239,23 @@
         var y = inverse * inverse * start.y + 2 * inverse * eased * control.y + eased * eased * end.y;
 
         if (raw > 0.08) {
+          if (navState === STATES.BALL_RESUMING) {
+            setState(STATES.BALL_TRAVELLING);
+          }
           ball.classList.remove("is-lifting");
           ball.classList.add("is-moving");
         }
 
         setBallPosition(x, y);
         window.scrollTo(0, mix(startScroll, endScroll, eased));
+        noteScrollProgress();
 
         if (raw < 1) {
           window.requestAnimationFrame(frame);
           return;
         }
 
-        finishTravel(label, target.id);
+        finishTravel(label, target.id, end);
       }
 
       window.requestAnimationFrame(frame);
@@ -175,6 +275,7 @@
       }
 
       isTravelling = true;
+      setState(STATES.DESTINATION_SELECTED);
       nav.classList.remove("is-open");
       nav.classList.add("is-choosing");
       button.parentElement.classList.add("is-selected");
@@ -233,7 +334,9 @@
       }
     });
 
+    window.addEventListener("scroll", noteScrollProgress, { passive: true });
     setMenuA11y(false);
+    setState(STATES.PLUS_IDLE);
   }
 
   window.HariniNavigationBall = {
