@@ -88,11 +88,13 @@
   }
 
   .archive-timeline {
+    justify-self: end;
+    width: min(100%, 24rem);
     padding-left: var(--space-5);
   }
 
   .archive-item {
-    grid-template-columns: 3.5rem minmax(0, 1fr);
+    grid-template-columns: 3.4rem minmax(0, 1fr);
   }
 
   .archive-item::before {
@@ -163,6 +165,15 @@
 
   .about-portrait {
     width: min(78vw, 300px);
+  }
+
+  .archive-timeline {
+    justify-self: stretch;
+    width: 100%;
+  }
+
+  .contact-form {
+    max-width: none;
   }
 
   .radial-item button {

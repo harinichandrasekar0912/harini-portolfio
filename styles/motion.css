@@ -362,8 +362,7 @@
 
 .submit-button:hover,
 .submit-button:focus-visible {
-  background: var(--color-ink);
-  color: var(--color-paper);
+  color: var(--color-ink-soft);
 }
 
 .nav-core,

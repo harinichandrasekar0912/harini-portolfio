@@ -9,7 +9,7 @@
 
     form.addEventListener("submit", function (event) {
       event.preventDefault();
-      response.textContent = "message placeholder received.";
+      response.textContent = "message noted — form backend coming soon.";
       form.reset();
     });
   }

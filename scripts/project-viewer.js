@@ -33,6 +33,8 @@
     var maxShift = 0;
     var touchY = 0;
     var closeTimer = 0;
+    var pendingShift = 0;
+    var shiftFrame = 0;
 
     function isStackedMode() {
       return window.innerWidth < 760;
@@ -101,6 +103,24 @@
       }
     }
 
+    function queueShift(delta) {
+      if (isStackedMode()) {
+        return;
+      }
+
+      pendingShift += delta;
+
+      if (shiftFrame) {
+        return;
+      }
+
+      shiftFrame = window.requestAnimationFrame(function () {
+        setShift(currentShift + pendingShift, true);
+        pendingShift = 0;
+        shiftFrame = 0;
+      });
+    }
+
     function fillProject(project) {
       hero.src = project.image;
       hero.alt = project.alt || "";
@@ -137,6 +157,7 @@
       activeTrigger = trigger;
       activeProject = project;
       currentShift = 0;
+      pendingShift = 0;
       window.clearTimeout(closeTimer);
       setViewerVars(trigger);
       fillProject(project);
@@ -159,6 +180,11 @@
       }
 
       setShift(0, false);
+      pendingShift = 0;
+      if (shiftFrame) {
+        window.cancelAnimationFrame(shiftFrame);
+        shiftFrame = 0;
+      }
       story.scrollTop = 0;
       window.clearTimeout(closeTimer);
       closeTimer = window.setTimeout(function () {
@@ -196,7 +222,7 @@
       }
 
       event.preventDefault();
-      setShift(currentShift + event.deltaY, true);
+      queueShift(event.deltaY);
     }, { passive: false });
 
     viewer.addEventListener("touchstart", function (event) {
@@ -218,7 +244,7 @@
       var delta = touchY - nextY;
       touchY = nextY;
       event.preventDefault();
-      setShift(currentShift + delta * 1.2, true);
+      queueShift(delta * 1.2);
     }, { passive: false });
 
     document.addEventListener("keydown", function (event) {

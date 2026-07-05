@@ -1,4 +1,14 @@
 (function () {
+  /*
+    Recommended image structure for each finished project:
+    assets/images/work/project-id/thumb-1200.webp
+    assets/images/work/project-id/thumb-1600.webp
+    assets/images/work/project-id/hero-2200.webp
+    assets/images/work/project-id/process-01.webp
+
+    Keep overview thumbnails lightweight. Load hero/process images only when
+    project focus mode opens.
+  */
   window.HariniProjectData = [
     {
       id: "project-01",
