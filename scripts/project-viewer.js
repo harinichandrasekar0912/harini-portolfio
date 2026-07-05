@@ -34,6 +34,10 @@
     var touchY = 0;
     var closeTimer = 0;
 
+    function isStackedMode() {
+      return window.innerWidth < 760;
+    }
+
     function findProject(id) {
       return projects.find(function (project) {
         return project.id === id;
@@ -44,16 +48,17 @@
       var rect = trigger.getBoundingClientRect();
       var vw = window.innerWidth;
       var vh = window.innerHeight;
-      var mobile = vw < 760;
-      var focusWidth = mobile ? Math.min(vw - 32, 620) : Math.min(vw * 0.48, 700);
-      var focusHeight = mobile ? Math.min(vh * 0.34, focusWidth * 0.78) : Math.min(vh * 0.64, focusWidth * 0.78);
-      var focusLeft = mobile ? 16 : Math.max(32, (vw - Math.min(vw * 0.88, 1240)) / 2);
-      var focusTop = mobile ? Math.max(104, vh * 0.28) : vh / 2;
-      var storyLeft = mobile ? 16 : focusLeft + focusWidth + clamp(vw * 0.055, 34, 86);
-      var storyTop = mobile ? focusTop + focusHeight / 2 + 34 : Math.max(84, vh * 0.22);
-      var storyWidth = mobile ? vw - 32 : Math.max(320, vw - storyLeft - Math.max(32, vw * 0.07));
-      var storyHeight = mobile ? Math.max(230, vh - storyTop - 86) : Math.min(560, vh * 0.58);
+      var stacked = isStackedMode();
+      var focusWidth = stacked ? Math.min(vw - 32, 620) : Math.min(vw * 0.48, 700);
+      var focusHeight = stacked ? Math.min(vh * 0.34, focusWidth * 0.78) : Math.min(vh * 0.64, focusWidth * 0.78);
+      var focusLeft = stacked ? 16 : Math.max(32, (vw - Math.min(vw * 0.88, 1240)) / 2);
+      var focusTop = stacked ? Math.max(92, vh * 0.27) : vh / 2;
+      var storyLeft = stacked ? 16 : focusLeft + focusWidth + clamp(vw * 0.055, 34, 86);
+      var storyTop = stacked ? focusTop + focusHeight / 2 + 30 : Math.max(84, vh * 0.2);
+      var storyWidth = stacked ? vw - 32 : Math.max(320, vw - storyLeft - Math.max(32, vw * 0.07));
+      var storyHeight = stacked ? Math.max(240, vh - storyTop - 82) : Math.min(580, vh * 0.6);
 
+      viewer.dataset.projectMode = stacked ? "stacked" : "horizontal";
       viewer.style.setProperty("--tile-left", rect.left + "px");
       viewer.style.setProperty("--tile-top", rect.top + "px");
       viewer.style.setProperty("--tile-width", rect.width + "px");
@@ -69,12 +74,23 @@
     }
 
     function updateMaxShift() {
+      if (isStackedMode()) {
+        maxShift = 0;
+        currentShift = 0;
+        viewer.style.setProperty("--project-shift", "0px");
+        return;
+      }
+
       maxShift = Math.max(0, track.scrollWidth - story.clientWidth);
       currentShift = clamp(currentShift, 0, maxShift);
       viewer.style.setProperty("--project-shift", currentShift + "px");
     }
 
     function setShift(value, quick) {
+      if (isStackedMode()) {
+        return;
+      }
+
       currentShift = clamp(value, 0, maxShift);
       track.classList.toggle("is-dragging", Boolean(quick));
       viewer.style.setProperty("--project-shift", currentShift + "px");
@@ -91,8 +107,11 @@
       track.innerHTML = project.panels.map(function (panel, index) {
         var heading = index === 0 ? project.title : panel.heading;
         var body = index === 0 ? project.summary : panel.body;
+        var className = index === 0 ? "project-panel project-panel-intro" : "project-panel";
         return [
-          '<article class="project-panel">',
+          '<article class="',
+          className,
+          '">',
           '<p class="project-step">',
           String(index + 1).padStart(2, "0"),
           " / 05",
@@ -122,6 +141,7 @@
       setViewerVars(trigger);
       fillProject(project);
       viewer.style.setProperty("--project-shift", "0px");
+      story.scrollTop = 0;
       viewer.classList.add("is-active");
       viewer.setAttribute("aria-hidden", "false");
       document.body.classList.add("is-project-open");
@@ -139,6 +159,7 @@
       }
 
       setShift(0, false);
+      story.scrollTop = 0;
       window.clearTimeout(closeTimer);
       closeTimer = window.setTimeout(function () {
         viewer.classList.remove("is-expanded");
@@ -170,6 +191,10 @@
         return;
       }
 
+      if (isStackedMode()) {
+        return;
+      }
+
       event.preventDefault();
       setShift(currentShift + event.deltaY, true);
     }, { passive: false });
@@ -182,6 +207,10 @@
 
     viewer.addEventListener("touchmove", function (event) {
       if (!viewer.classList.contains("is-expanded") || event.touches.length === 0) {
+        return;
+      }
+
+      if (isStackedMode()) {
         return;
       }
 
@@ -202,11 +231,19 @@
       }
 
       if (event.key === "ArrowDown" || event.key === "ArrowRight") {
+        if (isStackedMode()) {
+          return;
+        }
+
         event.preventDefault();
         setShift(currentShift + story.clientWidth * 0.75, false);
       }
 
       if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
+        if (isStackedMode()) {
+          return;
+        }
+
         event.preventDefault();
         setShift(currentShift - story.clientWidth * 0.75, false);
       }
