@@ -6,7 +6,7 @@
   }
 
   .about-layout {
-    gap: var(--space-7);
+    gap: var(--space-8);
   }
 
   .archive-empty {
@@ -49,12 +49,19 @@
     align-items: start;
   }
 
+  .about-portrait {
+    justify-self: start;
+    transform: none;
+  }
+
   .about-copy {
+    max-width: 20rem;
+    margin-top: 0;
     font-size: var(--text-md);
   }
 
   .work-list {
-    gap: clamp(5.5rem, 26vw, 9rem);
+    gap: clamp(6.5rem, 28vw, 10rem);
   }
 
   .work-row,
@@ -73,7 +80,7 @@
   }
 
   .work-tile {
-    width: min(100%, 92vw);
+    width: min(88vw, 430px);
   }
 
   .work-row-right .work-tile {

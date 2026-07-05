@@ -333,9 +333,18 @@
     transform var(--duration-medium) var(--ease-standard);
 }
 
+.work-tile img {
+  transition: transform var(--duration-slow) var(--ease-standard);
+}
+
 .work-tile:hover,
 .work-tile:focus-visible {
   border-color: var(--color-line-strong);
+}
+
+.work-tile:hover img,
+.work-tile:focus-visible img {
+  transform: scale(1.012);
 }
 
 .work-tile:hover::after,
