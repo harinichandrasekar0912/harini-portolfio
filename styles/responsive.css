@@ -9,8 +9,8 @@
     gap: var(--space-8);
   }
 
-  .archive-empty {
-    display: none;
+  .archive-visual {
+    width: min(88vw, 480px);
   }
 
   .contact-links {
@@ -39,7 +39,7 @@
 
   .landing-media {
     width: var(--landing-media-mobile-width);
-    aspect-ratio: 5 / 6;
+    aspect-ratio: 16 / 10;
     margin-top: 0;
   }
 
@@ -50,6 +50,7 @@
   }
 
   .about-portrait {
+    width: min(88vw, 480px);
     justify-self: start;
     transform: none;
   }
@@ -80,7 +81,7 @@
   }
 
   .work-tile {
-    width: min(88vw, 430px);
+    width: min(88vw, 480px);
   }
 
   .work-row-right .work-tile {
@@ -106,38 +107,43 @@
   }
 
   .nav-object {
-    width: min(100vw, 360px);
-    height: 190px;
+    width: min(100vw, 340px);
+    height: 170px;
   }
 
   .radial-item-about {
-    --item-x: -126px;
-    --item-y: -42px;
+    --item-x: -100px;
+    --item-y: -72px;
   }
 
   .radial-item-work {
-    --item-x: -58px;
-    --item-y: -114px;
+    --item-x: -39px;
+    --item-y: -118px;
   }
 
   .radial-item-archive {
-    --item-x: 58px;
-    --item-y: -114px;
+    --item-x: 39px;
+    --item-y: -118px;
   }
 
   .radial-item-contact {
-    --item-x: 126px;
-    --item-y: -42px;
+    --item-x: 100px;
+    --item-y: -72px;
+  }
+
+  .radial-item button {
+    width: 54px;
+    height: 54px;
   }
 
   .radial-line-about,
   .radial-line-contact {
-    height: 136px;
+    height: 124px;
   }
 
   .radial-line-work,
   .radial-line-archive {
-    height: 132px;
+    height: 124px;
   }
 
   .project-panel {
@@ -156,15 +162,19 @@
 
 @media (max-width: 480px) {
   .site-name {
-    font-size: 0.68rem;
+    font-size: 0.86rem;
   }
 
   .landing-media {
-    width: min(82vw, 340px);
+    width: min(90vw, 420px);
   }
 
   .about-portrait {
-    width: min(78vw, 300px);
+    width: min(88vw, 360px);
+  }
+
+  .archive-visual {
+    width: min(88vw, 360px);
   }
 
   .archive-timeline {
@@ -176,17 +186,12 @@
     max-width: none;
   }
 
-  .radial-item button {
-    min-width: auto;
-    padding-inline: 0.48rem;
-  }
-
   .radial-item-about {
-    --item-x: -112px;
+    --item-x: -92px;
   }
 
   .radial-item-contact {
-    --item-x: 112px;
+    --item-x: 92px;
   }
 
   .project-close {

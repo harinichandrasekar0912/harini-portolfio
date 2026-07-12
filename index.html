@@ -130,7 +130,17 @@
       <section class="section archive-section" id="archive" tabindex="-1" aria-labelledby="archive-heading">
         <h2 class="sr-only" id="archive-heading">archive</h2>
         <div class="section-inner archive-layout">
-          <div class="archive-empty" aria-hidden="true"></div>
+          <figure class="archive-visual" aria-hidden="true">
+            <img
+              src="assets/images/archive/archive-placeholder.svg"
+              alt=""
+              width="1200"
+              height="1200"
+              sizes="(max-width: 760px) 88vw, 48vw"
+              loading="lazy"
+              decoding="async"
+            >
+          </figure>
           <ol class="archive-timeline" aria-label="archive items">
             <li>
               <button class="archive-item" type="button">
@@ -219,6 +229,11 @@
         aria-expanded="false"
         aria-controls="radial-menu"
       >
+        <span class="nav-ring" aria-hidden="true">
+          <svg viewBox="0 0 44 44" focusable="false">
+            <circle cx="22" cy="22" r="20" pathLength="1"></circle>
+          </svg>
+        </span>
         <span class="plus-stem" aria-hidden="true"></span>
         <span class="plus-arm" aria-hidden="true"></span>
       </button>

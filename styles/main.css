@@ -40,8 +40,8 @@
 
   --nav-size: 42px;
   --ball-size: 44px;
-  --landing-media-width: min(58vw, 680px);
-  --landing-media-mobile-width: min(84vw, 420px);
+  --landing-media-width: min(92vw, 1180px);
+  --landing-media-mobile-width: min(90vw, 560px);
 }
 
 *,
@@ -169,7 +169,7 @@ textarea:focus-visible {
   margin: 0;
   text-align: center;
   color: var(--color-ink);
-  font-size: clamp(0.64rem, 0.62rem + 0.06vw, 0.7rem);
+  font-size: clamp(0.82rem, 0.76rem + 0.18vw, 1rem);
   font-weight: 420;
   letter-spacing: 0;
   text-transform: lowercase;
@@ -180,7 +180,7 @@ textarea:focus-visible {
   align-self: center;
   justify-self: center;
   width: var(--landing-media-width);
-  aspect-ratio: 16 / 9;
+  aspect-ratio: 21 / 8;
   margin-top: clamp(0.5rem, 2vh, 1.5rem);
   border: var(--line-thin) solid var(--color-line-soft);
   background: var(--color-paper);
@@ -269,13 +269,13 @@ textarea:focus-visible {
 
 .about-layout {
   display: grid;
-  grid-template-columns: minmax(220px, 0.72fr) minmax(280px, 1.28fr);
+  grid-template-columns: minmax(320px, 0.95fr) minmax(280px, 1.05fr);
   align-items: start;
   gap: clamp(5rem, 12vw, 12rem);
 }
 
 .about-portrait {
-  width: min(100%, clamp(220px, 26vw, 340px));
+  width: min(48vw, 660px);
   margin: 0;
   justify-self: center;
   transform: translateY(clamp(2.5rem, 8vh, 5.5rem));
@@ -283,7 +283,7 @@ textarea:focus-visible {
 
 .about-portrait img {
   width: 100%;
-  aspect-ratio: 4 / 5;
+  aspect-ratio: 1 / 1;
   object-fit: cover;
   border: var(--line-thin) solid var(--color-line);
   background: var(--color-paper-soft);
@@ -329,7 +329,7 @@ textarea:focus-visible {
 .work-tile {
   position: relative;
   display: block;
-  width: min(100%, clamp(18rem, 34vw, 470px));
+  width: min(48vw, 660px);
   padding: 0;
   border: var(--line-thin) solid var(--color-line);
   border-radius: 0;
@@ -356,7 +356,7 @@ textarea:focus-visible {
 
 .work-tile img {
   width: 100%;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 1 / 1;
   object-fit: cover;
   filter: grayscale(1);
 }
@@ -373,12 +373,22 @@ textarea:focus-visible {
 
 .archive-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.55fr) minmax(260px, 0.45fr);
-  gap: clamp(5rem, 12vw, 13rem);
+  grid-template-columns: minmax(320px, 1fr) minmax(260px, 0.48fr);
+  align-items: center;
+  gap: clamp(4rem, 10vw, 11rem);
 }
 
-.archive-empty {
-  min-height: 1px;
+.archive-visual {
+  width: min(48vw, 660px);
+  margin: 0;
+}
+
+.archive-visual img {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border: var(--line-thin) solid var(--color-line);
+  background: var(--color-paper-warm);
 }
 
 .archive-timeline {

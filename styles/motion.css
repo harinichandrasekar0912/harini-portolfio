@@ -3,8 +3,8 @@
   left: 50%;
   bottom: clamp(1rem, 3vh, 1.55rem);
   z-index: 700;
-  width: min(92vw, 460px);
-  height: 220px;
+  width: min(92vw, 380px);
+  height: 180px;
   pointer-events: none;
   transform: translateX(-50%);
 }
@@ -17,19 +17,55 @@
   width: var(--nav-size);
   height: var(--nav-size);
   padding: 0;
-  border: var(--line-thin) solid var(--color-ink);
+  border: 0;
   border-radius: 50%;
-  background: var(--color-paper);
+  background: transparent;
   cursor: pointer;
   pointer-events: auto;
+  overflow: visible;
 }
 
 .nav-core::after {
   content: "";
   position: absolute;
-  inset: -7px;
-  border: var(--line-thin) solid transparent;
+  inset: 0;
   border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.nav-core::after {
+  background: var(--color-ink);
+  transform: scale(0.96);
+  transition:
+    opacity 500ms var(--ease-standard),
+    transform 500ms var(--ease-standard);
+}
+
+.nav-ring {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.nav-ring svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  transform: rotate(-90deg) scaleX(-1);
+  transform-origin: center;
+}
+
+.nav-ring circle {
+  fill: none;
+  stroke: var(--color-ink);
+  stroke-width: 1.35;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  transition:
+    stroke-dashoffset 500ms linear,
+    opacity 120ms linear;
 }
 
 .plus-stem,
@@ -37,11 +73,13 @@
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 13px;
-  height: 1px;
+  z-index: 2;
+  width: 22px;
+  height: 4px;
   background: var(--color-ink);
   transform: translate(-50%, -50%);
   transform-origin: center;
+  border-radius: var(--radius-round);
 }
 
 .plus-stem {
@@ -54,7 +92,7 @@
   right: 0;
   bottom: 13px;
   z-index: 2;
-  height: 196px;
+  height: 170px;
   padding: 0;
   margin: 0;
   list-style: none;
@@ -70,61 +108,73 @@
 }
 
 .radial-item-about {
-  --item-x: -168px;
-  --item-y: -46px;
+  --item-x: -122px;
+  --item-y: -88px;
 }
 
 .radial-item-work {
-  --item-x: -78px;
-  --item-y: -134px;
+  --item-x: -48px;
+  --item-y: -144px;
 }
 
 .radial-item-archive {
-  --item-x: 78px;
-  --item-y: -134px;
+  --item-x: 48px;
+  --item-y: -144px;
 }
 
 .radial-item-contact {
-  --item-x: 168px;
-  --item-y: -46px;
+  --item-x: 122px;
+  --item-y: -88px;
 }
 
 .radial-item button {
   position: relative;
-  min-width: 48px;
-  padding: 0.42rem 0.58rem;
-  border: 0;
-  border-radius: var(--radius-round);
-  background: transparent;
+  display: grid;
+  place-items: center;
+  width: 62px;
+  height: 62px;
+  padding: 0;
+  border: var(--line-thin) solid var(--color-ink);
+  border-radius: 50%;
+  background: var(--color-paper);
   color: var(--color-ink);
   font-size: var(--text-xs);
   font-weight: 380;
   text-transform: lowercase;
   cursor: pointer;
+  transition:
+    background-color 500ms var(--ease-standard),
+    border-color 500ms var(--ease-standard),
+    color 500ms var(--ease-standard),
+    transform 500ms var(--ease-standard);
 }
 
 .radial-item button::after {
   content: "";
   position: absolute;
-  inset: 0.2rem -0.04rem;
-  border: var(--line-thin) solid var(--color-ink);
+  inset: -5px;
+  border: var(--line-thin) solid var(--color-line-strong);
   border-radius: 50%;
   opacity: 0;
-  transform: scale(0.78);
+  transform: scale(0.88);
+  transition:
+    opacity 500ms var(--ease-standard),
+    transform 500ms var(--ease-standard);
 }
 
 .radial-item button:hover::after,
 .radial-item button:focus-visible::after {
-  opacity: 0.34;
-  transform: scale(0.96);
+  opacity: 0.08;
+  transform: scale(1);
 }
 
 .radial-item button:focus-visible {
   outline: 0;
 }
 
-.nav-core:focus-visible::after {
-  border-color: var(--color-line-strong);
+.nav-core:focus-visible {
+  outline: 1px solid var(--color-line-strong);
+  outline-offset: 8px;
 }
 
 .radial-lines {
@@ -141,29 +191,33 @@
   position: absolute;
   left: 0;
   bottom: 0;
-  width: 1px;
-  border-left: 1px dotted rgba(21, 20, 18, 0.16);
+  width: 2px;
+  border-left: 2px dotted rgba(21, 20, 18, 0.42);
   transform-origin: bottom center;
+  transform: rotate(var(--spoke-angle)) scaleY(0);
+  transition:
+    transform 500ms var(--ease-standard),
+    opacity 500ms var(--ease-standard);
 }
 
 .radial-line-about {
-  height: 178px;
-  transform: rotate(-71deg);
+  --spoke-angle: -54deg;
+  height: 150px;
 }
 
 .radial-line-work {
-  height: 158px;
-  transform: rotate(-31deg);
+  --spoke-angle: -18deg;
+  height: 152px;
 }
 
 .radial-line-archive {
-  height: 158px;
-  transform: rotate(31deg);
+  --spoke-angle: 18deg;
+  height: 152px;
 }
 
 .radial-line-contact {
-  height: 178px;
-  transform: rotate(71deg);
+  --spoke-angle: 54deg;
+  height: 150px;
 }
 
 .nav-object.is-open,
@@ -172,16 +226,10 @@
   pointer-events: auto;
 }
 
-.nav-object.is-open .nav-core,
-.nav-object.is-choosing .nav-core {
-  background: var(--color-ink);
-}
-
 .nav-object.is-open .plus-stem,
 .nav-object.is-open .plus-arm,
 .nav-object.is-choosing .plus-stem,
 .nav-object.is-choosing .plus-arm {
-  background: var(--color-paper);
   opacity: 0;
 }
 
@@ -193,6 +241,17 @@
 .nav-object.is-open .radial-lines,
 .nav-object.is-choosing .radial-lines {
   opacity: 1;
+  transition-delay: 500ms;
+}
+
+.nav-object.is-open .nav-ring,
+.nav-object.is-choosing .nav-ring {
+  opacity: 1;
+}
+
+.nav-object.is-open .nav-ring circle,
+.nav-object.is-choosing .nav-ring circle {
+  stroke-dashoffset: 0;
 }
 
 .nav-object.is-open .radial-menu,
@@ -204,6 +263,20 @@
 .nav-object.is-choosing .radial-item {
   opacity: 1;
   transform: translate(calc(-50% + var(--item-x)), var(--item-y)) scale(1);
+  animation: radialPop 500ms var(--ease-standard) 980ms both;
+}
+
+.nav-object.is-open .nav-core::after,
+.nav-object.is-choosing .nav-core::after {
+  opacity: 1;
+  transform: scale(1);
+  transition-delay: 500ms;
+}
+
+.nav-object.is-open .radial-line,
+.nav-object.is-choosing .radial-line {
+  transform: rotate(var(--spoke-angle)) scaleY(1);
+  transition-delay: 500ms;
 }
 
 .nav-object.is-choosing .radial-item:not(.is-selected) {
@@ -212,8 +285,18 @@
 }
 
 .nav-object.is-choosing .radial-item.is-selected button::after {
-  opacity: 1;
-  transform: scale(1);
+  opacity: 0.28;
+  transform: scale(1.08);
+}
+
+.nav-object.is-choosing .radial-item.is-selected button {
+  background: var(--color-ink);
+  border-color: var(--color-ink);
+  color: var(--color-paper);
+  transition:
+    background-color 500ms var(--ease-standard),
+    color 500ms var(--ease-standard),
+    border-color 500ms var(--ease-standard);
 }
 
 .nav-object.is-travelling .nav-core,
@@ -225,7 +308,7 @@
 
 .nav-object[data-nav-state="plus_restored"] .nav-core {
   opacity: 1;
-  background: var(--color-paper);
+  background: transparent;
   pointer-events: auto;
 }
 
@@ -252,7 +335,7 @@
   height: var(--ball-size);
   border: var(--line-thin) solid var(--color-ink);
   border-radius: 50%;
-  background: #ffffff;
+  background: var(--color-ink);
   opacity: 0;
   pointer-events: none;
   transform: translate3d(
@@ -268,7 +351,7 @@
 }
 
 .nav-travel-ball.is-moving {
-  background: #ffffff;
+  background: var(--color-ink);
 }
 
 .nav-travel-ball.is-moving .travel-label {
@@ -284,7 +367,7 @@
 }
 
 .nav-travel-ball.is-paused {
-  background: #ffffff;
+  background: var(--color-ink);
 }
 
 .nav-travel-ball.is-arrived {
@@ -296,7 +379,7 @@
 }
 
 .travel-label {
-  color: var(--color-ink);
+  color: var(--color-paper);
   font-size: 0.62rem;
   line-height: 1;
   opacity: 0;
@@ -309,10 +392,12 @@
 .travel-shadow {
   position: absolute;
   left: 50%;
-  bottom: -9px;
-  width: 32px;
-  height: 6px;
-  border: 1px solid var(--color-line-soft);
+  bottom: -12px;
+  width: 42px;
+  height: 10px;
+  border: 0;
+  background: rgba(0, 0, 0, 0.16);
+  filter: blur(5px);
   border-radius: 50%;
   opacity: 0;
   transform: translateX(-50%);
@@ -367,6 +452,7 @@
 
 .nav-core,
 .nav-core::after,
+.nav-ring,
 .plus-stem,
 .plus-arm,
 .radial-item,
@@ -380,6 +466,23 @@
     transform var(--duration-medium) var(--ease-standard),
     background-color var(--duration-medium) var(--ease-standard),
     border-color var(--duration-medium) var(--ease-standard);
+}
+
+@keyframes radialPop {
+  0% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--item-x)), var(--item-y)) scale(0.72);
+  }
+
+  72% {
+    opacity: 1;
+    transform: translate(calc(-50% + var(--item-x)), var(--item-y)) scale(1.06);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translate(calc(-50% + var(--item-x)), var(--item-y)) scale(1);
+  }
 }
 
 .project-viewer {

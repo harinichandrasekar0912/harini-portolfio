@@ -189,12 +189,16 @@
       }
 
       window.clearTimeout(resetTimer);
-      resetTimer = window.setTimeout(restorePlus, reducedMotion.matches ? 80 : 780);
+      resetTimer = window.setTimeout(restorePlus, reducedMotion.matches ? 80 : 1150);
     }
 
     function travelTo(button, target, label) {
       var start = getCenter(button);
-      var end = getCenter(core);
+      var movesLeft = label === "about" || label === "work";
+      var end = {
+        x: window.innerWidth * (movesLeft ? 0.28 : 0.72),
+        y: window.innerHeight * 0.5
+      };
       var startScroll = window.scrollY || window.pageYOffset;
       var targetTop = target.getBoundingClientRect().top + startScroll;
       var maxScroll = document.documentElement.scrollHeight - window.innerHeight;
@@ -222,8 +226,8 @@
       });
 
       var control = {
-        x: mix(start.x, end.x, 0.5),
-        y: Math.min(start.y, end.y) - clamp(window.innerHeight * 0.16, 80, 150)
+        x: mix(start.x, end.x, 0.42),
+        y: Math.min(start.y, end.y) - clamp(window.innerHeight * 0.18, 96, 180)
       };
       var startTime = 0;
 
@@ -287,10 +291,14 @@
       window.setTimeout(function () {
         nav.classList.add("is-travelling");
         travelTo(button, target, label);
-      }, reducedMotion.matches ? 0 : 320);
+      }, reducedMotion.matches ? 0 : 520);
     }
 
     core.addEventListener("click", function () {
+      if (canHover.matches && isOpen) {
+        return;
+      }
+
       setOpen(!isOpen);
     });
 
