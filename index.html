@@ -143,25 +143,25 @@
           </figure>
           <ol class="archive-timeline" aria-label="archive items">
             <li>
-              <button class="archive-item" type="button">
+              <button class="archive-item" type="button" data-project-trigger="archive-01" aria-label="open archive item animation test">
                 <time datetime="2026">2026</time>
                 <span>animation test</span>
               </button>
             </li>
             <li>
-              <button class="archive-item" type="button">
+              <button class="archive-item" type="button" data-project-trigger="archive-02" aria-label="open archive item spatial sketch set">
                 <time datetime="2025">2025</time>
                 <span>spatial sketch set</span>
               </button>
             </li>
             <li>
-              <button class="archive-item" type="button">
+              <button class="archive-item" type="button" data-project-trigger="archive-03" aria-label="open archive item material study">
                 <time datetime="2024">2024</time>
                 <span>material study</span>
               </button>
             </li>
             <li>
-              <button class="archive-item" type="button">
+              <button class="archive-item" type="button" data-project-trigger="archive-04" aria-label="open archive item process fragment">
                 <time datetime="2023">2023</time>
                 <span>process fragment</span>
               </button>
@@ -201,12 +201,12 @@
     </main>
 
     <nav class="nav-object" data-nav-object aria-label="section navigation">
-      <div class="radial-lines" aria-hidden="true">
-        <span class="radial-line radial-line-about"></span>
-        <span class="radial-line radial-line-work"></span>
-        <span class="radial-line radial-line-archive"></span>
-        <span class="radial-line radial-line-contact"></span>
-      </div>
+      <svg class="radial-lines" viewBox="0 0 380 180" aria-hidden="true" focusable="false">
+        <line class="radial-line radial-line-about" x1="190" y1="138" x2="68" y2="50" pathLength="1"></line>
+        <line class="radial-line radial-line-work" x1="190" y1="138" x2="142" y2="-6" pathLength="1"></line>
+        <line class="radial-line radial-line-archive" x1="190" y1="138" x2="238" y2="-6" pathLength="1"></line>
+        <line class="radial-line radial-line-contact" x1="190" y1="138" x2="312" y2="50" pathLength="1"></line>
+      </svg>
       <ul class="radial-menu" id="radial-menu" aria-hidden="true">
         <li class="radial-item radial-item-about">
           <button type="button" data-nav-target="about" tabindex="-1">about</button>
@@ -254,11 +254,14 @@
       tabindex="-1"
     >
       <div class="project-glass" aria-hidden="true"></div>
-      <figure class="project-hero-frame" data-project-frame>
+      <figure class="project-hero-frame" data-project-frame aria-hidden="true">
         <img alt="" data-project-hero>
       </figure>
       <div class="project-story" data-project-story>
         <div class="project-track" data-project-track></div>
+      </div>
+      <div class="project-progress" data-project-progress aria-hidden="true">
+        <span data-project-progress-bar></span>
       </div>
       <button class="project-close" type="button" data-project-close aria-label="close project view">
         <span aria-hidden="true"></span>

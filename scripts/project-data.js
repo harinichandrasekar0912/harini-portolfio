@@ -154,6 +154,122 @@
           body: "Use final images and a concise outcome statement here."
         }
       ]
+    },
+    {
+      id: "archive-01",
+      title: "animation test",
+      image: "assets/images/archive/archive-placeholder.svg",
+      alt: "black and white archive placeholder for animation test",
+      summary: "a small motion study prepared as an archive placeholder.",
+      panels: [
+        {
+          heading: "title / introduction",
+          body: "A compact note for a secondary animation experiment."
+        },
+        {
+          heading: "context",
+          body: "Use this panel for the prompt, tools, and constraints."
+        },
+        {
+          heading: "concept / process",
+          body: "Process frames and small iterations can sit here later."
+        },
+        {
+          heading: "drawings / diagrams",
+          body: "Place storyboard fragments, sketches, or timing diagrams here."
+        },
+        {
+          heading: "renders / outcome",
+          body: "The final clip or still sequence can close this archive entry."
+        }
+      ]
+    },
+    {
+      id: "archive-02",
+      title: "spatial sketch set",
+      image: "assets/images/archive/archive-placeholder.svg",
+      alt: "black and white archive placeholder for spatial sketch set",
+      summary: "a restrained placeholder for a set of spatial sketches.",
+      panels: [
+        {
+          heading: "title / introduction",
+          body: "A short opening line can identify the sketch set."
+        },
+        {
+          heading: "context",
+          body: "Use this for where the sketches came from and what they tested."
+        },
+        {
+          heading: "concept / process",
+          body: "Later, this can collect a few crisp process fragments."
+        },
+        {
+          heading: "drawings / diagrams",
+          body: "Drawings and scans can be arranged here."
+        },
+        {
+          heading: "renders / outcome",
+          body: "A final selected frame or image group can close the entry."
+        }
+      ]
+    },
+    {
+      id: "archive-03",
+      title: "material study",
+      image: "assets/images/archive/archive-placeholder.svg",
+      alt: "black and white archive placeholder for material study",
+      summary: "a small archive study for material, texture, and surface.",
+      panels: [
+        {
+          heading: "title / introduction",
+          body: "A minimal description can replace this placeholder."
+        },
+        {
+          heading: "context",
+          body: "Add the material question and study conditions here."
+        },
+        {
+          heading: "concept / process",
+          body: "Use this panel for test logic and iteration notes."
+        },
+        {
+          heading: "drawings / diagrams",
+          body: "Diagrams, close studies, and fragments can sit here."
+        },
+        {
+          heading: "renders / outcome",
+          body: "Resolved images and a short note can close the study."
+        }
+      ]
+    },
+    {
+      id: "archive-04",
+      title: "process fragment",
+      image: "assets/images/archive/archive-placeholder.svg",
+      alt: "black and white archive placeholder for process fragment",
+      summary: "a compact process fragment prepared for future detail.",
+      panels: [
+        {
+          heading: "title / introduction",
+          body: "This can become a short note on a smaller process artifact."
+        },
+        {
+          heading: "context",
+          body: "Add source, brief, and timing context here."
+        },
+        {
+          heading: "concept / process",
+          body: "A focused sequence of decisions can be shown here."
+        },
+        {
+          heading: "drawings / diagrams",
+          body: "Process drawings or structural diagrams can fill this panel."
+        },
+        {
+          heading: "renders / outcome",
+          body: "Use the closing panel for a selected outcome or reflection."
+        }
+      ]
     }
   ];
 })();

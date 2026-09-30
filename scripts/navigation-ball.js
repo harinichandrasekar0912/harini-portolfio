@@ -19,6 +19,31 @@
     };
   }
 
+  function getPlatformPoint(element, section, side, weight) {
+    var rect = element.getBoundingClientRect();
+    var scrollY = window.scrollY || window.pageYOffset;
+    var x = rect.left + rect.width / 2;
+
+    if (side === "left") {
+      x = rect.left + rect.width * 0.28;
+    }
+
+    if (side === "right") {
+      x = rect.left + rect.width * 0.72;
+    }
+
+    return {
+      element: element,
+      section: section,
+      side: side || "center",
+      weight: weight || 0,
+      x: clamp(x, 34, window.innerWidth - 34),
+      y: rect.top + scrollY,
+      width: rect.width,
+      height: rect.height
+    };
+  }
+
   var STATES = {
     PLUS_IDLE: "plus_idle",
     MENU_OPEN: "menu_open",
@@ -98,15 +123,166 @@
       ball.style.setProperty("--ball-y", y + "px");
     }
 
+    function ballRadius() {
+      return ball.getBoundingClientRect().width / 2 || 22;
+    }
+
+    function documentPointToScreen(point, scrollY) {
+      return {
+        x: point.x,
+        y: point.y - scrollY - ballRadius()
+      };
+    }
+
+    function targetScrollFor(point) {
+      var maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+      return clamp(point.y - window.innerHeight * 0.46, 0, Math.max(0, maxScroll));
+    }
+
+    function collectPlatforms() {
+      var platforms = [];
+      var landing = document.querySelector(".landing-media");
+      var about = document.querySelector(".about-portrait img");
+      var archiveVisual = document.querySelector(".archive-visual img");
+      var contact = document.querySelector(".contact-form");
+
+      if (landing) {
+        platforms.push(getPlatformPoint(landing, "landing", "center", 1));
+      }
+
+      if (about) {
+        platforms.push(getPlatformPoint(about, "about", "left", 4));
+      }
+
+      Array.prototype.slice.call(document.querySelectorAll(".work-tile")).forEach(function (tile, index) {
+        platforms.push(getPlatformPoint(tile, "work", index % 2 === 0 ? "left" : "right", 8 + index));
+      });
+
+      if (archiveVisual) {
+        platforms.push(getPlatformPoint(archiveVisual, "archive", "left", 4));
+      }
+
+      Array.prototype.slice.call(document.querySelectorAll(".archive-item")).forEach(function (item, index) {
+        platforms.push(getPlatformPoint(item, "archive", "right", 3 + index));
+      });
+
+      if (contact) {
+        platforms.push(getPlatformPoint(contact, "contact", "left", 4));
+      }
+
+      return platforms.sort(function (a, b) {
+        return a.y - b.y;
+      });
+    }
+
+    function fallbackPlatform(section) {
+      var target = document.getElementById(section);
+      var rect = target ? target.getBoundingClientRect() : { top: 0, left: 0, width: window.innerWidth };
+      var scrollY = window.scrollY || window.pageYOffset;
+
+      return {
+        element: target,
+        section: section,
+        side: "center",
+        weight: 0,
+        x: clamp(rect.left + rect.width / 2, 34, window.innerWidth - 34),
+        y: rect.top + scrollY + window.innerHeight * 0.38,
+        width: rect.width,
+        height: 1
+      };
+    }
+
+    function targetPlatformFor(section, platforms) {
+      var matches = platforms.filter(function (platform) {
+        return platform.section === section;
+      });
+
+      if (matches.length === 0) {
+        return fallbackPlatform(section);
+      }
+
+      return matches[0];
+    }
+
+    function nearestCurrentPlatform(platforms) {
+      var currentY = (window.scrollY || window.pageYOffset) + window.innerHeight * 0.52;
+      var best = platforms[0] || fallbackPlatform("landing");
+
+      platforms.forEach(function (platform) {
+        if (Math.abs(platform.y - currentY) < Math.abs(best.y - currentY)) {
+          best = platform;
+        }
+      });
+
+      return best;
+    }
+
+    function trimPlatforms(platforms, start, target) {
+      var downward = target.y >= start.y;
+      var between = platforms.filter(function (platform) {
+        if (platform === start || platform === target) {
+          return false;
+        }
+
+        return downward
+          ? platform.y > start.y + 80 && platform.y < target.y - 80
+          : platform.y < start.y - 80 && platform.y > target.y + 80;
+      });
+
+      between.sort(function (a, b) {
+        return downward ? a.y - b.y : b.y - a.y;
+      });
+
+      if (downward) {
+        return between.filter(function (_, index) {
+          return index % Math.max(1, Math.ceil(between.length / 3)) === 0;
+        }).slice(0, 3);
+      }
+
+      var chosen = [];
+      var lastSide = "";
+
+      between.forEach(function (platform) {
+        if (chosen.length >= 5) {
+          return;
+        }
+
+        if (!lastSide || platform.side !== lastSide || chosen.length === 0) {
+          chosen.push(platform);
+          lastSide = platform.side;
+        }
+      });
+
+      return chosen.length > 0 ? chosen : between.slice(0, 4);
+    }
+
+    function buildPath(startPoint, destinationSection) {
+      var platforms = collectPlatforms();
+      var current = nearestCurrentPlatform(platforms);
+      var target = targetPlatformFor(destinationSection, platforms);
+      var hops = trimPlatforms(platforms, current, target);
+      var path = [startPoint];
+
+      if (Math.abs(current.y - startPoint.y) > 80) {
+        path.push(current);
+      }
+
+      hops.forEach(function (hop) {
+        path.push(hop);
+      });
+
+      path.push(target);
+      return path;
+    }
+
     function pauseBall() {
       if (!isTravelling || navState !== STATES.BALL_TRAVELLING) {
         return;
       }
 
       setState(STATES.BALL_PAUSED);
-      ballLabel.textContent = activeTravelLabel;
       ball.classList.remove("is-moving", "is-lifting");
-      ball.classList.add("is-visible", "is-landed", "is-labelled", "is-paused");
+      ball.classList.add("is-visible", "is-landed", "is-paused");
     }
 
     function resumeBall() {
@@ -115,7 +291,7 @@
       }
 
       setState(STATES.BALL_RESUMING);
-      ball.classList.remove("is-landed", "is-labelled", "is-paused");
+      ball.classList.remove("is-landed", "is-paused");
       ball.classList.add("is-lifting");
 
       window.clearTimeout(resumeTimer);
@@ -125,7 +301,7 @@
           ball.classList.remove("is-lifting");
           ball.classList.add("is-moving");
         }
-      }, reducedMotion.matches ? 1 : 140);
+      }, reducedMotion.matches ? 1 : 120);
     }
 
     function noteScrollProgress() {
@@ -138,12 +314,12 @@
       }
 
       window.clearTimeout(pauseTimer);
-      pauseTimer = window.setTimeout(pauseBall, reducedMotion.matches ? 1 : 170);
+      pauseTimer = window.setTimeout(pauseBall, reducedMotion.matches ? 1 : 190);
     }
 
     function restorePlus() {
       setState(STATES.PLUS_RESTORED);
-      ball.classList.remove("is-labelled", "is-arrived", "is-paused");
+      ball.classList.remove("is-arrived", "is-paused");
       ball.classList.add("is-restoring");
       clearChoiceState(STATES.PLUS_RESTORED);
 
@@ -152,7 +328,6 @@
         ball.classList.remove(
           "is-visible",
           "is-landed",
-          "is-labelled",
           "is-moving",
           "is-lifting",
           "is-paused",
@@ -161,23 +336,20 @@
         );
         ballLabel.textContent = "";
         setState(STATES.PLUS_IDLE);
-      }, reducedMotion.matches ? 1 : 280);
+      }, reducedMotion.matches ? 1 : 300);
     }
 
-    function finishTravel(label, targetId, end) {
+    function finishTravel(label, targetId, endPoint) {
+      var endScroll = targetScrollFor(endPoint);
+      var screen = documentPointToScreen(endPoint, endScroll);
+
       window.clearTimeout(pauseTimer);
       window.clearTimeout(resumeTimer);
+      window.scrollTo(0, endScroll);
+      setBallPosition(screen.x, screen.y);
       setState(STATES.BALL_ARRIVED);
-      ballLabel.textContent = label;
       ball.classList.remove("is-moving", "is-lifting", "is-paused");
-      ball.classList.add("is-visible", "is-landed", "is-labelled", "is-arrived");
-
-      if (!reducedMotion.matches) {
-        setBallPosition(end.x + 7, end.y);
-        window.requestAnimationFrame(function () {
-          setBallPosition(end.x, end.y);
-        });
-      }
+      ball.classList.add("is-visible", "is-landed", "is-arrived");
 
       var target = document.getElementById(targetId);
       if (target) {
@@ -189,47 +361,66 @@
       }
 
       window.clearTimeout(resetTimer);
-      resetTimer = window.setTimeout(restorePlus, reducedMotion.matches ? 80 : 1150);
+      resetTimer = window.setTimeout(restorePlus, reducedMotion.matches ? 80 : 1000);
     }
 
     function travelTo(button, target, label) {
-      var start = getCenter(button);
-      var movesLeft = label === "about" || label === "work";
-      var end = {
-        x: window.innerWidth * (movesLeft ? 0.28 : 0.72),
-        y: window.innerHeight * 0.5
-      };
+      var startCenter = getCenter(button);
       var startScroll = window.scrollY || window.pageYOffset;
-      var targetTop = target.getBoundingClientRect().top + startScroll;
-      var maxScroll = document.documentElement.scrollHeight - window.innerHeight;
-      var endScroll = clamp(targetTop, 0, Math.max(0, maxScroll));
-      var distance = Math.abs(endScroll - startScroll);
-      var duration = reducedMotion.matches ? 0 : clamp(distance * 0.48, 620, 1350);
+      var startPoint = {
+        element: button,
+        section: "menu",
+        side: "center",
+        weight: 0,
+        x: startCenter.x,
+        y: startCenter.y + startScroll + ballRadius(),
+        width: button.offsetWidth,
+        height: button.offsetHeight
+      };
+      var path = buildPath(startPoint, target.id);
+      var totalDistance = Math.max(1, Math.abs(path[path.length - 1].y - startPoint.y));
+      var duration = reducedMotion.matches ? 0 : clamp(totalDistance * 0.52 + path.length * 120, 850, 2400);
+      var segmentCount = Math.max(1, path.length - 1);
 
       activeTravelLabel = label;
-      setBallPosition(start.x, start.y);
-      ballLabel.textContent = label;
+      setBallPosition(startCenter.x, startCenter.y);
+      ballLabel.textContent = "";
       ball.classList.remove("is-restoring", "is-arrived", "is-moving", "is-lifting", "is-paused");
-      ball.classList.add("is-visible", "is-labelled", "is-landed");
+      ball.classList.add("is-visible", "is-landed");
 
       if (reducedMotion.matches || duration === 0) {
-        window.scrollTo(0, endScroll);
-        setBallPosition(end.x, end.y);
-        finishTravel(label, target.id, end);
+        finishTravel(label, target.id, path[path.length - 1]);
         return;
       }
 
       window.requestAnimationFrame(function () {
         setState(STATES.BALL_RESUMING);
-        ball.classList.remove("is-labelled", "is-landed");
+        ball.classList.remove("is-landed");
         ball.classList.add("is-lifting");
       });
 
-      var control = {
-        x: mix(start.x, end.x, 0.42),
-        y: Math.min(start.y, end.y) - clamp(window.innerHeight * 0.18, 96, 180)
-      };
       var startTime = 0;
+
+      function pointAt(rawProgress) {
+        var scaled = clamp(rawProgress, 0, 1) * segmentCount;
+        var index = Math.min(segmentCount - 1, Math.floor(scaled));
+        var local = scaled - index;
+        var eased = easeInOut(local);
+        var from = path[index];
+        var to = path[index + 1];
+        var upward = to.y < from.y;
+        var lift = clamp(Math.abs(to.y - from.y) * (upward ? 0.34 : 0.18), 82, upward ? 230 : 170);
+        var control = {
+          x: mix(from.x, to.x, upward ? 0.58 : 0.46),
+          y: Math.min(from.y, to.y) - lift
+        };
+        var inverse = 1 - eased;
+
+        return {
+          x: inverse * inverse * from.x + 2 * inverse * eased * control.x + eased * eased * to.x,
+          y: inverse * inverse * from.y + 2 * inverse * eased * control.y + eased * eased * to.y
+        };
+      }
 
       function frame(now) {
         if (!startTime) {
@@ -237,21 +428,20 @@
         }
 
         var raw = clamp((now - startTime) / duration, 0, 1);
-        var eased = easeInOut(raw);
-        var inverse = 1 - eased;
-        var x = inverse * inverse * start.x + 2 * inverse * eased * control.x + eased * eased * end.x;
-        var y = inverse * inverse * start.y + 2 * inverse * eased * control.y + eased * eased * end.y;
+        var point = pointAt(raw);
+        var scrollY = targetScrollFor(point);
+        var screen = documentPointToScreen(point, scrollY);
 
-        if (raw > 0.08) {
+        if (raw > 0.03) {
           if (navState === STATES.BALL_RESUMING) {
             setState(STATES.BALL_TRAVELLING);
           }
-          ball.classList.remove("is-lifting");
+          ball.classList.remove("is-lifting", "is-landed");
           ball.classList.add("is-moving");
         }
 
-        setBallPosition(x, y);
-        window.scrollTo(0, mix(startScroll, endScroll, eased));
+        window.scrollTo(0, scrollY);
+        setBallPosition(screen.x, screen.y);
         noteScrollProgress();
 
         if (raw < 1) {
@@ -259,7 +449,7 @@
           return;
         }
 
-        finishTravel(label, target.id, end);
+        finishTravel(label, target.id, path[path.length - 1]);
       }
 
       window.requestAnimationFrame(frame);
@@ -291,7 +481,7 @@
       window.setTimeout(function () {
         nav.classList.add("is-travelling");
         travelTo(button, target, label);
-      }, reducedMotion.matches ? 0 : 520);
+      }, reducedMotion.matches ? 0 : 540);
     }
 
     core.addEventListener("click", function () {

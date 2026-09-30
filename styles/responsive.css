@@ -136,27 +136,22 @@
     height: 54px;
   }
 
-  .radial-line-about,
-  .radial-line-contact {
-    height: 124px;
-  }
-
-  .radial-line-work,
-  .radial-line-archive {
-    height: 124px;
-  }
-
   .project-panel {
+    grid-template-columns: 1fr;
     justify-content: start;
-    padding-right: clamp(1.5rem, 10vw, 4rem);
+    padding: clamp(5rem, 13vh, 7rem) var(--page-x);
   }
 
   .project-panel h3 {
     max-width: 14em;
   }
 
+  .project-progress {
+    display: none;
+  }
+
   .project-viewer[data-project-mode="stacked"] .project-panel {
-    padding-right: 0;
+    padding: 0;
   }
 }
 

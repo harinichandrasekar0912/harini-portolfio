@@ -21,8 +21,10 @@
     var story = document.querySelector("[data-project-story]");
     var track = document.querySelector("[data-project-track]");
     var closeButton = document.querySelector("[data-project-close]");
+    var progress = document.querySelector("[data-project-progress]");
+    var progressBar = document.querySelector("[data-project-progress-bar]");
 
-    if (!viewer || !frame || !hero || !story || !track || !closeButton || triggers.length === 0) {
+    if (!viewer || !frame || !hero || !story || !track || !closeButton || !progress || !progressBar || triggers.length === 0) {
       return;
     }
 
@@ -33,6 +35,7 @@
     var maxShift = 0;
     var touchY = 0;
     var closeTimer = 0;
+    var readyTimer = 0;
     var pendingShift = 0;
     var shiftFrame = 0;
 
@@ -46,19 +49,20 @@
       });
     }
 
+    function setProgress() {
+      var amount = maxShift > 0 ? currentShift / maxShift : 0;
+      progressBar.style.transform = "scaleX(" + clamp(amount, 0, 1) + ")";
+    }
+
     function setViewerVars(trigger) {
       var rect = trigger.getBoundingClientRect();
       var vw = window.innerWidth;
       var vh = window.innerHeight;
       var stacked = isStackedMode();
-      var focusWidth = stacked ? Math.min(vw - 32, 620) : Math.min(vw * 0.48, 700);
-      var focusHeight = stacked ? Math.min(vh * 0.34, focusWidth * 0.78) : Math.min(vh * 0.64, focusWidth * 0.78);
-      var focusLeft = stacked ? 16 : Math.max(32, (vw - Math.min(vw * 0.88, 1240)) / 2);
-      var focusTop = stacked ? Math.max(92, vh * 0.27) : vh / 2;
-      var storyLeft = stacked ? 16 : focusLeft + focusWidth + clamp(vw * 0.055, 34, 86);
-      var storyTop = stacked ? focusTop + focusHeight / 2 + 30 : Math.max(84, vh * 0.2);
-      var storyWidth = stacked ? vw - 32 : Math.max(320, vw - storyLeft - Math.max(32, vw * 0.07));
-      var storyHeight = stacked ? Math.max(240, vh - storyTop - 82) : Math.min(580, vh * 0.6);
+      var focusWidth = stacked ? Math.min(vw - 32, 560) : Math.min(vw * 0.48, 720);
+      var focusHeight = focusWidth;
+      var focusLeft = stacked ? 16 : Math.max(32, vw * 0.08);
+      var focusTop = stacked ? Math.max(88, vh * 0.14) : Math.max(80, (vh - focusHeight) / 2);
 
       viewer.dataset.projectMode = stacked ? "stacked" : "horizontal";
       viewer.style.setProperty("--tile-left", rect.left + "px");
@@ -69,10 +73,7 @@
       viewer.style.setProperty("--focus-top", focusTop + "px");
       viewer.style.setProperty("--focus-width", focusWidth + "px");
       viewer.style.setProperty("--focus-height", focusHeight + "px");
-      viewer.style.setProperty("--story-left", storyLeft + "px");
-      viewer.style.setProperty("--story-top", storyTop + "px");
-      viewer.style.setProperty("--story-width", storyWidth + "px");
-      viewer.style.setProperty("--story-height", storyHeight + "px");
+      viewer.style.setProperty("--panel-width", vw + "px");
     }
 
     function updateMaxShift() {
@@ -80,12 +81,14 @@
         maxShift = 0;
         currentShift = 0;
         viewer.style.setProperty("--project-shift", "0px");
+        setProgress();
         return;
       }
 
       maxShift = Math.max(0, track.scrollWidth - story.clientWidth);
       currentShift = clamp(currentShift, 0, maxShift);
       viewer.style.setProperty("--project-shift", currentShift + "px");
+      setProgress();
     }
 
     function setShift(value, quick) {
@@ -96,10 +99,12 @@
       currentShift = clamp(value, 0, maxShift);
       track.classList.toggle("is-dragging", Boolean(quick));
       viewer.style.setProperty("--project-shift", currentShift + "px");
+      setProgress();
+
       if (quick) {
         window.setTimeout(function () {
           track.classList.remove("is-dragging");
-        }, 100);
+        }, 120);
       }
     }
 
@@ -124,24 +129,45 @@
     function fillProject(project) {
       hero.src = project.image;
       hero.alt = project.alt || "";
+
       track.innerHTML = project.panels.map(function (panel, index) {
-        var heading = index === 0 ? project.title : panel.heading;
-        var body = index === 0 ? project.summary : panel.body;
-        var className = index === 0 ? "project-panel project-panel-intro" : "project-panel";
+        if (index === 0) {
+          return [
+            '<article class="project-panel project-panel-intro">',
+            '<figure class="project-panel-image">',
+            '<img src="',
+            escapeHtml(project.image),
+            '" alt="',
+            escapeHtml(project.alt || ""),
+            '">',
+            "</figure>",
+            '<div class="project-panel-copy">',
+            '<p class="project-step">01 / 05</p>',
+            "<h3>",
+            escapeHtml(project.title),
+            "</h3>",
+            "<p>",
+            escapeHtml(project.summary),
+            "</p>",
+            "</div>",
+            "</article>"
+          ].join("");
+        }
+
         return [
-          '<article class="',
-          className,
-          '">',
+          '<article class="project-panel">',
+          '<div class="project-panel-copy">',
           '<p class="project-step">',
           String(index + 1).padStart(2, "0"),
           " / 05",
           "</p>",
           "<h3>",
-          escapeHtml(heading),
+          escapeHtml(panel.heading),
           "</h3>",
           "<p>",
-          escapeHtml(body),
+          escapeHtml(panel.body),
           "</p>",
+          "</div>",
           "</article>"
         ].join("");
       }).join("");
@@ -159,19 +185,40 @@
       currentShift = 0;
       pendingShift = 0;
       window.clearTimeout(closeTimer);
+      window.clearTimeout(readyTimer);
       setViewerVars(trigger);
       fillProject(project);
       viewer.style.setProperty("--project-shift", "0px");
       story.scrollTop = 0;
       viewer.classList.add("is-active");
+      viewer.classList.remove("is-ready", "is-closing");
       viewer.setAttribute("aria-hidden", "false");
       document.body.classList.add("is-project-open");
 
       window.requestAnimationFrame(function () {
         viewer.classList.add("is-expanded");
         updateMaxShift();
+        setProgress();
         viewer.focus({ preventScroll: true });
+        readyTimer = window.setTimeout(function () {
+          viewer.classList.add("is-ready");
+        }, reducedMotion.matches ? 1 : 520);
       });
+    }
+
+    function finishClose() {
+      viewer.classList.remove("is-active", "is-expanded", "is-ready", "is-closing");
+      viewer.setAttribute("aria-hidden", "true");
+      document.body.classList.remove("is-project-open");
+      track.innerHTML = "";
+      hero.removeAttribute("src");
+      activeProject = null;
+
+      if (activeTrigger) {
+        activeTrigger.focus({ preventScroll: true });
+      }
+
+      activeTrigger = null;
     }
 
     function closeProject() {
@@ -179,29 +226,28 @@
         return;
       }
 
-      setShift(0, false);
       pendingShift = 0;
+      window.clearTimeout(readyTimer);
+
       if (shiftFrame) {
         window.cancelAnimationFrame(shiftFrame);
         shiftFrame = 0;
       }
+
+      viewer.classList.add("is-closing");
+      viewer.classList.remove("is-ready");
+      setShift(0, false);
       story.scrollTop = 0;
       window.clearTimeout(closeTimer);
+
       closeTimer = window.setTimeout(function () {
+        if (activeTrigger) {
+          setViewerVars(activeTrigger);
+        }
+
         viewer.classList.remove("is-expanded");
-        closeTimer = window.setTimeout(function () {
-          viewer.classList.remove("is-active");
-          viewer.setAttribute("aria-hidden", "true");
-          document.body.classList.remove("is-project-open");
-          track.innerHTML = "";
-          hero.removeAttribute("src");
-          activeProject = null;
-          if (activeTrigger) {
-            activeTrigger.focus({ preventScroll: true });
-          }
-          activeTrigger = null;
-        }, reducedMotion.matches ? 1 : 720);
-      }, reducedMotion.matches ? 1 : 520);
+        closeTimer = window.setTimeout(finishClose, reducedMotion.matches ? 1 : 820);
+      }, reducedMotion.matches ? 1 : 720);
     }
 
     triggers.forEach(function (trigger) {
@@ -222,7 +268,7 @@
       }
 
       event.preventDefault();
-      queueShift(event.deltaY);
+      queueShift(event.deltaY * 1.15);
     }, { passive: false });
 
     viewer.addEventListener("touchstart", function (event) {
@@ -244,7 +290,7 @@
       var delta = touchY - nextY;
       touchY = nextY;
       event.preventDefault();
-      queueShift(delta * 1.2);
+      queueShift(delta * 1.25);
     }, { passive: false });
 
     document.addEventListener("keydown", function (event) {
@@ -262,7 +308,7 @@
         }
 
         event.preventDefault();
-        setShift(currentShift + story.clientWidth * 0.75, false);
+        setShift(currentShift + window.innerWidth * 0.72, false);
       }
 
       if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
@@ -271,7 +317,7 @@
         }
 
         event.preventDefault();
-        setShift(currentShift - story.clientWidth * 0.75, false);
+        setShift(currentShift - window.innerWidth * 0.72, false);
       }
     });
 
