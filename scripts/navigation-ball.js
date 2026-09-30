@@ -1,4 +1,6 @@
 (function () {
+  const DEBUG_NAV_GEOMETRY = true;
+
   function clamp(value, min, max) {
     return Math.min(Math.max(value, min), max);
   }
@@ -9,6 +11,15 @@
 
   function mix(from, to, t) {
     return from + (to - from) * t;
+  }
+
+  function round(value) {
+    return typeof value === "number" && Number.isFinite(value) ? Math.round(value * 100) / 100 : null;
+  }
+
+  function parsePixel(value) {
+    var parsed = parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : 0;
   }
 
   function centerOf(element) {
@@ -86,6 +97,159 @@
     var resetTimer = 0;
     var activeLabel = "";
     var navState = STATES.PLUS_IDLE;
+    var debugOverlay = createDebugOverlay();
+
+    function createDebugOverlay() {
+      if (!DEBUG_NAV_GEOMETRY) {
+        return {
+          marker: function () {},
+          hideMarker: function () {},
+          trajectory: function () {},
+          clearTrajectory: function () {},
+          outline: function () {},
+          clearOutline: function () {}
+        };
+      }
+
+      var existing = document.querySelector("[data-nav-debug-overlay]");
+
+      if (existing) {
+        existing.remove();
+      }
+
+      var root = document.createElement("div");
+      var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      var polyline = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+      var outline = document.createElement("div");
+      var markers = {};
+
+      root.setAttribute("data-nav-debug-overlay", "");
+      root.style.cssText = [
+        "position: fixed",
+        "inset: 0",
+        "z-index: 5000",
+        "pointer-events: none",
+        "overflow: visible"
+      ].join(";");
+
+      svg.setAttribute("aria-hidden", "true");
+      svg.style.cssText = [
+        "position: fixed",
+        "inset: 0",
+        "width: 100vw",
+        "height: 100vh",
+        "overflow: visible",
+        "pointer-events: none"
+      ].join(";");
+
+      polyline.setAttribute("fill", "none");
+      polyline.setAttribute("stroke", "rgba(255, 129, 0, 0.92)");
+      polyline.setAttribute("stroke-width", "1.25");
+      polyline.setAttribute("stroke-linecap", "round");
+      polyline.setAttribute("stroke-linejoin", "round");
+      polyline.setAttribute("vector-effect", "non-scaling-stroke");
+      svg.appendChild(polyline);
+
+      outline.style.cssText = [
+        "position: fixed",
+        "display: none",
+        "border: 1px solid rgba(255, 0, 0, 0.86)",
+        "background: rgba(255, 0, 0, 0.035)",
+        "box-sizing: border-box",
+        "pointer-events: none"
+      ].join(";");
+
+      root.appendChild(svg);
+      root.appendChild(outline);
+      document.body.appendChild(root);
+
+      function buildMarker(name, color) {
+        var marker = document.createElement("div");
+        var horizontal = document.createElement("span");
+        var vertical = document.createElement("span");
+        var label = document.createElement("span");
+
+        marker.style.cssText = [
+          "position: fixed",
+          "left: 0",
+          "top: 0",
+          "width: 15px",
+          "height: 15px",
+          "transform: translate(-50%, -50%)",
+          "pointer-events: none"
+        ].join(";");
+
+        horizontal.style.cssText = [
+          "position: absolute",
+          "left: 0",
+          "top: 7px",
+          "width: 15px",
+          "height: 1px",
+          "background: " + color
+        ].join(";");
+
+        vertical.style.cssText = [
+          "position: absolute",
+          "left: 7px",
+          "top: 0",
+          "width: 1px",
+          "height: 15px",
+          "background: " + color
+        ].join(";");
+
+        label.textContent = name;
+        label.style.cssText = [
+          "position: absolute",
+          "left: 12px",
+          "top: 10px",
+          "padding: 2px 4px",
+          "border: 1px solid rgba(0, 0, 0, 0.14)",
+          "background: rgba(250, 248, 243, 0.92)",
+          "color: " + color,
+          "font: 10px/1.15 ui-monospace, SFMono-Regular, Consolas, monospace",
+          "white-space: nowrap"
+        ].join(";");
+
+        marker.appendChild(horizontal);
+        marker.appendChild(vertical);
+        marker.appendChild(label);
+        root.appendChild(marker);
+        markers[name] = marker;
+        return marker;
+      }
+
+      return {
+        marker: function (name, x, y, color) {
+          var marker = markers[name] || buildMarker(name, color);
+          marker.style.display = "block";
+          marker.style.left = round(x) + "px";
+          marker.style.top = round(y) + "px";
+        },
+        hideMarker: function (name) {
+          if (markers[name]) {
+            markers[name].style.display = "none";
+          }
+        },
+        trajectory: function (points) {
+          polyline.setAttribute("points", points.map(function (point) {
+            return round(point.x) + "," + round(point.y);
+          }).join(" "));
+        },
+        clearTrajectory: function () {
+          polyline.setAttribute("points", "");
+        },
+        outline: function (rect) {
+          outline.style.display = "block";
+          outline.style.left = round(rect.left) + "px";
+          outline.style.top = round(rect.top) + "px";
+          outline.style.width = round(rect.width) + "px";
+          outline.style.height = round(rect.height) + "px";
+        },
+        clearOutline: function () {
+          outline.style.display = "none";
+        }
+      };
+    }
 
     function setState(nextState) {
       navState = nextState;
@@ -100,6 +264,165 @@
       items.forEach(function (item) {
         item.tabIndex = open ? 0 : -1;
       });
+    }
+
+    function readPlusGeometry() {
+      var coreRect = core.getBoundingClientRect();
+      var coreStyle = window.getComputedStyle(core);
+      var plusCircleSize = parsePixel(coreStyle.width) || coreRect.width;
+      var bottomBuffer = parsePixel(coreStyle.bottom) || window.innerHeight - coreRect.bottom;
+      var measuredPlusCentreX = coreRect.left + coreRect.width / 2;
+      var measuredPlusCentreY = coreRect.top + coreRect.height / 2;
+      var measuredSpokeOriginX = coreRect.left + coreRect.width / 2;
+      var measuredSpokeOriginY = coreRect.top;
+
+      return {
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+        plusCircleSize: plusCircleSize,
+        bottomBuffer: bottomBuffer,
+        measuredPlusCentreX: measuredPlusCentreX,
+        measuredPlusCentreY: measuredPlusCentreY,
+        expectedPlusCentreX: window.innerWidth / 2,
+        expectedPlusCentreY: window.innerHeight - (bottomBuffer + plusCircleSize / 2),
+        measuredSpokeOriginX: measuredSpokeOriginX,
+        measuredSpokeOriginY: measuredSpokeOriginY,
+        expectedSpokeOriginX: window.innerWidth / 2,
+        expectedSpokeOriginY: window.innerHeight - (bottomBuffer + plusCircleSize)
+      };
+    }
+
+    function naviCircleCentres() {
+      return items.map(function (button) {
+        var label = button.getAttribute("data-nav-target");
+        var centre = centerOf(button);
+
+        return {
+          label: label,
+          x: centre.x,
+          y: centre.y
+        };
+      });
+    }
+
+    function debugSnapshot(extra) {
+      var plus = readPlusGeometry();
+      var selected = extra || {};
+
+      return {
+        viewportWidth: round(plus.viewportWidth),
+        viewportHeight: round(plus.viewportHeight),
+        plusCircleSize: round(plus.plusCircleSize),
+        bottomBuffer: round(plus.bottomBuffer),
+        measuredPlusCentreX: round(plus.measuredPlusCentreX),
+        measuredPlusCentreY: round(plus.measuredPlusCentreY),
+        expectedPlusCentreX: round(plus.expectedPlusCentreX),
+        expectedPlusCentreY: round(plus.expectedPlusCentreY),
+        measuredSpokeOriginX: round(plus.measuredSpokeOriginX),
+        measuredSpokeOriginY: round(plus.measuredSpokeOriginY),
+        expectedSpokeOriginX: round(plus.expectedSpokeOriginX),
+        expectedSpokeOriginY: round(plus.expectedSpokeOriginY),
+        selectedNaviCircle: selected.selectedNaviCircle || null,
+        selectedNaviCircleCentreX: round(selected.selectedNaviCircleCentreX),
+        selectedNaviCircleCentreY: round(selected.selectedNaviCircleCentreY),
+        ballStartX: round(selected.ballStartX),
+        ballStartY: round(selected.ballStartY),
+        landingTargetX: round(selected.landingTargetX),
+        landingTargetY: round(selected.landingTargetY)
+      };
+    }
+
+    function debugLogGeometry(extra) {
+      if (!DEBUG_NAV_GEOMETRY) {
+        return;
+      }
+
+      console.table(debugSnapshot(extra));
+    }
+
+    function debugRenderBase() {
+      if (!DEBUG_NAV_GEOMETRY) {
+        return;
+      }
+
+      var plus = readPlusGeometry();
+      debugOverlay.marker("plus centre", plus.measuredPlusCentreX, plus.measuredPlusCentreY, "rgb(220, 0, 0)");
+      debugOverlay.marker("spoke origin", plus.measuredSpokeOriginX, plus.measuredSpokeOriginY, "rgb(0, 86, 255)");
+      naviCircleCentres().forEach(function (point) {
+        debugOverlay.marker(point.label + " centre", point.x, point.y, "rgb(0, 150, 54)");
+      });
+    }
+
+    function landingTargetScreenRect(platform) {
+      if (platform && platform.element && platform.kind !== "floor") {
+        return platform.element.getBoundingClientRect();
+      }
+
+      var y = platform ? platform.y - (window.scrollY || window.pageYOffset) : window.innerHeight - 34;
+      return {
+        left: 0,
+        top: y,
+        width: window.innerWidth,
+        height: 1
+      };
+    }
+
+    function debugRenderLandingTarget(platform) {
+      if (!DEBUG_NAV_GEOMETRY || !platform) {
+        return;
+      }
+
+      var rect = landingTargetScreenRect(platform);
+      var scrollY = window.scrollY || window.pageYOffset;
+      var screenPoint = documentPointToScreen(platform, scrollY);
+
+      debugOverlay.outline(rect);
+      debugOverlay.marker("landing target", screenPoint.x, screenPoint.y + ballRadius(), "rgb(220, 0, 0)");
+    }
+
+    function debugRenderTrajectory(startPoint, endPoint, targetId, startScroll) {
+      if (!DEBUG_NAV_GEOMETRY) {
+        return;
+      }
+
+      var distance = Math.abs(endPoint.y - startPoint.y);
+      var horizontalDirection = targetId === "about" || targetId === "work" ? -1 : 1;
+      var takeoffHeight = 32;
+      var points = [];
+
+      function trajectoryPoint(raw) {
+        if (raw < 0.16) {
+          var bounce = raw / 0.16;
+          return {
+            x: startPoint.x,
+            y: startPoint.y - Math.sin(Math.PI * bounce) * takeoffHeight
+          };
+        }
+
+        var local = (raw - 0.16) / 0.84;
+        var eased = easeInOut(local);
+        var lift = targetId === "contact" ? 58 : clamp(distance * 0.07, 48, 104);
+        var control = {
+          x: mix(startPoint.x, endPoint.x, 0.48) + horizontalDirection * clamp(window.innerWidth * 0.08, 38, 110),
+          y: Math.min(startPoint.y, endPoint.y) - lift
+        };
+        var inverse = 1 - eased;
+
+        return {
+          x: inverse * inverse * startPoint.x + 2 * inverse * eased * control.x + eased * eased * endPoint.x,
+          y: inverse * inverse * startPoint.y + 2 * inverse * eased * control.y + eased * eased * endPoint.y
+        };
+      }
+
+      for (var step = 0; step <= 28; step += 1) {
+        var raw = step / 28;
+        var point = trajectoryPoint(raw);
+        var desiredScroll = targetScrollFor(raw > 0.82 ? endPoint : point);
+        var actualScroll = mix(startScroll, desiredScroll, easeInOut(raw));
+        points.push(documentPointToScreen(point, actualScroll));
+      }
+
+      debugOverlay.trajectory(points);
     }
 
     function setBallPosition(x, y) {
@@ -149,6 +472,8 @@
         line.setAttribute("x2", point.x);
         line.setAttribute("y2", point.y);
       });
+
+      debugRenderBase();
     }
 
     function setOpen(open) {
@@ -163,8 +488,15 @@
       setMenuA11y(open);
 
       if (open) {
+        debugOverlay.clearTrajectory();
+        debugOverlay.clearOutline();
+        debugOverlay.hideMarker("ball start");
+        debugOverlay.hideMarker("landing target");
         window.requestAnimationFrame(updateSpokeGeometry);
-        window.setTimeout(updateSpokeGeometry, reducedMotion.matches ? 1 : 480);
+        window.setTimeout(function () {
+          updateSpokeGeometry();
+          debugLogGeometry();
+        }, reducedMotion.matches ? 1 : 1120);
       }
     }
 
@@ -291,6 +623,7 @@
 
       window.scrollTo(0, endScroll);
       setBallPosition(screen.x, screen.y);
+      debugRenderLandingTarget(endPoint);
       setState(STATES.BALL_LANDING);
       ball.classList.remove("is-moving", "is-flying", "is-lifting");
       ball.classList.add("is-landing", "is-landed", "is-arrived");
@@ -367,6 +700,7 @@
 
         window.scrollTo(0, actualScroll);
         setBallPosition(screen.x, screen.y);
+        debugRenderLandingTarget(endPoint);
 
         if (raw > 0.16 && raw < 0.85) {
           setState(STATES.BALL_FLYING);
@@ -415,6 +749,21 @@
       if (!target) {
         return;
       }
+
+      var debugEndPoint = targetPlatformFor(targetId);
+      debugRenderBase();
+      debugOverlay.marker("ball start", buttonCenter.x, buttonCenter.y, "rgb(132, 0, 255)");
+      debugRenderLandingTarget(debugEndPoint);
+      debugRenderTrajectory(startPoint, debugEndPoint, targetId, scrollY);
+      debugLogGeometry({
+        selectedNaviCircle: label,
+        selectedNaviCircleCentreX: buttonCenter.x,
+        selectedNaviCircleCentreY: buttonCenter.y,
+        ballStartX: buttonCenter.x,
+        ballStartY: buttonCenter.y,
+        landingTargetX: debugEndPoint.x,
+        landingTargetY: debugEndPoint.y - scrollY
+      });
 
       isTravelling = true;
       activeLabel = label;
