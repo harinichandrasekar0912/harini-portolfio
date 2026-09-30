@@ -59,12 +59,16 @@
       var vw = window.innerWidth;
       var vh = window.innerHeight;
       var stacked = isStackedMode();
-      var focusWidth = stacked ? Math.min(vw - 32, 560) : Math.min(vw * 0.48, 720);
-      var focusHeight = focusWidth;
-      var focusLeft = stacked ? 16 : Math.max(32, vw * 0.08);
-      var focusTop = stacked ? Math.max(88, vh * 0.14) : Math.max(80, (vh - focusHeight) / 2);
+      var side = rect.left + rect.width / 2 > vw / 2 ? "right" : "left";
+      var topBuffer = stacked ? Math.max(88, vh * 0.12) : clamp(vh * 0.08, 48, 96);
+      var bottomBuffer = stacked ? 72 : clamp(vh * 0.08, 48, 96);
+      var focusHeight = stacked ? Math.min(vw - 32, 560) : Math.max(260, vh - topBuffer - bottomBuffer);
+      var focusWidth = stacked ? Math.min(vw - 32, 560) : Math.min(vw * 0.58, focusHeight * 1.25, 860);
+      var focusLeft = stacked ? 16 : side === "right" ? vw - focusWidth : 0;
+      var focusTop = stacked ? topBuffer : topBuffer;
 
       viewer.dataset.projectMode = stacked ? "stacked" : "horizontal";
+      viewer.dataset.projectSide = side;
       viewer.style.setProperty("--tile-left", rect.left + "px");
       viewer.style.setProperty("--tile-top", rect.top + "px");
       viewer.style.setProperty("--tile-width", rect.width + "px");

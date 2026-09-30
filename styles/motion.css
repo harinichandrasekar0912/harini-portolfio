@@ -1,21 +1,19 @@
 .nav-object {
   position: fixed;
-  left: 50%;
-  bottom: clamp(1rem, 3vh, 1.55rem);
+  inset: 0;
   z-index: 700;
-  width: min(92vw, 380px);
-  height: 180px;
+  width: auto;
+  height: auto;
   pointer-events: none;
-  transform: translateX(-50%);
 }
 
 .nav-core {
-  position: absolute;
-  left: 50%;
-  bottom: 0;
+  position: fixed;
+  left: 50vw;
+  bottom: var(--nav-bottom-buffer);
   z-index: 3;
-  width: var(--nav-size);
-  height: var(--nav-size);
+  width: var(--plus-circle-size);
+  height: var(--plus-circle-size);
   padding: 0;
   border: 0;
   border-radius: 50%;
@@ -23,6 +21,7 @@
   cursor: pointer;
   pointer-events: auto;
   overflow: visible;
+  transform: translateX(-50%);
 }
 
 .nav-core::after {
@@ -87,12 +86,10 @@
 }
 
 .radial-menu {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 13px;
+  position: fixed;
+  inset: 0;
   z-index: 2;
-  height: 170px;
+  height: auto;
   padding: 0;
   margin: 0;
   list-style: none;
@@ -100,9 +97,9 @@
 }
 
 .radial-item {
-  position: absolute;
-  left: 50%;
-  bottom: 0;
+  position: fixed;
+  left: 50vw;
+  bottom: calc(var(--nav-bottom-buffer) + (var(--plus-circle-size) / 2));
   opacity: 0;
   transform: translate(-50%, 0) scale(0.98);
 }
@@ -131,8 +128,8 @@
   position: relative;
   display: grid;
   place-items: center;
-  width: 62px;
-  height: 62px;
+  width: var(--navi-circle-size);
+  height: var(--navi-circle-size);
   padding: 0;
   border: var(--line-thin) solid var(--color-ink);
   border-radius: 50%;
@@ -186,11 +183,11 @@
 }
 
 .radial-lines {
-  position: absolute;
+  position: fixed;
   inset: 0;
   z-index: 1;
-  width: 100%;
-  height: 100%;
+  width: 100vw;
+  height: 100vh;
   opacity: 0;
   pointer-events: none;
   overflow: visible;
@@ -226,19 +223,21 @@
   transform: translate(-50%, -50%) rotate(0deg);
 }
 
-.nav-object.is-open .radial-lines,
-.nav-object.is-choosing .radial-lines {
+.nav-object.is-open .radial-lines {
   opacity: 1;
   transition-delay: 500ms;
 }
 
-.nav-object.is-open .nav-ring,
-.nav-object.is-choosing .nav-ring {
+.nav-object.is-choosing .radial-lines {
+  opacity: 0;
+  transition-delay: 0ms;
+}
+
+.nav-object.is-open .nav-ring {
   opacity: 1;
 }
 
-.nav-object.is-open .nav-ring circle,
-.nav-object.is-choosing .nav-ring circle {
+.nav-object.is-open .nav-ring circle {
   stroke-dashoffset: 0;
 }
 
@@ -251,18 +250,27 @@
 .nav-object.is-choosing .radial-item {
   opacity: 1;
   transform: translate(calc(-50% + var(--item-x)), var(--item-y)) scale(1);
+}
+
+.nav-object.is-open .radial-item {
   animation: radialPop 500ms var(--ease-standard) 980ms both;
 }
 
-.nav-object.is-open .nav-core::after,
-.nav-object.is-choosing .nav-core::after {
+.nav-object.is-choosing .radial-item {
+  animation: none;
+}
+
+.nav-object.is-open .nav-core::after {
   opacity: 1;
   transform: scale(1);
   transition-delay: 500ms;
 }
 
-.nav-object.is-open .radial-line,
-.nav-object.is-choosing .radial-line {
+.nav-object.is-choosing .nav-core {
+  opacity: 0;
+}
+
+.nav-object.is-open .radial-line {
   stroke-dashoffset: 0;
   transition-delay: 500ms;
 }
@@ -281,10 +289,12 @@
   background: var(--color-ink);
   border-color: var(--color-ink);
   color: transparent;
+  transform: scale(0.72);
   transition:
     background-color 500ms var(--ease-standard),
     color 500ms var(--ease-standard),
-    border-color 500ms var(--ease-standard);
+    border-color 500ms var(--ease-standard),
+    transform 900ms var(--ease-standard);
 }
 
 .nav-object.is-travelling .nav-core,
@@ -313,6 +323,9 @@
 .nav-travel-ball {
   --ball-x: 50vw;
   --ball-y: calc(100vh - 42px);
+  --ball-lift: 0px;
+  --ball-scale-x: 1;
+  --ball-scale-y: 1;
   position: fixed;
   left: 0;
   top: 0;
@@ -324,14 +337,14 @@
   border: var(--line-thin) solid var(--color-ink);
   border-radius: 50%;
   background:
-    radial-gradient(circle at 30% 22%, #ffffff 0%, #e1e1e1 16%, #7a7a7a 47%, #171717 78%, #050505 100%);
+    radial-gradient(circle at 68% 24%, #ffffff 0%, #e8e8e8 12%, #a8a8a8 32%, #4a4a4a 62%, #111111 100%);
   opacity: 0;
   pointer-events: none;
   transform: translate3d(
     calc(var(--ball-x) - (var(--ball-size) / 2)),
-    calc(var(--ball-y) - (var(--ball-size) / 2)),
+    calc(var(--ball-y) - (var(--ball-size) / 2) + var(--ball-lift)),
     0
-  );
+  ) scale(var(--ball-scale-x), var(--ball-scale-y));
   will-change: transform, opacity;
   box-shadow:
     inset -7px -8px 14px rgba(0, 0, 0, 0.38),
@@ -347,18 +360,19 @@
 }
 
 .nav-travel-ball::before {
-  left: 23%;
-  top: 17%;
+  right: 18%;
+  top: 16%;
   width: 26%;
   height: 20%;
   background: rgba(255, 255, 255, 0.82);
   filter: blur(2px);
+  opacity: 0.96;
 }
 
 .nav-travel-ball::after {
   inset: 1px;
   border: 1px solid rgba(255, 255, 255, 0.18);
-  box-shadow: inset -8px -8px 16px rgba(0, 0, 0, 0.28);
+  box-shadow: inset 7px 8px 16px rgba(0, 0, 0, 0.34);
 }
 
 .nav-travel-ball.is-visible {
@@ -367,7 +381,7 @@
 
 .nav-travel-ball.is-moving {
   background:
-    radial-gradient(circle at 30% 22%, #ffffff 0%, #dedede 16%, #747474 47%, #151515 78%, #040404 100%);
+    radial-gradient(circle at 68% 24%, #ffffff 0%, #e8e8e8 12%, #a8a8a8 32%, #4a4a4a 62%, #111111 100%);
 }
 
 .nav-travel-ball.is-moving .travel-label {
@@ -375,25 +389,39 @@
 }
 
 .nav-travel-ball.is-lifting {
-  transform: translate3d(
-    calc(var(--ball-x) - (var(--ball-size) / 2)),
-    calc(var(--ball-y) - (var(--ball-size) / 2) - 6px),
-    0
-  );
+  --ball-lift: -28px;
 }
 
 .nav-travel-ball.is-paused {
   background:
-    radial-gradient(circle at 30% 22%, #ffffff 0%, #e1e1e1 16%, #7a7a7a 47%, #171717 78%, #050505 100%);
+    radial-gradient(circle at 68% 24%, #ffffff 0%, #e8e8e8 12%, #a8a8a8 32%, #4a4a4a 62%, #111111 100%);
+}
+
+.nav-travel-ball.is-forming {
+  border-color: var(--color-ink);
+  background: var(--color-ink);
+  box-shadow: none;
+  animation: ballForm 1200ms var(--ease-standard) forwards;
+}
+
+.nav-travel-ball.is-forming::before,
+.nav-travel-ball.is-forming::after {
+  opacity: 0;
+  animation: ballLightBuild 1200ms var(--ease-standard) forwards;
+}
+
+.nav-travel-ball.is-ready,
+.nav-travel-ball.is-flying,
+.nav-travel-ball.is-landing,
+.nav-travel-ball.is-rolling {
+  background:
+    radial-gradient(circle at 68% 24%, #ffffff 0%, #e8e8e8 12%, #a8a8a8 32%, #4a4a4a 62%, #111111 100%);
 }
 
 .nav-travel-ball.is-arrived {
   transition-duration: var(--duration-slow);
-  transform: translate3d(
-    calc(var(--ball-x) - (var(--ball-size) / 2)),
-    calc(var(--ball-y) - (var(--ball-size) / 2)),
-    0
-  ) scale(1.015, 0.985);
+  --ball-scale-x: 1.015;
+  --ball-scale-y: 0.985;
 }
 
 .nav-travel-ball.is-restoring {
@@ -435,22 +463,28 @@
 }
 
 .nav-travel-ball.is-moving .travel-shadow,
-.nav-travel-ball.is-lifting .travel-shadow {
+.nav-travel-ball.is-lifting .travel-shadow,
+.nav-travel-ball.is-forming .travel-shadow,
+.nav-travel-ball.is-flying .travel-shadow {
   opacity: 0;
   transform: translateX(-50%) scaleX(0.58);
 }
 
 .nav-travel-ball.is-arrived .travel-shadow,
-.nav-travel-ball.is-paused .travel-shadow {
+.nav-travel-ball.is-paused .travel-shadow,
+.nav-travel-ball.is-landing .travel-shadow,
+.nav-travel-ball.is-rolling .travel-shadow {
   opacity: 1;
   transform: translateX(-50%) scaleX(1.16);
 }
 
 .work-tile,
 .archive-item,
+.archive-bar::after,
 .submit-button,
 .contact-links a {
   transition:
+    background-color var(--duration-medium) var(--ease-standard),
     border-color var(--duration-fast) var(--ease-standard),
     color var(--duration-fast) var(--ease-standard),
     opacity var(--duration-fast) var(--ease-standard),
@@ -477,11 +511,28 @@
   border-color: var(--color-line-soft);
 }
 
-.archive-item:hover span,
-.archive-item:focus-visible span {
-  text-decoration: underline;
-  text-decoration-thickness: 1px;
-  text-underline-offset: 0.28em;
+.archive-bars:hover .archive-bar:not(:hover, :focus-visible) {
+  opacity: 0.72;
+  transform: scaleX(0.965) scaleY(0.94);
+}
+
+.archive-bars:hover .archive-bar:not(:hover, :focus-visible)::after {
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.archive-bar {
+  transform-origin: right center;
+}
+
+.archive-bar:hover,
+.archive-bar:focus-visible {
+  border-color: var(--color-line-strong);
+  transform: scaleX(1.035) scaleY(1.08);
+}
+
+.archive-bar:hover::after,
+.archive-bar:focus-visible::after {
+  background: rgba(0, 0, 0, 0.04);
 }
 
 .submit-button:hover,
@@ -521,6 +572,47 @@
   100% {
     opacity: 1;
     transform: translate(calc(-50% + var(--item-x)), var(--item-y)) scale(1);
+  }
+}
+
+@keyframes ballForm {
+  0% {
+    background: var(--color-ink);
+    transform: translate3d(
+      calc(var(--ball-x) - (var(--ball-size) / 2)),
+      calc(var(--ball-y) - (var(--ball-size) / 2)),
+      0
+    ) scale(1.42);
+  }
+
+  52% {
+    background: var(--color-ink);
+    transform: translate3d(
+      calc(var(--ball-x) - (var(--ball-size) / 2)),
+      calc(var(--ball-y) - (var(--ball-size) / 2)),
+      0
+    ) scale(1.12);
+  }
+
+  100% {
+    background:
+      radial-gradient(circle at 68% 24%, #ffffff 0%, #e8e8e8 12%, #a8a8a8 32%, #4a4a4a 62%, #111111 100%);
+    transform: translate3d(
+      calc(var(--ball-x) - (var(--ball-size) / 2)),
+      calc(var(--ball-y) - (var(--ball-size) / 2)),
+      0
+    ) scale(1);
+  }
+}
+
+@keyframes ballLightBuild {
+  0%,
+  42% {
+    opacity: 0;
+  }
+
+  100% {
+    opacity: 1;
   }
 }
 
@@ -617,7 +709,9 @@
 }
 
 .project-panel-intro {
-  align-items: center;
+  align-items: start;
+  grid-template-columns: var(--focus-width) minmax(260px, 1fr);
+  padding: var(--focus-top) 0 0;
 }
 
 .project-panel-image {
@@ -642,6 +736,26 @@
   max-width: 26rem;
   opacity: 0;
   transform: translateY(10px);
+}
+
+.project-panel-intro .project-panel-copy {
+  align-self: center;
+  margin-left: clamp(2rem, 7vw, 6rem);
+}
+
+.project-viewer[data-project-side="right"] .project-panel-intro {
+  grid-template-columns: minmax(260px, 1fr) var(--focus-width);
+}
+
+.project-viewer[data-project-side="right"] .project-panel-intro .project-panel-image {
+  order: 2;
+}
+
+.project-viewer[data-project-side="right"] .project-panel-intro .project-panel-copy {
+  order: 1;
+  justify-self: end;
+  margin-right: clamp(2rem, 7vw, 6rem);
+  margin-left: 0;
 }
 
 .project-step {

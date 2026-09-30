@@ -9,8 +9,12 @@
     gap: var(--space-8);
   }
 
-  .archive-visual {
-    width: min(88vw, 480px);
+  .archive-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .archive-empty {
+    display: none;
   }
 
   .contact-links {
@@ -22,7 +26,8 @@
 @media (max-width: 760px) {
   :root {
     --page-x: clamp(1rem, 6vw, 1.5rem);
-    --nav-size: 44px;
+    --plus-circle-size: 44px;
+    --navi-circle-size: 54px;
     --ball-size: 42px;
   }
 
@@ -81,34 +86,36 @@
   }
 
   .work-tile {
-    width: min(88vw, 480px);
+    width: min(92vw, 520px);
   }
 
   .work-row-right .work-tile {
     justify-self: end;
   }
 
-  .archive-timeline {
-    justify-self: end;
-    width: min(100%, 24rem);
-    padding-left: var(--space-5);
+  .archive-bars {
+    gap: var(--space-5);
   }
 
-  .archive-item {
-    grid-template-columns: 3.4rem minmax(0, 1fr);
+  .archive-bar {
+    --bar-width: 92vw;
+    height: clamp(4rem, 16vw, 5.6rem);
   }
 
-  .archive-item::before {
-    left: calc(-1 * var(--space-5) - 3px);
+  .archive-bar-medium {
+    --bar-width: 84vw;
+  }
+
+  .archive-bar-midshort {
+    --bar-width: 78vw;
+  }
+
+  .archive-bar-short {
+    --bar-width: 68vw;
   }
 
   .contact-links {
     grid-template-columns: 1fr;
-  }
-
-  .nav-object {
-    width: min(100vw, 340px);
-    height: 170px;
   }
 
   .radial-item-about {
@@ -132,8 +139,8 @@
   }
 
   .radial-item button {
-    width: 54px;
-    height: 54px;
+    width: var(--navi-circle-size);
+    height: var(--navi-circle-size);
   }
 
   .project-panel {
@@ -153,6 +160,12 @@
   .project-viewer[data-project-mode="stacked"] .project-panel {
     padding: 0;
   }
+
+  .project-viewer[data-project-mode="stacked"] .project-panel-intro .project-panel-image,
+  .project-viewer[data-project-mode="stacked"] .project-panel-intro .project-panel-copy {
+    order: 0;
+    margin-inline: 0;
+  }
 }
 
 @media (max-width: 480px) {
@@ -165,16 +178,7 @@
   }
 
   .about-portrait {
-    width: min(88vw, 360px);
-  }
-
-  .archive-visual {
-    width: min(88vw, 360px);
-  }
-
-  .archive-timeline {
-    justify-self: stretch;
-    width: 100%;
+    width: min(92vw, 390px);
   }
 
   .contact-form {

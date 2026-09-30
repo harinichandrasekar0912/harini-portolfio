@@ -11,7 +11,7 @@
     return from + (to - from) * t;
   }
 
-  function getCenter(element) {
+  function centerOf(element) {
     var rect = element.getBoundingClientRect();
     return {
       x: rect.left + rect.width / 2,
@@ -19,25 +19,25 @@
     };
   }
 
-  function getPlatformPoint(element, section, side, weight) {
+  function platformFromElement(element, section, side, kind) {
     var rect = element.getBoundingClientRect();
     var scrollY = window.scrollY || window.pageYOffset;
     var x = rect.left + rect.width / 2;
 
     if (side === "left") {
-      x = rect.left + rect.width * 0.28;
+      x = rect.left + rect.width * 0.22;
     }
 
     if (side === "right") {
-      x = rect.left + rect.width * 0.72;
+      x = rect.right - rect.width * 0.22;
     }
 
     return {
       element: element,
       section: section,
       side: side || "center",
-      weight: weight || 0,
-      x: clamp(x, 34, window.innerWidth - 34),
+      kind: kind || "platform",
+      x: clamp(x, 28, window.innerWidth - 28),
       y: rect.top + scrollY,
       width: rect.width,
       height: rect.height
@@ -47,23 +47,34 @@
   var STATES = {
     PLUS_IDLE: "plus_idle",
     MENU_OPEN: "menu_open",
-    DESTINATION_SELECTED: "destination_selected",
-    BALL_TRAVELLING: "ball_travelling",
-    BALL_PAUSED: "ball_paused",
-    BALL_RESUMING: "ball_resuming",
-    BALL_ARRIVED: "ball_arrived",
+    NAVI_HOVERED: "navi_hovered",
+    NAVI_SELECTED: "navi_selected",
+    NAVI_TEXT_VANISHING: "navi_text_vanishing",
+    NAVI_TO_BALL_MORPH: "navi_to_ball_morph",
+    BALL_READY: "ball_ready",
+    BALL_TAKEOFF: "ball_takeoff",
+    BALL_FLYING: "ball_flying",
+    BALL_LANDING: "ball_landing",
+    BALL_ROLLING_OUT: "ball_rolling_out",
     PLUS_RESTORED: "plus_restored"
   };
 
   function init() {
     var nav = document.querySelector("[data-nav-object]");
     var core = document.querySelector("[data-nav-core]");
+    var spokes = document.querySelector(".radial-lines");
     var menu = document.getElementById("radial-menu");
     var ball = document.querySelector("[data-travel-ball]");
     var ballLabel = document.querySelector("[data-travel-label]");
     var items = Array.prototype.slice.call(document.querySelectorAll("[data-nav-target]"));
+    var lines = {
+      about: document.querySelector(".radial-line-about"),
+      work: document.querySelector(".radial-line-work"),
+      archive: document.querySelector(".radial-line-archive"),
+      contact: document.querySelector(".radial-line-contact")
+    };
 
-    if (!nav || !core || !menu || !ball || !ballLabel || items.length === 0) {
+    if (!nav || !core || !spokes || !menu || !ball || !ballLabel || items.length === 0) {
       return;
     }
 
@@ -71,11 +82,9 @@
     var reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     var isOpen = false;
     var isTravelling = false;
-    var resetTimer = 0;
     var closeOnBlurTimer = 0;
-    var pauseTimer = 0;
-    var resumeTimer = 0;
-    var activeTravelLabel = "";
+    var resetTimer = 0;
+    var activeLabel = "";
     var navState = STATES.PLUS_IDLE;
 
     function setState(nextState) {
@@ -93,6 +102,55 @@
       });
     }
 
+    function setBallPosition(x, y) {
+      ball.style.setProperty("--ball-x", x + "px");
+      ball.style.setProperty("--ball-y", y + "px");
+    }
+
+    function ballRadius() {
+      return ball.getBoundingClientRect().width / 2 || 22;
+    }
+
+    function resetBallClasses() {
+      ball.classList.remove(
+        "is-visible",
+        "is-forming",
+        "is-ready",
+        "is-lifting",
+        "is-moving",
+        "is-flying",
+        "is-landing",
+        "is-landed",
+        "is-arrived",
+        "is-paused",
+        "is-rolling",
+        "is-restoring"
+      );
+    }
+
+    function updateSpokeGeometry() {
+      var coreRect = core.getBoundingClientRect();
+      var originX = coreRect.left + coreRect.width / 2;
+      var originY = coreRect.top;
+
+      spokes.setAttribute("viewBox", "0 0 " + window.innerWidth + " " + window.innerHeight);
+
+      items.forEach(function (button) {
+        var label = button.getAttribute("data-nav-target");
+        var line = lines[label];
+        var point = centerOf(button);
+
+        if (!line) {
+          return;
+        }
+
+        line.setAttribute("x1", originX);
+        line.setAttribute("y1", originY);
+        line.setAttribute("x2", point.x);
+        line.setAttribute("y2", point.y);
+      });
+    }
+
     function setOpen(open) {
       if (isTravelling) {
         return;
@@ -103,6 +161,11 @@
       nav.classList.toggle("is-open", open);
       setState(open ? STATES.MENU_OPEN : STATES.PLUS_IDLE);
       setMenuA11y(open);
+
+      if (open) {
+        window.requestAnimationFrame(updateSpokeGeometry);
+        window.setTimeout(updateSpokeGeometry, reducedMotion.matches ? 1 : 480);
+      }
     }
 
     function clearChoiceState(finalState) {
@@ -114,17 +177,8 @@
       setMenuA11y(false);
       isOpen = false;
       isTravelling = false;
-      activeTravelLabel = "";
+      activeLabel = "";
       setState(finalState || STATES.PLUS_IDLE);
-    }
-
-    function setBallPosition(x, y) {
-      ball.style.setProperty("--ball-x", x + "px");
-      ball.style.setProperty("--ball-y", y + "px");
-    }
-
-    function ballRadius() {
-      return ball.getBoundingClientRect().width / 2 || 22;
     }
 
     function documentPointToScreen(point, scrollY) {
@@ -134,224 +188,113 @@
       };
     }
 
-    function targetScrollFor(point) {
-      var maxScroll = document.documentElement.scrollHeight - window.innerHeight;
-      return clamp(point.y - window.innerHeight * 0.46, 0, Math.max(0, maxScroll));
-    }
-
-    function collectPlatforms() {
-      var platforms = [];
-      var landing = document.querySelector(".landing-media");
-      var about = document.querySelector(".about-portrait img");
-      var archiveVisual = document.querySelector(".archive-visual img");
-      var contact = document.querySelector(".contact-form");
-
-      if (landing) {
-        platforms.push(getPlatformPoint(landing, "landing", "center", 1));
-      }
-
-      if (about) {
-        platforms.push(getPlatformPoint(about, "about", "left", 4));
-      }
-
-      Array.prototype.slice.call(document.querySelectorAll(".work-tile")).forEach(function (tile, index) {
-        platforms.push(getPlatformPoint(tile, "work", index % 2 === 0 ? "left" : "right", 8 + index));
-      });
-
-      if (archiveVisual) {
-        platforms.push(getPlatformPoint(archiveVisual, "archive", "left", 4));
-      }
-
-      Array.prototype.slice.call(document.querySelectorAll(".archive-item")).forEach(function (item, index) {
-        platforms.push(getPlatformPoint(item, "archive", "right", 3 + index));
-      });
-
-      if (contact) {
-        platforms.push(getPlatformPoint(contact, "contact", "left", 4));
-      }
-
-      return platforms.sort(function (a, b) {
-        return a.y - b.y;
-      });
-    }
-
-    function fallbackPlatform(section) {
-      var target = document.getElementById(section);
-      var rect = target ? target.getBoundingClientRect() : { top: 0, left: 0, width: window.innerWidth };
+    function contactFloor() {
+      var section = document.getElementById("contact");
+      var rect = section ? section.getBoundingClientRect() : { top: 0, height: window.innerHeight };
       var scrollY = window.scrollY || window.pageYOffset;
+      var documentBottom = document.documentElement.scrollHeight;
+      var floorY = Math.min(rect.top + scrollY + rect.height - 34, documentBottom - 24);
 
       return {
-        element: target,
-        section: section,
-        side: "center",
-        weight: 0,
-        x: clamp(rect.left + rect.width / 2, 34, window.innerWidth - 34),
-        y: rect.top + scrollY + window.innerHeight * 0.38,
-        width: rect.width,
+        element: section,
+        section: "contact",
+        side: "right",
+        kind: "floor",
+        x: window.innerWidth * 0.78,
+        y: floorY,
+        width: window.innerWidth,
         height: 1
       };
     }
 
-    function targetPlatformFor(section, platforms) {
-      var matches = platforms.filter(function (platform) {
-        return platform.section === section;
-      });
-
-      if (matches.length === 0) {
-        return fallbackPlatform(section);
+    function targetPlatformFor(section) {
+      if (section === "about") {
+        return platformFromElement(document.querySelector(".about-portrait img"), "about", "left");
       }
 
-      return matches[0];
+      if (section === "work") {
+        return platformFromElement(document.querySelector(".work-tile"), "work", "left");
+      }
+
+      if (section === "archive") {
+        return platformFromElement(document.querySelector(".archive-bar"), "archive", "right");
+      }
+
+      if (section === "contact") {
+        return contactFloor();
+      }
+
+      var target = document.getElementById(section);
+      return platformFromElement(target || document.body, section, "center");
     }
 
-    function nearestCurrentPlatform(platforms) {
-      var currentY = (window.scrollY || window.pageYOffset) + window.innerHeight * 0.52;
-      var best = platforms[0] || fallbackPlatform("landing");
+    function targetScrollFor(point) {
+      var maxScroll = document.documentElement.scrollHeight - window.innerHeight;
 
-      platforms.forEach(function (platform) {
-        if (Math.abs(platform.y - currentY) < Math.abs(best.y - currentY)) {
-          best = platform;
-        }
-      });
-
-      return best;
-    }
-
-    function trimPlatforms(platforms, start, target) {
-      var downward = target.y >= start.y;
-      var between = platforms.filter(function (platform) {
-        if (platform === start || platform === target) {
-          return false;
-        }
-
-        return downward
-          ? platform.y > start.y + 80 && platform.y < target.y - 80
-          : platform.y < start.y - 80 && platform.y > target.y + 80;
-      });
-
-      between.sort(function (a, b) {
-        return downward ? a.y - b.y : b.y - a.y;
-      });
-
-      if (downward) {
-        return between.filter(function (_, index) {
-          return index % Math.max(1, Math.ceil(between.length / 3)) === 0;
-        }).slice(0, 3);
+      if (point.kind === "floor") {
+        return clamp(point.y - window.innerHeight + 76, 0, Math.max(0, maxScroll));
       }
 
-      var chosen = [];
-      var lastSide = "";
-
-      between.forEach(function (platform) {
-        if (chosen.length >= 5) {
-          return;
-        }
-
-        if (!lastSide || platform.side !== lastSide || chosen.length === 0) {
-          chosen.push(platform);
-          lastSide = platform.side;
-        }
-      });
-
-      return chosen.length > 0 ? chosen : between.slice(0, 4);
-    }
-
-    function buildPath(startPoint, destinationSection) {
-      var platforms = collectPlatforms();
-      var current = nearestCurrentPlatform(platforms);
-      var target = targetPlatformFor(destinationSection, platforms);
-      var hops = trimPlatforms(platforms, current, target);
-      var path = [startPoint];
-
-      if (Math.abs(current.y - startPoint.y) > 80) {
-        path.push(current);
-      }
-
-      hops.forEach(function (hop) {
-        path.push(hop);
-      });
-
-      path.push(target);
-      return path;
-    }
-
-    function pauseBall() {
-      if (!isTravelling || navState !== STATES.BALL_TRAVELLING) {
-        return;
-      }
-
-      setState(STATES.BALL_PAUSED);
-      ball.classList.remove("is-moving", "is-lifting");
-      ball.classList.add("is-visible", "is-landed", "is-paused");
-    }
-
-    function resumeBall() {
-      if (!isTravelling || navState !== STATES.BALL_PAUSED) {
-        return;
-      }
-
-      setState(STATES.BALL_RESUMING);
-      ball.classList.remove("is-landed", "is-paused");
-      ball.classList.add("is-lifting");
-
-      window.clearTimeout(resumeTimer);
-      resumeTimer = window.setTimeout(function () {
-        if (isTravelling && navState === STATES.BALL_RESUMING) {
-          setState(STATES.BALL_TRAVELLING);
-          ball.classList.remove("is-lifting");
-          ball.classList.add("is-moving");
-        }
-      }, reducedMotion.matches ? 1 : 120);
-    }
-
-    function noteScrollProgress() {
-      if (!isTravelling || !activeTravelLabel || navState === STATES.BALL_ARRIVED) {
-        return;
-      }
-
-      if (navState === STATES.BALL_PAUSED) {
-        resumeBall();
-      }
-
-      window.clearTimeout(pauseTimer);
-      pauseTimer = window.setTimeout(pauseBall, reducedMotion.matches ? 1 : 190);
+      return clamp(point.y - window.innerHeight * 0.48, 0, Math.max(0, maxScroll));
     }
 
     function restorePlus() {
       setState(STATES.PLUS_RESTORED);
-      ball.classList.remove("is-arrived", "is-paused");
       ball.classList.add("is-restoring");
       clearChoiceState(STATES.PLUS_RESTORED);
 
       window.clearTimeout(resetTimer);
       resetTimer = window.setTimeout(function () {
-        ball.classList.remove(
-          "is-visible",
-          "is-landed",
-          "is-moving",
-          "is-lifting",
-          "is-paused",
-          "is-arrived",
-          "is-restoring"
-        );
+        resetBallClasses();
         ballLabel.textContent = "";
         setState(STATES.PLUS_IDLE);
-      }, reducedMotion.matches ? 1 : 300);
+      }, reducedMotion.matches ? 1 : 260);
     }
 
-    function finishTravel(label, targetId, endPoint) {
+    function rollOut(targetId, landingPoint) {
+      var direction = targetId === "about" || targetId === "work" ? -1 : 1;
+      var startX = landingPoint.x;
+      var endX = direction < 0 ? -ballRadius() - 18 : window.innerWidth + ballRadius() + 18;
+      var y = landingPoint.screenY;
+      var duration = reducedMotion.matches ? 1 : 680;
+      var startTime = 0;
+
+      setState(STATES.BALL_ROLLING_OUT);
+      ball.classList.remove("is-arrived");
+      ball.classList.add("is-rolling", "is-landed");
+
+      function frame(now) {
+        if (!startTime) {
+          startTime = now;
+        }
+
+        var raw = clamp((now - startTime) / duration, 0, 1);
+        var eased = easeInOut(raw);
+
+        setBallPosition(mix(startX, endX, eased), y);
+
+        if (raw < 1) {
+          window.requestAnimationFrame(frame);
+          return;
+        }
+
+        restorePlus();
+      }
+
+      window.requestAnimationFrame(frame);
+    }
+
+    function finishTravel(targetId, endPoint) {
       var endScroll = targetScrollFor(endPoint);
       var screen = documentPointToScreen(endPoint, endScroll);
+      var target = document.getElementById(targetId);
 
-      window.clearTimeout(pauseTimer);
-      window.clearTimeout(resumeTimer);
       window.scrollTo(0, endScroll);
       setBallPosition(screen.x, screen.y);
-      setState(STATES.BALL_ARRIVED);
-      ball.classList.remove("is-moving", "is-lifting", "is-paused");
-      ball.classList.add("is-visible", "is-landed", "is-arrived");
+      setState(STATES.BALL_LANDING);
+      ball.classList.remove("is-moving", "is-flying", "is-lifting");
+      ball.classList.add("is-landing", "is-landed", "is-arrived");
 
-      var target = document.getElementById(targetId);
       if (target) {
         target.focus({ preventScroll: true });
       }
@@ -360,65 +303,54 @@
         window.history.replaceState(null, "", "#" + targetId);
       }
 
-      window.clearTimeout(resetTimer);
-      resetTimer = window.setTimeout(restorePlus, reducedMotion.matches ? 80 : 1000);
+      window.setTimeout(function () {
+        rollOut(targetId, {
+          x: screen.x,
+          screenY: screen.y
+        });
+      }, reducedMotion.matches ? 1 : 360);
     }
 
-    function travelTo(button, target, label) {
-      var startCenter = getCenter(button);
+    function flyBall(startPoint, target, targetId) {
+      var endPoint = targetPlatformFor(targetId);
       var startScroll = window.scrollY || window.pageYOffset;
-      var startPoint = {
-        element: button,
-        section: "menu",
-        side: "center",
-        weight: 0,
-        x: startCenter.x,
-        y: startCenter.y + startScroll + ballRadius(),
-        width: button.offsetWidth,
-        height: button.offsetHeight
-      };
-      var path = buildPath(startPoint, target.id);
-      var totalDistance = Math.max(1, Math.abs(path[path.length - 1].y - startPoint.y));
-      var duration = reducedMotion.matches ? 0 : clamp(totalDistance * 0.52 + path.length * 120, 850, 2400);
-      var segmentCount = Math.max(1, path.length - 1);
+      var distance = Math.abs(endPoint.y - startPoint.y);
+      var duration = reducedMotion.matches ? 0 : clamp(distance * 0.42 + 720, 950, 1900);
+      var horizontalDirection = targetId === "about" || targetId === "work" ? -1 : 1;
+      var startTime = 0;
+      var takeoffHeight = reducedMotion.matches ? 0 : 32;
 
-      activeTravelLabel = label;
-      setBallPosition(startCenter.x, startCenter.y);
-      ballLabel.textContent = "";
-      ball.classList.remove("is-restoring", "is-arrived", "is-moving", "is-lifting", "is-paused");
-      ball.classList.add("is-visible", "is-landed");
-
-      if (reducedMotion.matches || duration === 0) {
-        finishTravel(label, target.id, path[path.length - 1]);
+      if (reducedMotion.matches) {
+        window.scrollTo(0, targetScrollFor(endPoint));
+        finishTravel(targetId, endPoint);
         return;
       }
 
-      window.requestAnimationFrame(function () {
-        setState(STATES.BALL_RESUMING);
-        ball.classList.remove("is-landed");
-        ball.classList.add("is-lifting");
-      });
+      setState(STATES.BALL_TAKEOFF);
+      ball.classList.remove("is-forming", "is-landed", "is-ready");
+      ball.classList.add("is-visible", "is-lifting");
 
-      var startTime = 0;
+      function pointAt(raw) {
+        if (raw < 0.16) {
+          var bounce = raw / 0.16;
+          return {
+            x: startPoint.x,
+            y: startPoint.y - Math.sin(Math.PI * bounce) * takeoffHeight
+          };
+        }
 
-      function pointAt(rawProgress) {
-        var scaled = clamp(rawProgress, 0, 1) * segmentCount;
-        var index = Math.min(segmentCount - 1, Math.floor(scaled));
-        var local = scaled - index;
+        var local = (raw - 0.16) / 0.84;
         var eased = easeInOut(local);
-        var from = path[index];
-        var to = path[index + 1];
-        var upward = to.y < from.y;
-        var lift = clamp(Math.abs(to.y - from.y) * (upward ? 0.34 : 0.18), 82, upward ? 230 : 170);
+        var lift = targetId === "contact" ? 58 : clamp(distance * 0.07, 48, 104);
         var control = {
-          x: mix(from.x, to.x, upward ? 0.58 : 0.46),
-          y: Math.min(from.y, to.y) - lift
+          x: mix(startPoint.x, endPoint.x, 0.48) + horizontalDirection * clamp(window.innerWidth * 0.08, 38, 110),
+          y: Math.min(startPoint.y, endPoint.y) - lift
         };
         var inverse = 1 - eased;
 
         return {
-          x: inverse * inverse * from.x + 2 * inverse * eased * control.x + eased * eased * to.x,
-          y: inverse * inverse * from.y + 2 * inverse * eased * control.y + eased * eased * to.y
+          x: inverse * inverse * startPoint.x + 2 * inverse * eased * control.x + eased * eased * endPoint.x,
+          y: inverse * inverse * startPoint.y + 2 * inverse * eased * control.y + eased * eased * endPoint.y
         };
       }
 
@@ -429,27 +361,31 @@
 
         var raw = clamp((now - startTime) / duration, 0, 1);
         var point = pointAt(raw);
-        var scrollY = targetScrollFor(point);
-        var screen = documentPointToScreen(point, scrollY);
+        var desiredScroll = targetScrollFor(raw > 0.82 ? endPoint : point);
+        var actualScroll = mix(startScroll, desiredScroll, easeInOut(raw));
+        var screen = documentPointToScreen(point, actualScroll);
 
-        if (raw > 0.03) {
-          if (navState === STATES.BALL_RESUMING) {
-            setState(STATES.BALL_TRAVELLING);
-          }
-          ball.classList.remove("is-lifting", "is-landed");
-          ball.classList.add("is-moving");
+        window.scrollTo(0, actualScroll);
+        setBallPosition(screen.x, screen.y);
+
+        if (raw > 0.16 && raw < 0.85) {
+          setState(STATES.BALL_FLYING);
+          ball.classList.remove("is-lifting", "is-landing", "is-landed");
+          ball.classList.add("is-moving", "is-flying");
         }
 
-        window.scrollTo(0, scrollY);
-        setBallPosition(screen.x, screen.y);
-        noteScrollProgress();
+        if (raw >= 0.85) {
+          setState(STATES.BALL_LANDING);
+          ball.classList.remove("is-flying");
+          ball.classList.add("is-landing");
+        }
 
         if (raw < 1) {
           window.requestAnimationFrame(frame);
           return;
         }
 
-        finishTravel(label, target.id, path[path.length - 1]);
+        finishTravel(targetId, endPoint);
       }
 
       window.requestAnimationFrame(frame);
@@ -463,13 +399,26 @@
       var targetId = button.getAttribute("data-nav-target");
       var target = document.getElementById(targetId);
       var label = button.textContent.trim();
+      var buttonCenter = centerOf(button);
+      var scrollY = window.scrollY || window.pageYOffset;
+      var startPoint = {
+        element: button,
+        section: "menu",
+        side: "center",
+        kind: "navi-circle",
+        x: buttonCenter.x,
+        y: buttonCenter.y + scrollY + ballRadius(),
+        width: button.offsetWidth,
+        height: button.offsetHeight
+      };
 
       if (!target) {
         return;
       }
 
       isTravelling = true;
-      setState(STATES.DESTINATION_SELECTED);
+      activeLabel = label;
+      setState(STATES.NAVI_SELECTED);
       nav.classList.remove("is-open");
       nav.classList.add("is-choosing");
       button.parentElement.classList.add("is-selected");
@@ -478,10 +427,26 @@
       });
       setMenuA11y(false);
 
+      setBallPosition(buttonCenter.x, buttonCenter.y);
+      ballLabel.textContent = "";
+      resetBallClasses();
+      ball.classList.add("is-visible", "is-forming");
+
+      window.setTimeout(function () {
+        setState(STATES.NAVI_TEXT_VANISHING);
+      }, reducedMotion.matches ? 1 : 80);
+
+      window.setTimeout(function () {
+        setState(STATES.NAVI_TO_BALL_MORPH);
+      }, reducedMotion.matches ? 1 : 280);
+
       window.setTimeout(function () {
         nav.classList.add("is-travelling");
-        travelTo(button, target, label);
-      }, reducedMotion.matches ? 0 : 540);
+        setState(STATES.BALL_READY);
+        ball.classList.remove("is-forming");
+        ball.classList.add("is-ready");
+        flyBall(startPoint, target, targetId);
+      }, reducedMotion.matches ? 1 : 1250);
     }
 
     core.addEventListener("click", function () {
@@ -514,6 +479,12 @@
     });
 
     items.forEach(function (item) {
+      item.addEventListener("pointerenter", function () {
+        if (!isTravelling) {
+          setState(STATES.NAVI_HOVERED);
+        }
+      });
+
       item.addEventListener("click", function () {
         chooseDestination(item);
       });
@@ -532,7 +503,12 @@
       }
     });
 
-    window.addEventListener("scroll", noteScrollProgress, { passive: true });
+    window.addEventListener("resize", function () {
+      if (isOpen) {
+        updateSpokeGeometry();
+      }
+    }, { passive: true });
+
     setMenuA11y(false);
     setState(STATES.PLUS_IDLE);
   }
