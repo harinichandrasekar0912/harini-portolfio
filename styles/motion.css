@@ -389,7 +389,7 @@
 }
 
 .nav-travel-ball.is-lifting {
-  --ball-lift: -28px;
+  --ball-lift: 0px;
 }
 
 .nav-travel-ball.is-paused {
@@ -419,7 +419,6 @@
 }
 
 .nav-travel-ball.is-arrived {
-  transition-duration: var(--duration-slow);
   --ball-scale-x: 1.015;
   --ball-scale-y: 0.985;
 }
@@ -548,12 +547,31 @@
 .radial-item,
 .radial-item button::after,
 .radial-lines,
-.nav-travel-ball,
 .travel-label,
 .travel-shadow {
   transition:
     opacity var(--duration-medium) var(--ease-standard),
     transform var(--duration-medium) var(--ease-standard),
+    background-color var(--duration-medium) var(--ease-standard),
+    border-color var(--duration-medium) var(--ease-standard);
+}
+
+.nav-travel-ball {
+  transition:
+    opacity var(--duration-medium) var(--ease-standard),
+    background-color var(--duration-medium) var(--ease-standard),
+    border-color var(--duration-medium) var(--ease-standard);
+}
+
+.nav-travel-ball.is-forming,
+.nav-travel-ball.is-ready,
+.nav-travel-ball.is-lifting,
+.nav-travel-ball.is-moving,
+.nav-travel-ball.is-flying,
+.nav-travel-ball.is-landing,
+.nav-travel-ball.is-rolling {
+  transition:
+    opacity var(--duration-fast) var(--ease-standard),
     background-color var(--duration-medium) var(--ease-standard),
     border-color var(--duration-medium) var(--ease-standard);
 }

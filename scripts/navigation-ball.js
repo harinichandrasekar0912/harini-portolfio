@@ -22,6 +22,8 @@
     return Number.isFinite(parsed) ? parsed : 0;
   }
 
+  var TAKEOFF_HEIGHT = 32;
+
   function centerOf(element) {
     var rect = element.getBoundingClientRect();
     return {
@@ -387,7 +389,7 @@
 
       var distance = Math.abs(endPoint.y - startPoint.y);
       var horizontalDirection = targetId === "about" || targetId === "work" ? -1 : 1;
-      var takeoffHeight = 32;
+      var takeoffHeight = TAKEOFF_HEIGHT;
       var points = [];
 
       function trajectoryPoint(raw) {
@@ -651,7 +653,7 @@
       var duration = reducedMotion.matches ? 0 : clamp(distance * 0.42 + 720, 950, 1900);
       var horizontalDirection = targetId === "about" || targetId === "work" ? -1 : 1;
       var startTime = 0;
-      var takeoffHeight = reducedMotion.matches ? 0 : 32;
+      var takeoffHeight = reducedMotion.matches ? 0 : TAKEOFF_HEIGHT;
 
       if (reducedMotion.matches) {
         window.scrollTo(0, targetScrollFor(endPoint));
@@ -733,17 +735,19 @@
       var targetId = button.getAttribute("data-nav-target");
       var target = document.getElementById(targetId);
       var label = button.textContent.trim();
-      var buttonCenter = centerOf(button);
+      var buttonRect = button.getBoundingClientRect();
+      var startX = buttonRect.left + buttonRect.width / 2;
+      var startY = buttonRect.top + buttonRect.height / 2;
       var scrollY = window.scrollY || window.pageYOffset;
       var startPoint = {
         element: button,
         section: "menu",
         side: "center",
         kind: "navi-circle",
-        x: buttonCenter.x,
-        y: buttonCenter.y + scrollY + ballRadius(),
-        width: button.offsetWidth,
-        height: button.offsetHeight
+        x: startX,
+        y: startY + scrollY + ballRadius(),
+        width: buttonRect.width,
+        height: buttonRect.height
       };
 
       if (!target) {
@@ -752,15 +756,15 @@
 
       var debugEndPoint = targetPlatformFor(targetId);
       debugRenderBase();
-      debugOverlay.marker("ball start", buttonCenter.x, buttonCenter.y, "rgb(132, 0, 255)");
+      debugOverlay.marker("ball start", startX, startY, "rgb(132, 0, 255)");
       debugRenderLandingTarget(debugEndPoint);
       debugRenderTrajectory(startPoint, debugEndPoint, targetId, scrollY);
       debugLogGeometry({
         selectedNaviCircle: label,
-        selectedNaviCircleCentreX: buttonCenter.x,
-        selectedNaviCircleCentreY: buttonCenter.y,
-        ballStartX: buttonCenter.x,
-        ballStartY: buttonCenter.y,
+        selectedNaviCircleCentreX: startX,
+        selectedNaviCircleCentreY: startY,
+        ballStartX: startX,
+        ballStartY: startY,
         landingTargetX: debugEndPoint.x,
         landingTargetY: debugEndPoint.y - scrollY
       });
@@ -776,7 +780,7 @@
       });
       setMenuA11y(false);
 
-      setBallPosition(buttonCenter.x, buttonCenter.y);
+      setBallPosition(startX, startY);
       ballLabel.textContent = "";
       resetBallClasses();
       ball.classList.add("is-visible", "is-forming");
