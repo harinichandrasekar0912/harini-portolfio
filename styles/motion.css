@@ -651,9 +651,8 @@ html.is-ball-animating {
 
 .submit-button:hover,
 .submit-button:focus-visible {
-  background: rgba(21, 20, 18, 0.1);
-  border-color: rgba(21, 20, 18, 0.28);
-  color: var(--color-ink);
+  background: rgba(21, 20, 18, 0.14);
+  color: rgba(21, 20, 18, 0.95);
 }
 
 .contact-links a:hover,
@@ -811,6 +810,7 @@ html.is-ball-animating {
   z-index: 940;
   margin: 0;
   border: var(--line-thin) solid rgba(255, 255, 255, 0.72);
+  border-radius: var(--image-radius);
   background: #050505;
   overflow: hidden;
   pointer-events: none;
@@ -828,7 +828,16 @@ html.is-ball-animating {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  border-radius: inherit;
   filter: grayscale(1);
+}
+
+.project-open-clone.is-left-attached {
+  border-radius: 0 var(--image-radius) var(--image-radius) 0;
+}
+
+.project-open-clone.is-right-attached {
+  border-radius: var(--image-radius) 0 0 var(--image-radius);
 }
 
 .project-glass {
@@ -851,6 +860,7 @@ html.is-ball-animating {
   max-height: calc(100vh - var(--project-top-buffer) - var(--project-bottom-ui-zone));
   margin: 0;
   border: var(--line-thin) solid var(--project-line-strong);
+  border-radius: var(--image-radius);
   background: var(--project-bg);
   overflow: hidden;
   transform: translate3d(0, 0, 0);
@@ -861,6 +871,7 @@ html.is-ball-animating {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  border-radius: inherit;
   filter: grayscale(1);
 }
 
@@ -910,6 +921,7 @@ html.is-ball-animating {
   max-height: calc(100vh - var(--project-top-buffer) - var(--project-bottom-ui-zone));
   margin: 0;
   border: var(--line-thin) solid var(--project-line);
+  border-radius: var(--image-radius);
   background: var(--project-bg);
   overflow: hidden;
   opacity: 0;
@@ -920,7 +932,18 @@ html.is-ball-animating {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  border-radius: inherit;
   filter: grayscale(1);
+}
+
+.project-viewer[data-project-side="left"] .project-hero-frame,
+.project-viewer[data-project-side="left"] .project-panel-image {
+  border-radius: 0 var(--image-radius) var(--image-radius) 0;
+}
+
+.project-viewer[data-project-side="right"] .project-hero-frame,
+.project-viewer[data-project-side="right"] .project-panel-image {
+  border-radius: var(--image-radius) 0 0 var(--image-radius);
 }
 
 .project-panel-copy {
@@ -1119,6 +1142,11 @@ html.is-ball-animating {
   width: min(100%, 560px);
   height: auto;
   aspect-ratio: 1 / 1;
+  border-radius: var(--image-radius);
+}
+
+.project-viewer[data-project-mode="stacked"] .project-hero-frame {
+  border-radius: var(--image-radius);
 }
 
 .project-viewer[data-project-mode="stacked"] .project-panel:not(.project-panel-intro)::before {

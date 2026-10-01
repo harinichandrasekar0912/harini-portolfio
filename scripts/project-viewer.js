@@ -137,7 +137,7 @@
       var clone = document.createElement("div");
       var cloneImage = document.createElement("img");
 
-      clone.className = "project-open-clone";
+      clone.className = "project-open-clone " + (rect.left + rect.width / 2 > window.innerWidth / 2 ? "is-right-attached" : "is-left-attached");
       clone.style.left = rect.left + "px";
       clone.style.top = rect.top + "px";
       clone.style.width = rect.width + "px";

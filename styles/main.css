@@ -31,6 +31,7 @@
   --line-thin: 1px;
   --radius-soft: 4px;
   --radius-round: 999px;
+  --image-radius: clamp(14px, 1.6vw, 28px);
 
   --ease-standard: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-quiet: cubic-bezier(0.33, 0, 0.2, 1);
@@ -384,6 +385,8 @@ body.is-project-open .viewport-edge-blur {
   width: min(48vw, 660px);
   margin: 0;
   justify-self: start;
+  overflow: hidden;
+  border-radius: 0 var(--image-radius) var(--image-radius) 0;
 }
 
 .about-portrait img {
@@ -391,6 +394,7 @@ body.is-project-open .viewport-edge-blur {
   aspect-ratio: 1 / 1;
   object-fit: cover;
   border: var(--line-thin) solid var(--color-line);
+  border-radius: inherit;
   background: var(--color-paper-soft);
 }
 
@@ -449,10 +453,12 @@ body.is-project-open .viewport-edge-blur {
 
 .work-row-left .work-tile {
   justify-self: start;
+  border-radius: 0 var(--image-radius) var(--image-radius) 0;
 }
 
 .work-row-right .work-tile {
   justify-self: end;
+  border-radius: var(--image-radius) 0 0 var(--image-radius);
 }
 
 .work-tile::after {
@@ -467,6 +473,7 @@ body.is-project-open .viewport-edge-blur {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  border-radius: inherit;
   filter: grayscale(1);
 }
 
@@ -518,6 +525,7 @@ body.is-project-open .viewport-edge-blur {
   padding: 0;
   margin: 0;
   border: var(--line-thin) solid var(--color-line);
+  border-radius: var(--image-radius) 0 0 var(--image-radius);
   background: var(--color-paper-warm);
   color: var(--color-paper);
   text-align: left;
@@ -545,6 +553,7 @@ body.is-project-open .viewport-edge-blur {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  border-radius: inherit;
   filter: grayscale(1);
 }
 
@@ -599,7 +608,34 @@ body.is-project-open .viewport-edge-blur {
 }
 
 .contact-form label {
+  position: relative;
   display: block;
+}
+
+.contact-form label::before,
+.contact-form label::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--line-thin);
+  pointer-events: none;
+}
+
+.contact-form label::before {
+  background: rgba(21, 20, 18, 0.22);
+}
+
+.contact-form label::after {
+  background: rgba(21, 20, 18, 0.86);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 650ms var(--ease-standard);
+}
+
+.contact-form label:focus-within::after {
+  transform: scaleX(1);
 }
 
 .contact-form input,
@@ -609,7 +645,7 @@ body.is-project-open .viewport-edge-blur {
   min-height: 2.55rem;
   padding: 0.5rem 0 0.72rem;
   border: 0;
-  border-bottom: var(--line-thin) solid rgba(21, 20, 18, 0.2);
+  border-bottom: var(--line-thin) solid transparent;
   border-radius: 0;
   background: transparent;
   color: var(--color-ink);
@@ -619,8 +655,7 @@ body.is-project-open .viewport-edge-blur {
   overflow: hidden;
   box-shadow: none;
   transition:
-    border-color var(--duration-fast) var(--ease-standard),
-    color var(--duration-fast) var(--ease-standard);
+    color 420ms var(--ease-standard);
 }
 
 .contact-form input::placeholder,
@@ -635,7 +670,7 @@ body.is-project-open .viewport-edge-blur {
 .contact-form textarea:focus-visible {
   outline: 0;
   background: transparent;
-  border-bottom-color: rgba(21, 20, 18, 0.72);
+  border-bottom-color: transparent;
   box-shadow: none;
 }
 
@@ -643,13 +678,30 @@ body.is-project-open .viewport-edge-blur {
   justify-self: center;
   min-width: 4.25rem;
   margin-top: var(--space-2);
-  padding: 0.48rem 1.05rem;
-  border: var(--line-thin) solid rgba(21, 20, 18, 0.18);
+  padding: 0.65rem 1.15rem;
+  border: 0;
   border-radius: var(--radius-round);
-  background: rgba(21, 20, 18, 0.06);
+  background: rgba(21, 20, 18, 0.08);
+  color: rgba(21, 20, 18, 0.78);
   font-size: var(--text-xs);
   text-transform: lowercase;
   cursor: pointer;
+  transition:
+    background-color 420ms var(--ease-standard),
+    color 420ms var(--ease-standard),
+    transform 420ms var(--ease-standard),
+    box-shadow 420ms var(--ease-standard);
+}
+
+.submit-button:focus-visible {
+  outline: 0;
+  background: rgba(21, 20, 18, 0.14);
+  color: rgba(21, 20, 18, 0.95);
+  box-shadow: 0 0 0 5px rgba(21, 20, 18, 0.08);
+}
+
+.submit-button:active {
+  transform: translateY(1px);
 }
 
 .form-response {
@@ -663,7 +715,7 @@ body.is-project-open .viewport-edge-blur {
 .contact-links {
   position: absolute;
   left: 50%;
-  bottom: clamp(1.5rem, 5vh, 4.5rem);
+  bottom: clamp(0.75rem, 2.8vh, 2.5rem);
   display: flex;
   align-items: center;
   justify-content: center;

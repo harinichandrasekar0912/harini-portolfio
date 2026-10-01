@@ -113,7 +113,7 @@
   }
 
   .contact-links {
-    bottom: clamp(1rem, 4vh, 2rem);
+    bottom: clamp(0.5rem, 2.5vh, 1.5rem);
     gap: var(--space-4);
   }
 

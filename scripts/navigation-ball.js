@@ -19,6 +19,11 @@
     return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
   }
 
+  function easeRollOut(t) {
+    var safeT = clamp(t, 0, 1);
+    return 1 - Math.pow(1 - safeT, 2.2);
+  }
+
   function mix(from, to, t) {
     return from + (to - from) * t;
   }
@@ -1351,7 +1356,135 @@
       return Math.sin(Math.PI * raw) * height;
     }
 
+    function runHomeReturnMotion(startPoint, targetId, token) {
+      var startScroll = window.scrollY || window.pageYOffset;
+      var startScreen = documentPointToScreen(startPoint, startScroll);
+      var plus = readPlusGeometry();
+      var endScreen = {
+        x: plus.measuredPlusCentreX,
+        y: plus.measuredPlusCentreY
+      };
+      var dx = endScreen.x - startScreen.x;
+      var firstPrepHeight = clamp(window.innerHeight * 0.034, 24, 34);
+      var secondPrepHeight = clamp(firstPrepHeight * 1.7, 40, 58);
+      var firstPrepDuration = clamp(window.innerHeight * 0.52, 380, 440);
+      var secondPrepDuration = clamp(firstPrepDuration + 80, 420, 540);
+      var arcDuration = clamp(Math.abs(startScreen.y - endScreen.y) * 0.78 + Math.abs(dx) * 0.28 + 900, 1300, 2200);
+      var prep1End = firstPrepDuration;
+      var prep2End = prep1End + secondPrepDuration;
+      var arcEnd = prep2End + arcDuration;
+      var apexY = clamp(window.innerHeight * 0.12, 72, 128);
+      var launchLift = clamp(window.innerHeight * 0.42, 260, 480);
+      var path = {
+        start: startScreen,
+        controlA: {
+          x: startScreen.x + dx * 0.08,
+          y: Math.min(startScreen.y - launchLift, apexY + 120)
+        },
+        controlB: {
+          x: window.innerWidth / 2,
+          y: apexY
+        },
+        end: endScreen
+      };
+      var startTime = 0;
+      var cleanUrl = window.location.pathname + window.location.search;
+
+      if (!isCurrentAnimation(token)) {
+        debugNavBall("stale nav ball frame cancelled");
+        return;
+      }
+
+      document.documentElement.classList.add("is-ball-animating");
+
+      if (reducedMotion.matches) {
+        window.scrollTo(0, 0);
+        setBallPosition(endScreen.x, endScreen.y);
+        updateCurrentSection("landing", true);
+        restorePlus(token, targetId);
+        return;
+      }
+
+      if (DEBUG_NAV_GEOMETRY) {
+        console.table({
+          isHomeReturn: true,
+          timelinePhases: "prepBounceSmall, prepBounceHigher, homeReturnArc, morphToPlus",
+          firstPrepBounceHeight: round(firstPrepHeight),
+          secondPrepBounceHeight: round(secondPrepHeight),
+          firstPrepBounceDuration: round(firstPrepDuration),
+          secondPrepBounceDuration: round(secondPrepDuration),
+          noLandingBounces: true,
+          noRollAway: true,
+          homeTargetX: round(endScreen.x),
+          homeTargetY: round(endScreen.y)
+        });
+      }
+
+      ball.classList.remove("is-forming", "is-landed", "is-ready", "is-landing", "is-contact-landing");
+      ball.classList.add("is-visible", "is-moving");
+      resetTimelineShadow();
+
+      function frame(now) {
+        var elapsed;
+        var raw;
+        var point;
+
+        if (!isCurrentAnimation(token)) {
+          debugNavBall("stale nav ball frame cancelled");
+          return;
+        }
+
+        if (!startTime) {
+          startTime = now;
+        }
+
+        elapsed = clamp(now - startTime, 0, arcEnd);
+
+        if (elapsed < prep1End) {
+          raw = elapsed / firstPrepDuration;
+          setState(STATES.BALL_TAKEOFF);
+          ball.classList.add("is-launching", "is-lifting");
+          setBallPosition(startScreen.x, startScreen.y - bounceLift(raw, firstPrepHeight));
+        } else if (elapsed < prep2End) {
+          raw = (elapsed - prep1End) / secondPrepDuration;
+          setState(STATES.BALL_TAKEOFF);
+          ball.classList.add("is-launching", "is-lifting");
+          setBallPosition(startScreen.x, startScreen.y - bounceLift(raw, secondPrepHeight));
+        } else if (elapsed < arcEnd) {
+          raw = (elapsed - prep2End) / arcDuration;
+          point = cubicPointAt(raw, path);
+          setState(STATES.BALL_FLYING);
+          ball.classList.remove("is-launching", "is-lifting");
+          ball.classList.add("is-flying");
+          window.scrollTo(0, mix(startScroll, 0, easeInOut(raw)));
+          setBallPosition(point.x, point.y);
+        } else {
+          window.scrollTo(0, 0);
+          setBallPosition(endScreen.x, endScreen.y);
+          resetTimelineShadow();
+          updateCurrentSection("landing", true);
+
+          if (window.history && window.history.replaceState) {
+            window.history.replaceState(null, "", cleanUrl);
+          }
+
+          restorePlus(token, targetId);
+          return;
+        }
+
+        setTimelineShadow(0, 0.72);
+        requestBallFrame(frame, token);
+      }
+
+      requestBallFrame(frame, token);
+    }
+
     function flyBall(startPoint, targetId, token) {
+      if (targetId === "landing") {
+        runHomeReturnMotion(startPoint, targetId, token);
+        return;
+      }
+
       var endPoint = targetPlatformFor(targetId);
       var startScroll = window.scrollY || window.pageYOffset;
       var config = createFlightConfig(startPoint, endPoint, targetId, startScroll);
@@ -1368,7 +1501,7 @@
       var secondLandingHeight = clamp(baseFirstLandingHeight * 0.34, 10, 16);
       var firstLandingDuration = clamp(window.innerHeight * 0.42, 300, 380);
       var secondLandingDuration = clamp(window.innerHeight * 0.28, 190, 260);
-      var rollDuration = 860;
+      var rollDuration = 1120;
       var prep1End = firstPrepDuration;
       var prep2End = prep1End + secondPrepDuration;
       var flightEnd = prep2End + flightDuration;
@@ -1545,7 +1678,7 @@
           }
 
           rollRaw = (elapsed - rebound2End) / rollDuration;
-          easedRoll = easeInOut(rollRaw);
+          easedRoll = easeRollOut(rollRaw);
           x = mix(rollStartX, rollEndX, easedRoll);
           rotation = rollDirection * (Math.abs(x - rollStartX) / rollCircumference) * 360;
 
@@ -1596,20 +1729,29 @@
       }
 
       var token = beginBallAnimation(targetId);
-      var debugEndPoint = targetPlatformFor(targetId);
-      var debugConfig = createFlightConfig(startPoint, debugEndPoint, targetId, scrollY);
+      var isHomeReturn = targetId === "landing";
+      var homeTarget = null;
+      var debugEndPoint = isHomeReturn ? null : targetPlatformFor(targetId);
+      var debugConfig = debugEndPoint ? createFlightConfig(startPoint, debugEndPoint, targetId, scrollY) : null;
       debugRenderBase();
       debugOverlay.marker("ball start", startX, startY, "rgb(132, 0, 255)");
-      debugRenderLandingTarget(debugEndPoint, debugConfig.finalScroll);
-      debugRenderTrajectory(startPoint, debugEndPoint, targetId, scrollY);
+      if (isHomeReturn) {
+        homeTarget = readPlusGeometry();
+        debugOverlay.clearTrajectory();
+        debugOverlay.clearOutline();
+        debugOverlay.marker("landing target", homeTarget.measuredPlusCentreX, homeTarget.measuredPlusCentreY, "rgb(220, 0, 0)");
+      } else {
+        debugRenderLandingTarget(debugEndPoint, debugConfig.finalScroll);
+        debugRenderTrajectory(startPoint, debugEndPoint, targetId, scrollY);
+      }
       debugLogGeometry({
         selectedNaviCircle: label,
         selectedNaviCircleCentreX: startX,
         selectedNaviCircleCentreY: startY,
         ballStartX: startX,
         ballStartY: startY,
-        landingTargetX: debugConfig.endScreen.x,
-        landingTargetY: debugConfig.endScreen.y
+        landingTargetX: isHomeReturn ? homeTarget.measuredPlusCentreX : debugConfig.endScreen.x,
+        landingTargetY: isHomeReturn ? homeTarget.measuredPlusCentreY : debugConfig.endScreen.y
       });
 
       isTravelling = true;
