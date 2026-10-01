@@ -1138,6 +1138,19 @@
       };
     }
 
+    function cubicVelocityAt(t, path) {
+      var inverse = 1 - t;
+      var p0 = path.start;
+      var p1 = path.controlA;
+      var p2 = path.controlB;
+      var p3 = path.end;
+
+      return {
+        x: 3 * inverse * inverse * (p1.x - p0.x) + 6 * inverse * t * (p2.x - p1.x) + 3 * t * t * (p3.x - p2.x),
+        y: 3 * inverse * inverse * (p1.y - p0.y) + 6 * inverse * t * (p2.y - p1.y) + 3 * t * t * (p3.y - p2.y)
+      };
+    }
+
     function resolveFinalScroll(endPoint, startScreen, downward, targetId, bounds) {
       var radius = ballRadius();
       var maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
@@ -1253,7 +1266,11 @@
     }
 
     function flightPointAt(raw, config) {
-      return cubicPointAt(easeInOut(raw), config.path);
+      return cubicPointAt(clamp(raw, 0, 1), config.path);
+    }
+
+    function flightVelocityAt(raw, config) {
+      return cubicVelocityAt(clamp(raw, 0, 1), config.path);
     }
 
     function flightScrollAt(raw, config) {
@@ -1444,13 +1461,14 @@
       requestBallFrame(frame, token);
     }
 
-    function landingBounce(targetId, screen, token, callback) {
+    function landingBounce(targetId, screen, token, callback, physics) {
       if (reducedMotion.matches) {
         callback();
         return;
       }
 
-      var firstHeight = clamp(window.innerHeight * 0.04, 28, 38);
+      var impactVelocityY = physics && Number.isFinite(physics.impactVelocityY) ? Math.max(0, physics.impactVelocityY) : 0;
+      var firstHeight = clamp(Math.max(window.innerHeight * 0.036, impactVelocityY * 0.022), 26, 40);
       var secondHeight = clamp(firstHeight * 0.34, 8, 14);
       var firstDuration = clamp(window.innerHeight * 0.42, 300, 380);
       var secondDuration = clamp(window.innerHeight * 0.28, 180, 260);
@@ -1458,6 +1476,17 @@
       var startTime = 0;
       var advance = 12;
       var currentBounce = 1;
+
+      if (DEBUG_NAV_GEOMETRY) {
+        console.table({
+          isUpwardNavigation: Boolean(physics && physics.isUpwardNavigation),
+          impactVelocityY: round(impactVelocityY),
+          firstLandingBounceHeight: round(firstHeight),
+          secondLandingBounceHeight: round(secondHeight),
+          delayBetweenImpactAndBounce: 0,
+          usedEaseOutLanding: false
+        });
+      }
 
       startLandingShadowPulse(firstDuration, false);
 
@@ -1519,6 +1548,7 @@
       var screen = config.endScreen;
       var target = document.getElementById(targetId);
       var cleanUrl = window.location.pathname + window.location.search;
+      var impactVelocity = flightVelocityAt(1, config);
 
       window.scrollTo(0, endScroll);
       setBallPosition(screen.x, screen.y);
@@ -1547,6 +1577,9 @@
           x: screen.x,
           screenY: screen.y
         }, token);
+      }, {
+        isUpwardNavigation: config.upward,
+        impactVelocityY: impactVelocity.y
       });
     }
 
