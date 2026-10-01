@@ -1369,7 +1369,7 @@
       var secondPrepHeight = clamp(firstPrepHeight * 1.7, 40, 58);
       var firstPrepDuration = clamp(window.innerHeight * 0.52, 380, 440);
       var secondPrepDuration = clamp(firstPrepDuration + 80, 420, 540);
-      var arcDuration = clamp(Math.abs(startScreen.y - endScreen.y) * 0.78 + Math.abs(dx) * 0.28 + 900, 1300, 2200);
+      var arcDuration = clamp(Math.abs(startScreen.y - endScreen.y) * 0.78 + Math.abs(dx) * 0.28 + 900, 1300, 2200) * 1.4;
       var prep1End = firstPrepDuration;
       var prep2End = prep1End + secondPrepDuration;
       var arcEnd = prep2End + arcDuration;
@@ -1501,7 +1501,7 @@
       var secondLandingHeight = clamp(baseFirstLandingHeight * 0.34, 10, 16);
       var firstLandingDuration = clamp(window.innerHeight * 0.42, 300, 380);
       var secondLandingDuration = clamp(window.innerHeight * 0.28, 190, 260);
-      var rollDuration = 1120;
+      var rollDuration = 1400;
       var prep1End = firstPrepDuration;
       var prep2End = prep1End + secondPrepDuration;
       var flightEnd = prep2End + flightDuration;
