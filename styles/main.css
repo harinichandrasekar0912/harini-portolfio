@@ -71,6 +71,9 @@ body {
   line-height: 1.5;
   letter-spacing: 0;
   overflow-x: hidden;
+  transition:
+    background-color var(--duration-slow) var(--ease-standard),
+    color var(--duration-slow) var(--ease-standard);
 }
 
 body.is-project-open {
@@ -312,7 +315,7 @@ textarea:focus-visible {
 
 .work-list {
   display: grid;
-  gap: clamp(5.5rem, 12vw, 12rem);
+  gap: clamp(4.5rem, 9vw, 9rem);
   width: 100vw;
   padding: 0;
   margin: 0 0 0 calc(50% - 50vw);
@@ -324,7 +327,7 @@ textarea:focus-visible {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   align-items: center;
   gap: 0;
-  min-height: clamp(300px, 36vw, 520px);
+  min-height: clamp(280px, 31vw, 460px);
 }
 
 .work-row-right {
@@ -335,6 +338,7 @@ textarea:focus-visible {
   position: relative;
   display: block;
   width: clamp(300px, 42vw, 620px);
+  aspect-ratio: 5 / 4;
   padding: 0;
   border: var(--line-thin) solid var(--color-line);
   border-radius: 0;
@@ -361,7 +365,7 @@ textarea:focus-visible {
 
 .work-tile img {
   width: 100%;
-  aspect-ratio: 5 / 4;
+  height: 100%;
   object-fit: cover;
   filter: grayscale(1);
 }

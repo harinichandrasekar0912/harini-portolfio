@@ -67,7 +67,7 @@
   }
 
   .work-list {
-    gap: clamp(6.5rem, 28vw, 10rem);
+    gap: clamp(4.5rem, 18vw, 7rem);
   }
 
   .work-row,
@@ -86,7 +86,7 @@
   }
 
   .work-tile {
-    width: min(92vw, 520px);
+    width: min(82vw, 420px);
   }
 
   .work-row-right .work-tile {

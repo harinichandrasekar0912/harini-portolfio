@@ -10,6 +10,7 @@
     contact: 4
   };
   var LANDING_BOUNCE_HEIGHT = 14;
+  var FLIGHT_DURATION_MULTIPLIER = 1.22;
 
   function clamp(value, min, max) {
     return Math.min(Math.max(value, min), max);
@@ -128,6 +129,7 @@
     var reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     var isOpen = false;
     var isTravelling = false;
+    var isProjectMode = false;
     var closeOnBlurTimer = 0;
     var resetTimer = 0;
     var sectionFrame = 0;
@@ -306,11 +308,32 @@
 
     function setMenuA11y(open) {
       core.setAttribute("aria-expanded", String(open));
-      core.setAttribute("aria-label", open ? "close navigation" : "open navigation");
+      core.setAttribute("aria-label", isProjectMode ? "close project" : open ? "close navigation" : "open navigation");
       menu.setAttribute("aria-hidden", String(!open));
       items.forEach(function (item) {
         item.tabIndex = open ? 0 : -1;
       });
+    }
+
+    function getSafeViewportBounds() {
+      var radius = ballRadius();
+      var margin = Math.max(radius + 16, 16);
+
+      return {
+        safeMinX: margin,
+        safeMaxX: window.innerWidth - margin,
+        safeMinY: margin,
+        safeMaxY: window.innerHeight - margin
+      };
+    }
+
+    function clampToViewport(point) {
+      var bounds = getSafeViewportBounds();
+
+      return {
+        x: clamp(point.x, bounds.safeMinX, bounds.safeMaxX),
+        y: clamp(point.y, bounds.safeMinY, bounds.safeMaxY)
+      };
     }
 
     function detectCurrentSection() {
@@ -416,6 +439,9 @@
     function debugSnapshot(extra) {
       var plus = readPlusGeometry();
       var selected = extra || {};
+      var spokeLine = lines.about;
+      var spokeLineX1 = spokeLine ? parsePixel(spokeLine.getAttribute("x1")) : null;
+      var spokeLineY1 = spokeLine ? parsePixel(spokeLine.getAttribute("y1")) : null;
       var centres = {
         aboutCircleCentreX: null,
         aboutCircleCentreY: null,
@@ -441,10 +467,19 @@
         plusCircleCentreY: round(plus.measuredPlusCentreY),
         expectedPlusCircleCentreX: round(plus.expectedPlusCentreX),
         expectedPlusCircleCentreY: round(plus.expectedPlusCentreY),
+        measuredRedX: round(plus.measuredPlusCentreX),
+        measuredBlueX: round(plus.measuredSpokeOriginX),
+        expectedCentreX: round(plus.expectedPlusCentreX),
         spokeOriginX: round(plus.measuredSpokeOriginX),
         spokeOriginY: round(plus.measuredSpokeOriginY),
         expectedSpokeOriginX: round(plus.expectedSpokeOriginX),
         expectedSpokeOriginY: round(plus.expectedSpokeOriginY),
+        spokeLineX1: round(spokeLineX1),
+        spokeLineY1: round(spokeLineY1),
+        blueMarkerX: round(plus.measuredSpokeOriginX),
+        blueMarkerY: round(plus.measuredSpokeOriginY),
+        differenceBetweenSpokeStartAndBlueMarkerX: round(spokeLineX1 - plus.measuredSpokeOriginX),
+        differenceBetweenSpokeStartAndBlueMarkerY: round(spokeLineY1 - plus.measuredSpokeOriginY),
         aboutCircleCentreX: centres.aboutCircleCentreX,
         aboutCircleCentreY: centres.aboutCircleCentreY,
         workCircleCentreX: centres.workCircleCentreX,
@@ -555,11 +590,13 @@
     }
 
     function updateSpokeGeometry() {
-      var coreRect = core.getBoundingClientRect();
-      var originX = coreRect.left + coreRect.width / 2;
-      var originY = coreRect.top;
+      var plus = readPlusGeometry();
+      var originX = plus.measuredSpokeOriginX;
+      var originY = plus.measuredSpokeOriginY;
 
       spokes.setAttribute("viewBox", "0 0 " + window.innerWidth + " " + window.innerHeight);
+      spokes.setAttribute("width", String(window.innerWidth));
+      spokes.setAttribute("height", String(window.innerHeight));
 
       items.forEach(function (button) {
         var label = originalTarget(button);
@@ -574,13 +611,15 @@
         line.setAttribute("y1", originY);
         line.setAttribute("x2", point.x);
         line.setAttribute("y2", point.y);
+        line.setAttribute("vector-effect", "non-scaling-stroke");
+        line.removeAttribute("pathLength");
       });
 
       debugRenderBase();
     }
 
     function setOpen(open) {
-      if (isTravelling) {
+      if (isTravelling || isProjectMode) {
         return;
       }
 
@@ -625,6 +664,26 @@
         x: point.x,
         y: point.y - scrollY - ballRadius()
       };
+    }
+
+    function enterProjectMode() {
+      if (isOpen) {
+        isOpen = false;
+        nav.classList.remove("is-open", "is-choosing", "is-travelling");
+        setMenuA11y(false);
+      }
+
+      isProjectMode = true;
+      nav.classList.add("is-project-close");
+      setState(STATES.PLUS_IDLE);
+      setMenuA11y(false);
+    }
+
+    function exitProjectMode() {
+      isProjectMode = false;
+      nav.classList.remove("is-project-close");
+      setMenuA11y(false);
+      updateCurrentSection(detectCurrentSection(), true);
     }
 
     function contactFloor() {
@@ -687,12 +746,15 @@
       var distanceY = Math.abs(endPoint.y - startPoint.y);
       var pathDistance = Math.sqrt(distanceX * distanceX + distanceY * distanceY);
       var lift = upward ? clamp(pathDistance * 0.16, 160, 280) : clamp(pathDistance * 0.08, 72, 170);
+      var safeBounds = getSafeViewportBounds();
       var controlX = mix(startPoint.x, endPoint.x, upward ? 0.42 : 0.5) + horizontalDirection * clamp(window.innerWidth * 0.08, 42, 130);
       var controlY = Math.min(startPoint.y, endPoint.y) - lift;
       var finalScroll = targetScrollFor(endPoint);
-      var duration = reducedMotion.matches ? 1 : clamp(pathDistance * 0.34 + 820, 1050, 2200);
+      var duration = reducedMotion.matches ? 1 : clamp((pathDistance * 0.34 + 820) * FLIGHT_DURATION_MULTIPLIER, 1280, 2680);
       var denominator = startPoint.y - 2 * controlY + endPoint.y;
       var peakT = denominator === 0 ? 0.38 : clamp((startPoint.y - controlY) / denominator, 0.22, 0.58);
+
+      controlX = clamp(controlX, safeBounds.safeMinX, safeBounds.safeMaxX);
 
       if (targetId === "contact") {
         controlY = Math.min(startPoint.y, endPoint.y) - clamp(pathDistance * 0.05, 52, 110);
@@ -758,7 +820,7 @@
         var raw = step / 36;
         var point = flightPointAt(raw, config);
         var actualScroll = flightScrollAt(raw, config);
-        points.push(documentPointToScreen(point, actualScroll));
+        points.push(clampToViewport(documentPointToScreen(point, actualScroll)));
       }
 
       debugOverlay.trajectory(points);
@@ -784,7 +846,7 @@
       var startX = landingPoint.x;
       var endX = direction < 0 ? -ballRadius() - 18 : window.innerWidth + ballRadius() + 18;
       var y = landingPoint.screenY;
-      var duration = reducedMotion.matches ? 1 : 680;
+      var duration = reducedMotion.matches ? 1 : 860;
       var startTime = 0;
 
       setState(STATES.BALL_ROLLING_OUT);
@@ -818,7 +880,7 @@
         return;
       }
 
-      var duration = 260;
+      var duration = 320;
       var startTime = 0;
 
       function frame(now) {
@@ -845,7 +907,7 @@
 
     function finishTravel(targetId, endPoint) {
       var endScroll = targetScrollFor(endPoint);
-      var screen = documentPointToScreen(endPoint, endScroll);
+      var screen = clampToViewport(documentPointToScreen(endPoint, endScroll));
       var target = document.getElementById(targetId);
       var cleanUrl = window.location.pathname + window.location.search;
 
@@ -907,7 +969,7 @@
         var raw = clamp((now - startTime) / config.duration, 0, 1);
         var point = flightPointAt(raw, config);
         var actualScroll = flightScrollAt(raw, config);
-        var screen = documentPointToScreen(point, actualScroll);
+        var screen = clampToViewport(documentPointToScreen(point, actualScroll));
 
         window.scrollTo(0, actualScroll);
         setBallPosition(screen.x, screen.y);
@@ -933,7 +995,7 @@
     }
 
     function chooseDestination(button) {
-      if (isTravelling) {
+      if (isTravelling || isProjectMode) {
         return;
       }
 
@@ -1003,10 +1065,15 @@
         ball.classList.remove("is-forming");
         ball.classList.add("is-ready");
         flyBall(startPoint, targetId);
-      }, reducedMotion.matches ? 1 : 1250);
+      }, reducedMotion.matches ? 1 : 1320);
     }
 
     core.addEventListener("click", function () {
+      if (isProjectMode) {
+        document.dispatchEvent(new CustomEvent("harini:project-close-request"));
+        return;
+      }
+
       if (canHover.matches && isOpen) {
         return;
       }
@@ -1015,7 +1082,7 @@
     });
 
     nav.addEventListener("pointerenter", function () {
-      if (canHover.matches) {
+      if (canHover.matches && !isProjectMode) {
         setOpen(true);
       }
     });
@@ -1059,6 +1126,9 @@
         core.focus();
       }
     });
+
+    document.addEventListener("harini:project-open", enterProjectMode);
+    document.addEventListener("harini:project-closed", exitProjectMode);
 
     window.addEventListener("scroll", queueCurrentSectionUpdate, { passive: true });
 

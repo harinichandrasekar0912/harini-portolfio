@@ -11,6 +11,10 @@ html.is-ball-animating {
   scroll-behavior: auto;
 }
 
+body.is-project-dark {
+  background: #050505;
+}
+
 .nav-core {
   position: fixed;
   left: 50vw;
@@ -32,6 +36,8 @@ html.is-ball-animating {
   content: "";
   position: absolute;
   inset: 0;
+  box-sizing: border-box;
+  border: var(--line-thin) solid transparent;
   border-radius: 50%;
   opacity: 0;
   pointer-events: none;
@@ -55,6 +61,7 @@ html.is-ball-animating {
 .nav-ring svg {
   width: 100%;
   height: 100%;
+  max-width: none;
   overflow: visible;
   transform: rotate(-90deg) scaleX(-1);
   transform-origin: center;
@@ -192,6 +199,7 @@ html.is-ball-animating {
   z-index: 1;
   width: 100vw;
   height: 100vh;
+  max-width: none;
   opacity: 0;
   pointer-events: none;
   overflow: visible;
@@ -200,9 +208,9 @@ html.is-ball-animating {
 .radial-line {
   fill: none;
   stroke: rgba(21, 20, 18, 0.42);
-  stroke-width: 1.35;
+  stroke-width: 2;
   stroke-linecap: round;
-  stroke-dasharray: 0.018 0.045;
+  stroke-dasharray: 0.1 8;
   stroke-dashoffset: 0;
   opacity: 0;
   transition:
@@ -211,7 +219,8 @@ html.is-ball-animating {
 
 .nav-object.is-open,
 .nav-object.is-choosing,
-.nav-object.is-travelling {
+.nav-object.is-travelling,
+.nav-object.is-project-close {
   pointer-events: auto;
 }
 
@@ -325,6 +334,51 @@ html.is-ball-animating {
   transform: translate(-50%, -50%) rotate(90deg);
 }
 
+.nav-object.is-project-close {
+  z-index: 980;
+  pointer-events: none;
+}
+
+.nav-object.is-project-close .nav-core {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.nav-object.is-project-close .radial-lines,
+.nav-object.is-project-close .radial-menu,
+.nav-object.is-project-close .nav-ring {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.nav-object.is-project-close .nav-core::after {
+  opacity: 1;
+  border-color: rgba(255, 255, 255, 0.34);
+  background: transparent;
+  transform: scale(1);
+}
+
+.nav-object.is-project-close .plus-arm,
+.nav-object.is-project-close .plus-stem {
+  opacity: 1;
+  width: 18px;
+  height: 2px;
+  background: #ffffff;
+}
+
+.nav-object.is-project-close .plus-arm {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.nav-object.is-project-close .plus-stem {
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+.nav-object.is-project-close .nav-core:hover::after,
+.nav-object.is-project-close .nav-core:focus-visible::after {
+  border-color: rgba(255, 255, 255, 0.58);
+}
+
 .nav-travel-ball {
   --ball-x: 50vw;
   --ball-y: calc(100vh - 42px);
@@ -406,13 +460,13 @@ html.is-ball-animating {
   border-color: var(--color-ink);
   background: var(--color-ink);
   box-shadow: none;
-  animation: ballForm 1200ms var(--ease-standard) forwards;
+  animation: ballForm 1300ms var(--ease-standard) forwards;
 }
 
 .nav-travel-ball.is-forming::before,
 .nav-travel-ball.is-forming::after {
   opacity: 0;
-  animation: ballLightBuild 1200ms var(--ease-standard) forwards;
+  animation: ballLightBuild 1300ms var(--ease-standard) forwards;
 }
 
 .nav-travel-ball.is-ready,
@@ -646,6 +700,12 @@ html.is-ball-animating {
 }
 
 .project-viewer {
+  --project-bg: #050505;
+  --project-text: #f5f2ea;
+  --project-text-soft: rgba(255, 255, 255, 0.62);
+  --project-line: rgba(255, 255, 255, 0.22);
+  --project-line-strong: rgba(255, 255, 255, 0.42);
+  --project-grey: #1c1c1c;
   --tile-left: 0px;
   --tile-top: 0px;
   --tile-width: 0px;
@@ -662,7 +722,7 @@ html.is-ball-animating {
   z-index: 900;
   opacity: 0;
   pointer-events: none;
-  color: var(--color-ink);
+  color: var(--project-text);
 }
 
 .project-viewer.is-active {
@@ -673,11 +733,11 @@ html.is-ball-animating {
 .project-glass {
   position: absolute;
   inset: 0;
-  background: rgba(246, 243, 236, 0.78);
+  background: rgba(5, 5, 5, 0.94);
   opacity: 0;
   backdrop-filter: blur(0);
   -webkit-backdrop-filter: blur(0);
-  box-shadow: inset 0 0 0 100vmax rgba(21, 20, 18, 0.035);
+  box-shadow: inset 0 0 0 100vmax rgba(0, 0, 0, 0.22);
 }
 
 .project-hero-frame {
@@ -688,8 +748,8 @@ html.is-ball-animating {
   width: var(--tile-width);
   height: var(--tile-height);
   margin: 0;
-  border: var(--line-thin) solid var(--color-line-strong);
-  background: var(--color-paper-warm);
+  border: var(--line-thin) solid var(--project-line-strong);
+  background: var(--project-bg);
   overflow: hidden;
   transform: translate3d(0, 0, 0);
   will-change: left, top, width, height, transform;
@@ -749,8 +809,8 @@ html.is-ball-animating {
   width: var(--focus-width);
   height: var(--focus-height);
   margin: 0;
-  border: var(--line-thin) solid var(--color-line-strong);
-  background: var(--color-paper-warm);
+  border: var(--line-thin) solid var(--project-line);
+  background: var(--project-bg);
   overflow: hidden;
   opacity: 0;
   transform: translateY(8px);
@@ -791,7 +851,7 @@ html.is-ball-animating {
 
 .project-step {
   margin: 0 0 var(--space-4);
-  color: var(--color-ink-soft);
+  color: var(--project-text-soft);
   font-size: var(--text-xs);
 }
 
@@ -806,7 +866,7 @@ html.is-ball-animating {
 .project-panel p:last-child {
   max-width: 26rem;
   margin: 0;
-  color: var(--color-ink-soft);
+  color: var(--project-text-soft);
   font-size: var(--text-sm);
   line-height: 1.55;
 }
@@ -816,33 +876,35 @@ html.is-ball-animating {
   display: block;
   width: min(38vw, 540px);
   aspect-ratio: 1 / 1;
-  border: var(--line-thin) solid var(--color-line-soft);
-  background: var(--color-paper-warm);
+  border: var(--line-thin) solid var(--project-line);
+  background: var(--project-grey);
 }
 
 .project-close {
   position: fixed;
-  right: clamp(1rem, 3vw, 2rem);
-  bottom: clamp(1rem, 3vw, 2rem);
+  left: 50%;
+  right: auto;
+  bottom: var(--nav-bottom-buffer);
   z-index: 4;
-  width: 44px;
-  height: 44px;
+  width: var(--plus-circle-size);
+  height: var(--plus-circle-size);
   padding: 0;
-  border: var(--line-thin) solid var(--color-ink);
+  border: var(--line-thin) solid rgba(255, 255, 255, 0.34);
   border-radius: 50%;
-  background: var(--color-paper);
+  background: transparent;
   cursor: pointer;
   opacity: 0;
-  transform: translateY(8px);
+  pointer-events: none;
+  transform: translate(-50%, 8px);
 }
 
 .project-close span {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 15px;
+  width: 18px;
   height: 1px;
-  background: var(--color-ink);
+  background: #ffffff;
   transform-origin: center;
 }
 
@@ -856,8 +918,8 @@ html.is-ball-animating {
 
 .project-viewer.is-expanded .project-glass {
   opacity: 1;
-  backdrop-filter: blur(16px) saturate(0.9);
-  -webkit-backdrop-filter: blur(16px) saturate(0.9);
+  backdrop-filter: blur(18px) saturate(0.78);
+  -webkit-backdrop-filter: blur(18px) saturate(0.78);
 }
 
 .project-viewer.is-expanded .project-hero-frame {
@@ -868,10 +930,14 @@ html.is-ball-animating {
   transform: translate3d(0, 0, 0);
 }
 
-.project-viewer.is-expanded .project-story,
-.project-viewer.is-expanded .project-close {
+.project-viewer.is-expanded .project-story {
   opacity: 1;
   transform: translateY(0);
+}
+
+.project-viewer.is-expanded .project-close {
+  opacity: 0;
+  transform: translate(-50%, 0);
 }
 
 .project-viewer.is-expanded .project-progress {
@@ -894,10 +960,21 @@ html.is-ball-animating {
 }
 
 .project-viewer.is-closing .project-panel-image,
-.project-viewer.is-closing .project-panel-copy,
-.project-viewer.is-closing .project-progress {
+.project-viewer.is-closing .project-panel-copy {
   opacity: 0;
   transform: translateY(8px);
+  transition-delay: 0ms;
+}
+
+.project-viewer.is-closing .project-progress {
+  opacity: 0;
+  transform: translate(-50%, 8px);
+  transition-delay: 0ms;
+}
+
+.project-viewer.is-closing .project-close {
+  opacity: 0;
+  transform: translate(-50%, 8px);
   transition-delay: 0ms;
 }
 
@@ -941,11 +1018,11 @@ html.is-ball-animating {
 .project-progress {
   position: fixed;
   left: 50%;
-  bottom: clamp(1.4rem, 3.4vh, 2.4rem);
+  bottom: calc(var(--nav-bottom-buffer) + var(--plus-circle-size) + 18px);
   z-index: 4;
   width: clamp(180px, 24vw, 360px);
   height: 1px;
-  background: rgba(0, 0, 0, 0.16);
+  background: rgba(255, 255, 255, 0.28);
   opacity: 0;
   transform: translate(-50%, 8px);
 }
@@ -954,7 +1031,7 @@ html.is-ball-animating {
   display: block;
   width: 100%;
   height: 1px;
-  background: var(--color-ink);
+  background: #ffffff;
   transform: scaleX(0);
   transform-origin: left center;
 }

@@ -28,6 +28,9 @@
       return;
     }
 
+    closeButton.tabIndex = -1;
+    closeButton.setAttribute("aria-hidden", "true");
+
     var reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     var activeTrigger = null;
     var activeProject = null;
@@ -38,6 +41,10 @@
     var readyTimer = 0;
     var pendingShift = 0;
     var shiftFrame = 0;
+
+    function notifyProjectState(name) {
+      document.dispatchEvent(new CustomEvent(name));
+    }
 
     function isStackedMode() {
       return window.innerWidth < 760;
@@ -200,7 +207,8 @@
       viewer.classList.add("is-active");
       viewer.classList.remove("is-ready", "is-closing");
       viewer.setAttribute("aria-hidden", "false");
-      document.body.classList.add("is-project-open");
+      document.body.classList.add("is-project-open", "is-project-dark");
+      notifyProjectState("harini:project-open");
 
       window.requestAnimationFrame(function () {
         viewer.classList.add("is-expanded");
@@ -216,10 +224,11 @@
     function finishClose() {
       viewer.classList.remove("is-active", "is-expanded", "is-ready", "is-closing");
       viewer.setAttribute("aria-hidden", "true");
-      document.body.classList.remove("is-project-open");
+      document.body.classList.remove("is-project-open", "is-project-dark");
       track.innerHTML = "";
       hero.removeAttribute("src");
       activeProject = null;
+      notifyProjectState("harini:project-closed");
 
       if (activeTrigger) {
         activeTrigger.focus({ preventScroll: true });
@@ -264,6 +273,8 @@
     });
 
     closeButton.addEventListener("click", closeProject);
+
+    document.addEventListener("harini:project-close-request", closeProject);
 
     viewer.addEventListener("wheel", function (event) {
       if (!viewer.classList.contains("is-expanded")) {
