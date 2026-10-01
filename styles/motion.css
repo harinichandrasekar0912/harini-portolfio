@@ -1,7 +1,7 @@
 .nav-object {
   position: fixed;
   inset: 0;
-  z-index: 700;
+  z-index: var(--z-nav);
   width: auto;
   height: auto;
   pointer-events: none;
@@ -412,7 +412,7 @@ html.is-ball-animating {
   position: fixed;
   left: 0;
   top: 0;
-  z-index: 760;
+  z-index: var(--z-travel-ball);
   display: grid;
   place-items: center;
   width: var(--ball-size);
@@ -830,7 +830,7 @@ html.is-ball-animating {
   --project-shift: 0px;
   position: fixed;
   inset: 0;
-  z-index: 900;
+  z-index: var(--z-project);
   visibility: hidden;
   opacity: 0;
   pointer-events: none;

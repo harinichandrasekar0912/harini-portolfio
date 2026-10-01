@@ -38,6 +38,12 @@
   --duration-medium: 360ms;
   --duration-slow: 720ms;
 
+  --z-edge-blur: 500;
+  --z-site-name: 650;
+  --z-nav: 700;
+  --z-travel-ball: 760;
+  --z-project: 900;
+
   --plus-circle-size: 42px;
   --nav-bottom-buffer: clamp(1rem, 3vh, 1.55rem);
   --navi-circle-size: 62px;
@@ -157,6 +163,96 @@ textarea:focus-visible {
   outline: none;
 }
 
+.viewport-edge-blur {
+  position: fixed;
+  left: 0;
+  z-index: var(--z-edge-blur);
+  width: 100%;
+  pointer-events: none;
+  opacity: 0;
+  background: rgba(250, 248, 243, 0.36);
+  backdrop-filter: blur(14px) saturate(1.03);
+  -webkit-backdrop-filter: blur(14px) saturate(1.03);
+  transition: opacity 440ms var(--ease-standard);
+  will-change: opacity;
+}
+
+.viewport-edge-blur-top {
+  top: 0;
+  height: clamp(72px, 12vh, 150px);
+  mask-image: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 1) 0%,
+    rgba(0, 0, 0, 0.82) 35%,
+    rgba(0, 0, 0, 0.35) 72%,
+    rgba(0, 0, 0, 0) 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 1) 0%,
+    rgba(0, 0, 0, 0.82) 35%,
+    rgba(0, 0, 0, 0.35) 72%,
+    rgba(0, 0, 0, 0) 100%
+  );
+}
+
+.viewport-edge-blur-bottom {
+  bottom: 0;
+  height: clamp(84px, 14vh, 170px);
+  mask-image: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 1) 0%,
+    rgba(0, 0, 0, 0.82) 35%,
+    rgba(0, 0, 0, 0.35) 72%,
+    rgba(0, 0, 0, 0) 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 1) 0%,
+    rgba(0, 0, 0, 0.82) 35%,
+    rgba(0, 0, 0, 0.35) 72%,
+    rgba(0, 0, 0, 0) 100%
+  );
+}
+
+body.is-scroll-middle .viewport-edge-blur {
+  opacity: 0.88;
+}
+
+body.is-scroll-bottom .viewport-edge-blur-top {
+  opacity: 0.78;
+}
+
+body.is-scroll-top .viewport-edge-blur,
+body.is-scroll-bottom .viewport-edge-blur-bottom,
+body.is-project-open .viewport-edge-blur {
+  opacity: 0;
+}
+
+body.is-project-open .viewport-edge-blur {
+  background: rgba(5, 5, 5, 0.34);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .viewport-edge-blur {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: linear-gradient(
+      to bottom,
+      rgba(250, 248, 243, 0.58),
+      rgba(250, 248, 243, 0)
+    );
+  }
+
+  .viewport-edge-blur-bottom {
+    background: linear-gradient(
+      to top,
+      rgba(250, 248, 243, 0.58),
+      rgba(250, 248, 243, 0)
+    );
+  }
+}
+
 .section-inner {
   width: min(100%, 1180px);
   margin-inline: auto;
@@ -172,6 +268,8 @@ textarea:focus-visible {
 }
 
 .site-name {
+  position: relative;
+  z-index: var(--z-site-name);
   margin: 0;
   text-align: center;
   color: var(--color-ink);
