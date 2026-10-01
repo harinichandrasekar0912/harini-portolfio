@@ -161,8 +161,8 @@
     padding: 0;
   }
 
-  .project-viewer[data-project-mode="stacked"] .project-panel-intro .project-panel-image,
-  .project-viewer[data-project-mode="stacked"] .project-panel-intro .project-panel-copy {
+  .project-viewer[data-project-mode="stacked"] .project-panel-image,
+  .project-viewer[data-project-mode="stacked"] .project-panel-copy {
     order: 0;
     margin-inline: 0;
   }

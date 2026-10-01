@@ -9,7 +9,6 @@
     archive: 3,
     contact: 4
   };
-  var LANDING_BOUNCE_HEIGHT = 14;
   var FLIGHT_DURATION_MULTIPLIER = 1.32;
 
   function clamp(value, min, max) {
@@ -120,6 +119,7 @@
       archive: document.querySelector(".radial-line-archive"),
       contact: document.querySelector(".radial-line-contact")
     };
+    var spokeMasks = {};
 
     if (!nav || !core || !spokes || !menu || !ball || !ballLabel || items.length === 0) {
       return;
@@ -146,6 +146,67 @@
 
     function originalTarget(button) {
       return button.dataset.navOriginalTarget || button.getAttribute("data-nav-target");
+    }
+
+    function ensureSpokeMask(label) {
+      var maskParts = spokeMasks[label];
+
+      if (maskParts) {
+        return maskParts;
+      }
+
+      var defs = spokes.querySelector("defs");
+
+      if (!defs) {
+        defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+        spokes.insertBefore(defs, spokes.firstChild);
+      }
+
+      var mask = document.createElementNS("http://www.w3.org/2000/svg", "mask");
+      var rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      var drawLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      var maskId = "nav-spoke-mask-" + label;
+
+      mask.setAttribute("id", maskId);
+      mask.setAttribute("maskUnits", "userSpaceOnUse");
+      rect.setAttribute("fill", "black");
+      rect.setAttribute("x", "0");
+      rect.setAttribute("y", "0");
+      drawLine.setAttribute("stroke", "white");
+      drawLine.setAttribute("stroke-width", "8");
+      drawLine.setAttribute("stroke-linecap", "round");
+      drawLine.setAttribute("fill", "none");
+      drawLine.setAttribute("vector-effect", "non-scaling-stroke");
+
+      mask.appendChild(rect);
+      mask.appendChild(drawLine);
+      defs.appendChild(mask);
+
+      maskParts = {
+        id: maskId,
+        mask: mask,
+        rect: rect,
+        drawLine: drawLine,
+        length: 0
+      };
+      spokeMasks[label] = maskParts;
+      return maskParts;
+    }
+
+    function playSpokeDraw() {
+      var labels = ["about", "work", "archive", "contact"];
+
+      labels.forEach(function (label, index) {
+        var maskParts = spokeMasks[label];
+
+        if (!maskParts) {
+          return;
+        }
+
+        maskParts.drawLine.style.transition = "stroke-dashoffset " + (reducedMotion.matches ? "1ms" : "560ms") + " cubic-bezier(0.22, 1, 0.36, 1)";
+        maskParts.drawLine.style.transitionDelay = reducedMotion.matches ? "0ms" : 520 + index * 38 + "ms";
+        maskParts.drawLine.style.strokeDashoffset = "0";
+      });
     }
 
     function createDebugOverlay() {
@@ -622,11 +683,13 @@
         "is-paused",
         "is-rolling",
         "is-restoring",
-        "is-contact-landing"
+        "is-contact-landing",
+        "is-rebounding"
       );
     }
 
-    function updateSpokeGeometry() {
+    function updateSpokeGeometry(options) {
+      var resetDraw = Boolean(options && options.resetDraw);
       var plus = readPlusGeometry();
       var originX = plus.measuredSpokeOriginX;
       var originY = plus.measuredSpokeOriginY;
@@ -644,11 +707,36 @@
           return;
         }
 
+        var length = Math.max(1, Math.hypot(point.x - originX, point.y - originY));
+        var maskParts = ensureSpokeMask(label);
+
+        maskParts.length = length;
+        maskParts.mask.setAttribute("x", "0");
+        maskParts.mask.setAttribute("y", "0");
+        maskParts.mask.setAttribute("width", String(window.innerWidth));
+        maskParts.mask.setAttribute("height", String(window.innerHeight));
+        maskParts.rect.setAttribute("width", String(window.innerWidth));
+        maskParts.rect.setAttribute("height", String(window.innerHeight));
+        maskParts.drawLine.setAttribute("x1", originX);
+        maskParts.drawLine.setAttribute("y1", originY);
+        maskParts.drawLine.setAttribute("x2", point.x);
+        maskParts.drawLine.setAttribute("y2", point.y);
+        maskParts.drawLine.style.strokeDasharray = String(length);
+
+        if (resetDraw) {
+          maskParts.drawLine.style.transition = "none";
+          maskParts.drawLine.style.transitionDelay = "0ms";
+          maskParts.drawLine.style.strokeDashoffset = String(length);
+        } else if (isOpen) {
+          maskParts.drawLine.style.strokeDashoffset = "0";
+        }
+
         line.setAttribute("x1", originX);
         line.setAttribute("y1", originY);
         line.setAttribute("x2", point.x);
         line.setAttribute("y2", point.y);
         line.setAttribute("vector-effect", "non-scaling-stroke");
+        line.setAttribute("mask", "url(#" + maskParts.id + ")");
         line.removeAttribute("pathLength");
       });
 
@@ -676,7 +764,10 @@
         debugOverlay.clearOutline();
         debugOverlay.hideMarker("ball start");
         debugOverlay.hideMarker("landing target");
-        window.requestAnimationFrame(updateSpokeGeometry);
+        window.requestAnimationFrame(function () {
+          updateSpokeGeometry({ resetDraw: true });
+          window.requestAnimationFrame(playSpokeDraw);
+        });
         window.setTimeout(function () {
           updateSpokeGeometry();
           debugLogGeometry();
@@ -999,8 +1090,10 @@
         return;
       }
 
-      var duration = 320;
+      var duration = 360;
+      var reboundHeight = clamp(window.innerHeight * 0.028, 16, 26);
       var startTime = 0;
+      ball.classList.add("is-rebounding");
 
       function frame(now) {
         if (!startTime) {
@@ -1008,7 +1101,7 @@
         }
 
         var raw = clamp((now - startTime) / duration, 0, 1);
-        var bounce = Math.sin(Math.PI * raw) * LANDING_BOUNCE_HEIGHT;
+        var bounce = Math.sin(Math.PI * raw) * reboundHeight;
 
         setBallPosition(screen.x, screen.y - bounce);
 
@@ -1018,6 +1111,7 @@
         }
 
         setBallPosition(screen.x, screen.y);
+        ball.classList.remove("is-rebounding");
         callback();
       }
 
@@ -1054,12 +1148,10 @@
       }
 
       landingBounce(targetId, screen, function () {
-        window.setTimeout(function () {
-          rollOut(targetId, {
-            x: screen.x,
-            screenY: screen.y
-          });
-        }, reducedMotion.matches ? 1 : 160);
+        rollOut(targetId, {
+          x: screen.x,
+          screenY: screen.y
+        });
       });
     }
 

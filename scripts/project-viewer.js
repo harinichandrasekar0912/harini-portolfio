@@ -72,7 +72,7 @@
       var maxFocusHeight = Math.max(240, vh - topBuffer - bottomUiZone);
       var focusHeight = stacked ? Math.min(vw - 32, maxFocusHeight, 520) : maxFocusHeight;
       var focusWidth = stacked ? Math.min(vw - 32, 520) : Math.min(vw * 0.54, focusHeight * 1.25, 780);
-      var panelPeek = stacked ? 0 : clamp(vw * 0.16, 72, 220);
+      var panelPeek = stacked || side === "right" ? 0 : clamp(vw * 0.16, 72, 220);
       var panelWidth = stacked ? vw : vw - panelPeek;
       var focusLeft = stacked ? 16 : side === "right" ? vw - focusWidth : 0;
       var focusTop = stacked ? topBuffer : topBuffer;
@@ -173,6 +173,13 @@
 
         return [
           '<article class="project-panel">',
+          '<figure class="project-panel-image project-panel-placeholder">',
+          '<img src="',
+          escapeHtml(panel.image || project.image),
+          '" alt="',
+          escapeHtml(panel.alt || project.alt || ""),
+          '">',
+          "</figure>",
           '<div class="project-panel-copy">',
           '<p class="project-step">',
           String(index + 1).padStart(2, "0"),

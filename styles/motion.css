@@ -114,21 +114,25 @@ html.is-ball-animating {
 .radial-item-about {
   --item-x: -122px;
   --item-y: -88px;
+  --pop-delay: 0ms;
 }
 
 .radial-item-work {
   --item-x: -48px;
   --item-y: -144px;
+  --pop-delay: 38ms;
 }
 
 .radial-item-archive {
   --item-x: 48px;
   --item-y: -144px;
+  --pop-delay: 76ms;
 }
 
 .radial-item-contact {
   --item-x: 122px;
   --item-y: -88px;
+  --pop-delay: 114ms;
 }
 
 .radial-item button {
@@ -262,7 +266,7 @@ html.is-ball-animating {
 }
 
 .nav-object.is-open .radial-item {
-  animation: radialPop 500ms var(--ease-standard) 980ms both;
+  animation: radialPop 440ms var(--ease-standard) calc(940ms + var(--pop-delay, 0ms)) both;
 }
 
 .nav-object.is-choosing .radial-item {
@@ -553,6 +557,10 @@ html.is-ball-animating {
   transform: translateX(-50%) scaleX(1.16);
 }
 
+.nav-travel-ball.is-rebounding .travel-shadow {
+  animation: landingShadowPulse 360ms var(--ease-standard) both;
+}
+
 .nav-travel-ball.is-rolling .travel-shadow,
 .nav-travel-ball.is-contact-landing .travel-shadow {
   opacity: 0;
@@ -662,17 +670,34 @@ html.is-ball-animating {
 @keyframes radialPop {
   0% {
     opacity: 0;
-    transform: translate(calc(-50% + var(--item-x)), var(--item-y)) scale(0.72);
+    transform: translate(calc(-50% + var(--item-x)), var(--item-y)) scale(0.92);
   }
 
-  72% {
+  70% {
     opacity: 1;
-    transform: translate(calc(-50% + var(--item-x)), var(--item-y)) scale(1.06);
+    transform: translate(calc(-50% + var(--item-x)), var(--item-y)) scale(1.035);
   }
 
   100% {
     opacity: 1;
     transform: translate(calc(-50% + var(--item-x)), var(--item-y)) scale(1);
+  }
+}
+
+@keyframes landingShadowPulse {
+  0% {
+    opacity: 0.34;
+    transform: translateX(-50%) scaleX(1.22);
+  }
+
+  46% {
+    opacity: 0.16;
+    transform: translateX(-50%) scaleX(0.74);
+  }
+
+  100% {
+    opacity: 0.31;
+    transform: translateX(-50%) scaleX(1.14);
   }
 }
 
@@ -819,24 +844,21 @@ html.is-ball-animating {
 .project-panel {
   flex: 0 0 var(--panel-width);
   display: grid;
-  grid-template-columns: minmax(320px, 0.52fr) minmax(260px, 0.48fr);
-  align-items: center;
+  grid-template-columns: var(--focus-width) minmax(260px, 1fr);
+  align-items: start;
   gap: clamp(3rem, 8vw, 8rem);
   width: var(--panel-width);
   min-width: 0;
   height: 100%;
-  padding: clamp(5rem, 12vh, 8rem) clamp(2rem, 8vw, 7rem);
+  padding: var(--focus-top) 0 0;
 }
 
 .project-panel:not(.project-panel-intro) {
-  grid-template-columns: minmax(20rem, 0.48fr) minmax(18rem, 0.52fr);
-  justify-content: center;
+  justify-content: stretch;
 }
 
 .project-panel-intro {
   align-items: start;
-  grid-template-columns: var(--focus-width) minmax(260px, 1fr);
-  padding: var(--focus-top) 0 0;
 }
 
 .project-panel-image {
@@ -860,24 +882,26 @@ html.is-ball-animating {
 
 .project-panel-copy {
   max-width: 26rem;
+  align-self: center;
+  margin-left: clamp(2rem, 7vw, 6rem);
   opacity: 0;
   transform: translateY(10px);
 }
 
 .project-panel-intro .project-panel-copy {
   align-self: center;
-  margin-left: clamp(2rem, 7vw, 6rem);
 }
 
-.project-viewer[data-project-side="right"] .project-panel-intro {
+.project-viewer[data-project-side="right"] .project-panel {
   grid-template-columns: minmax(260px, 1fr) var(--focus-width);
 }
 
-.project-viewer[data-project-side="right"] .project-panel-intro .project-panel-image {
+.project-viewer[data-project-side="right"] .project-panel-image {
   order: 2;
+  justify-self: end;
 }
 
-.project-viewer[data-project-side="right"] .project-panel-intro .project-panel-copy {
+.project-viewer[data-project-side="right"] .project-panel-copy {
   order: 1;
   justify-self: end;
   margin-right: clamp(2rem, 7vw, 6rem);
@@ -907,12 +931,7 @@ html.is-ball-animating {
 }
 
 .project-panel:not(.project-panel-intro)::before {
-  content: "";
-  display: block;
-  width: min(38vw, 540px);
-  aspect-ratio: 1 / 1;
-  border: var(--line-thin) solid var(--project-line);
-  background: var(--project-grey);
+  content: none;
 }
 
 .project-close {
