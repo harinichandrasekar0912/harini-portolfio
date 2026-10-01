@@ -513,6 +513,150 @@
       return fitControlPointInsideBounds(point, getSafeBounds());
     }
 
+    function samePlatformElement(element, targetElement) {
+      if (!element || !targetElement) {
+        return false;
+      }
+
+      return element === targetElement || element.contains(targetElement) || targetElement.contains(element);
+    }
+
+    function getObstacleRects(targetElement) {
+      var selectors = [".landing-media", ".about-portrait", ".about-portrait img", ".work-tile", ".archive-bar"];
+      var scrollY = window.scrollY || window.pageYOffset;
+      var seen = [];
+      var clearance = Math.max(ballRadius() + 24, 48);
+      var obstacles = [];
+
+      selectors.forEach(function (selector) {
+        Array.prototype.slice.call(document.querySelectorAll(selector)).forEach(function (element) {
+          var rect;
+
+          if (seen.indexOf(element) !== -1 || samePlatformElement(element, targetElement)) {
+            return;
+          }
+
+          rect = element.getBoundingClientRect();
+
+          if (rect.width < 4 || rect.height < 4) {
+            return;
+          }
+
+          seen.push(element);
+          obstacles.push({
+            element: element,
+            left: rect.left + window.scrollX - clearance,
+            top: rect.top + scrollY - clearance,
+            right: rect.left + window.scrollX + rect.width + clearance,
+            bottom: rect.top + scrollY + rect.height + clearance,
+            clearance: clearance
+          });
+        });
+      });
+
+      return obstacles;
+    }
+
+    function screenRectForObstacle(obstacle, scrollY) {
+      return {
+        left: obstacle.left,
+        top: obstacle.top - scrollY,
+        right: obstacle.right,
+        bottom: obstacle.bottom - scrollY
+      };
+    }
+
+    function pointInsideRect(point, rect) {
+      return point.x >= rect.left && point.x <= rect.right && point.y >= rect.top && point.y <= rect.bottom;
+    }
+
+    function detectPathCollision(config, obstacles) {
+      var samples = 68;
+      var collision = null;
+
+      if (!obstacles || obstacles.length === 0) {
+        return null;
+      }
+
+      for (var index = 2; index <= samples - 2; index += 1) {
+        var raw = index / samples;
+        var point = flightPointAt(raw, config);
+        var scrollY = flightScrollAt(raw, config);
+
+        for (var obstacleIndex = 0; obstacleIndex < obstacles.length; obstacleIndex += 1) {
+          var obstacle = obstacles[obstacleIndex];
+          var rect = screenRectForObstacle(obstacle, scrollY);
+
+          if (pointInsideRect(point, rect)) {
+            collision = {
+              raw: raw,
+              point: point,
+              rect: rect,
+              obstacle: obstacle
+            };
+            break;
+          }
+        }
+
+        if (collision) {
+          break;
+        }
+      }
+
+      return collision;
+    }
+
+    function whitespaceLaneX(config, attempt) {
+      var side = targetSideFor(config.targetId);
+      var drift = attempt * clamp(window.innerWidth * 0.04, 18, 52);
+      var x = window.innerWidth * 0.5;
+
+      if (side === "left") {
+        x = window.innerWidth * 0.2 - drift;
+      } else if (side === "right") {
+        x = window.innerWidth * 0.8 + drift;
+      }
+
+      return clamp(x, config.bounds.minX, config.bounds.maxX);
+    }
+
+    function nudgePathAroundCollision(config, collision, attempt) {
+      var laneX = whitespaceLaneX(config, attempt);
+      var lift = clamp(window.innerHeight * (0.09 + attempt * 0.055), 72, 190);
+      var controlBias = clamp(0.46 + attempt * 0.16, 0.46, 0.78);
+      var topClear = collision ? collision.rect.top - lift : Math.min(config.path.controlA.y, config.path.controlB.y) - lift;
+
+      config.path.controlA = fitControlPointInsideBounds({
+        x: mix(config.path.controlA.x, laneX, controlBias),
+        y: Math.min(config.path.controlA.y, topClear)
+      }, config.bounds);
+
+      config.path.controlB = fitControlPointInsideBounds({
+        x: mix(config.path.controlB.x, laneX, controlBias * 0.9),
+        y: Math.min(config.path.controlB.y, topClear + lift * 0.34)
+      }, config.bounds);
+
+      config.impact = createImpactApproach(config.path, config.endScreen, config);
+    }
+
+    function adjustPathForObstacles(config) {
+      var obstacles = getObstacleRects(config.endPoint.element);
+      var attempts = 0;
+
+      config.obstacles = obstacles;
+
+      while (attempts < 3) {
+        var collision = detectPathCollision(config, obstacles);
+
+        if (!collision) {
+          return;
+        }
+
+        nudgePathAroundCollision(config, collision, attempts + 1);
+        attempts += 1;
+      }
+    }
+
     function emergencyClampToViewport(point, config, raw) {
       var bounds = config.bounds;
       var clamped = fitControlPointInsideBounds(point, bounds);
@@ -784,7 +928,8 @@
         "is-restoring",
         "is-contact-landing",
         "is-rebounding",
-        "is-second-bounce"
+        "is-second-bounce",
+        "is-launching"
       );
     }
 
@@ -1058,9 +1203,9 @@
 
     function createImpactApproach(path, endScreen, config) {
       var bounds = config.bounds;
-      var startRaw = config.targetId === "contact" ? 0.74 : 0.76;
-      var alignAt = 0.52;
-      var approachHeight = clamp(window.innerHeight * (config.targetId === "contact" ? 0.12 : 0.115), 80, 150);
+      var startRaw = config.targetId === "contact" ? 0.72 : 0.7;
+      var alignAt = 0.42;
+      var approachHeight = clamp(window.innerHeight * (config.targetId === "contact" ? 0.1 : 0.1), 70, 140);
       var join = cubicPointAt(easeInOut(startRaw), path);
       var previous = cubicPointAt(easeInOut(Math.max(0, startRaw - 0.035)), path);
       var above = fitControlPointInsideBounds({
@@ -1140,6 +1285,7 @@
 
       config.path = createSmoothFlightPath(startScreen, endScreen, config);
       config.impact = createImpactApproach(config.path, config.endScreen, config);
+      adjustPathForObstacles(config);
       return config;
     }
 
@@ -1304,6 +1450,53 @@
       requestBallFrame(frame, token);
     }
 
+    function runLaunchBounce(screen, height, duration, token, callback) {
+      var startTime = 0;
+
+      function frame(now) {
+        if (!isCurrentAnimation(token)) {
+          debugNavBall("stale nav ball frame cancelled");
+          return;
+        }
+
+        if (!startTime) {
+          startTime = now;
+        }
+
+        var raw = clamp((now - startTime) / duration, 0, 1);
+        var bounce = Math.sin(Math.PI * raw) * height;
+
+        setBallPosition(screen.x, screen.y - bounce);
+
+        if (raw < 1) {
+          requestBallFrame(frame, token);
+          return;
+        }
+
+        setBallPosition(screen.x, screen.y);
+        callback();
+      }
+
+      requestBallFrame(frame, token);
+    }
+
+    function upwardLaunchBounce(config, token, callback) {
+      if (reducedMotion.matches || !config.upward) {
+        callback();
+        return;
+      }
+
+      setState(STATES.BALL_TAKEOFF);
+      ball.classList.add("is-launching", "is-lifting");
+
+      runLaunchBounce(config.startScreen, clamp(window.innerHeight * 0.014, 8, 12), clamp(window.innerHeight * 0.24, 160, 220), token, function () {
+        runLaunchBounce(config.startScreen, clamp(window.innerHeight * 0.048, 24, 42), clamp(window.innerHeight * 0.4, 260, 360), token, function () {
+          ball.classList.remove("is-launching", "is-lifting");
+          callback();
+        });
+      });
+    }
+
     function landingBounce(targetId, screen, token, callback) {
       if (reducedMotion.matches) {
         callback();
@@ -1381,9 +1574,8 @@
         return;
       }
 
-      setState(STATES.BALL_FLYING);
       ball.classList.remove("is-forming", "is-landed", "is-ready", "is-landing", "is-contact-landing");
-      ball.classList.add("is-visible", "is-moving", "is-flying");
+      ball.classList.add("is-visible", "is-moving");
 
       function frame(now) {
         if (!isCurrentAnimation(token)) {
@@ -1420,7 +1612,24 @@
         finishTravel(targetId, config, token);
       }
 
-      requestBallFrame(frame, token);
+      function beginFlightFrames() {
+        if (!isCurrentAnimation(token)) {
+          debugNavBall("stale nav ball frame cancelled");
+          return;
+        }
+
+        setState(STATES.BALL_FLYING);
+        ball.classList.remove("is-launching", "is-lifting");
+        ball.classList.add("is-flying");
+        requestBallFrame(frame, token);
+      }
+
+      if (config.upward) {
+        upwardLaunchBounce(config, token, beginFlightFrames);
+        return;
+      }
+
+      beginFlightFrames();
     }
 
     function chooseDestination(button) {

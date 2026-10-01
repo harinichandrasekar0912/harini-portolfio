@@ -427,7 +427,7 @@ html.is-ball-animating {
     calc(var(--ball-x) - (var(--ball-size) / 2)),
     calc(var(--ball-y) - (var(--ball-size) / 2) + var(--ball-lift)),
     0
-  ) rotate(var(--ball-rotation)) scale(var(--ball-scale-x), var(--ball-scale-y));
+  ) scale(var(--ball-scale-x), var(--ball-scale-y));
   will-change: transform, opacity;
   box-shadow:
     inset -7px -8px 14px rgba(0, 0, 0, 0.38),
@@ -511,6 +511,8 @@ html.is-ball-animating {
 }
 
 .travel-label {
+  position: relative;
+  z-index: 2;
   color: var(--color-paper);
   font-size: 0.62rem;
   line-height: 1;
@@ -519,6 +521,31 @@ html.is-ball-animating {
 }
 
 .nav-travel-ball.is-labelled .travel-label {
+  opacity: 0;
+}
+
+.travel-roll-detail {
+  position: absolute;
+  inset: 9px;
+  z-index: 1;
+  border-radius: 50%;
+  border-top: 1px solid rgba(255, 255, 255, 0.24);
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.2);
+  opacity: 0;
+  pointer-events: none;
+  transform: rotate(var(--ball-rotation));
+  transition:
+    opacity var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) linear;
+}
+
+.nav-travel-ball.is-rolling .travel-roll-detail {
+  opacity: 0.34;
+}
+
+.nav-travel-ball.is-forming .travel-roll-detail,
+.nav-travel-ball.is-restoring .travel-roll-detail {
   opacity: 0;
 }
 
@@ -546,6 +573,7 @@ html.is-ball-animating {
 
 .nav-travel-ball.is-moving .travel-shadow,
 .nav-travel-ball.is-lifting .travel-shadow,
+.nav-travel-ball.is-launching .travel-shadow,
 .nav-travel-ball.is-forming .travel-shadow,
 .nav-travel-ball.is-flying .travel-shadow {
   opacity: 0;
@@ -565,6 +593,11 @@ html.is-ball-animating {
 
 .nav-travel-ball.is-rebounding.is-second-bounce .travel-shadow {
   animation-name: landingShadowPulseSmall;
+}
+
+.nav-travel-ball.is-contact-landing.is-rebounding .travel-shadow {
+  opacity: 0;
+  animation: none;
 }
 
 .nav-travel-ball.is-rolling .travel-shadow,
@@ -652,6 +685,7 @@ html.is-ball-animating {
 .radial-item button::after,
 .radial-lines,
 .travel-label,
+.travel-roll-detail,
 .travel-shadow {
   transition:
     opacity var(--duration-medium) var(--ease-standard),
@@ -670,6 +704,7 @@ html.is-ball-animating {
 .nav-travel-ball.is-forming,
 .nav-travel-ball.is-ready,
 .nav-travel-ball.is-lifting,
+.nav-travel-ball.is-launching,
 .nav-travel-ball.is-moving,
 .nav-travel-ball.is-flying,
 .nav-travel-ball.is-landing,
