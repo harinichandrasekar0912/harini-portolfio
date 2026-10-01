@@ -1494,10 +1494,10 @@
         return;
       }
 
-      var firstHeight = clamp(window.innerHeight * 0.032, 20, 28);
-      var secondHeight = clamp(firstHeight * 0.34, 7, 11);
-      var firstDuration = clamp(window.innerHeight * 0.31, 220, 300);
-      var secondDuration = clamp(window.innerHeight * 0.22, 150, 215);
+      var firstHeight = clamp(window.innerHeight * 0.04, 28, 38);
+      var secondHeight = clamp(firstHeight * 0.34, 8, 14);
+      var firstDuration = clamp(window.innerHeight * 0.42, 300, 380);
+      var secondDuration = clamp(window.innerHeight * 0.28, 180, 260);
 
       runBounce(screen, firstHeight, firstDuration, token, false, function () {
         runBounce(screen, secondHeight, secondDuration, token, true, callback, 10);
