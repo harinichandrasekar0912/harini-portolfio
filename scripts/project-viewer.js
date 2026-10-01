@@ -271,6 +271,8 @@
     }
 
     function fillProject(project) {
+      var initialImageClass = viewer.dataset.projectSide === "left" ? "project-panel-image is-initial-left-edge" : "project-panel-image";
+
       hero.src = project.image;
       hero.alt = project.alt || "";
 
@@ -278,7 +280,9 @@
         if (index === 0) {
           return [
             '<article class="project-panel project-panel-intro">',
-            '<figure class="project-panel-image">',
+            '<figure class="',
+            initialImageClass,
+            '">',
             '<img src="',
             escapeHtml(project.image),
             '" alt="',

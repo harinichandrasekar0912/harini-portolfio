@@ -577,25 +577,30 @@ body.is-project-open .viewport-edge-blur {
 }
 
 .contact-section {
-  display: flex;
-  align-items: center;
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
   min-height: 100svh;
-  padding-block: clamp(6rem, 12vh, 9rem) calc(var(--space-10) + var(--nav-size));
+  padding: 0 var(--page-x);
+  overflow: hidden;
 }
 
 .contact-layout {
   position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: calc(100svh - clamp(6rem, 12vh, 9rem) - calc(var(--space-10) + var(--nav-size)));
-  padding-bottom: clamp(8.5rem, 18vh, 12rem);
+  display: grid;
+  place-items: center;
+  width: min(88vw, 560px);
+  min-height: 100vh;
+  min-height: 100svh;
+  margin-inline: auto;
+  text-align: center;
 }
 
 .contact-form {
   display: grid;
   justify-items: stretch;
-  width: min(72vw, 32rem);
+  width: min(100%, 32rem);
   gap: clamp(1.65rem, 4vh, 2.85rem);
 }
 
@@ -716,7 +721,7 @@ body.is-project-open .viewport-edge-blur {
 .contact-links {
   position: absolute;
   left: 50%;
-  bottom: clamp(1.75rem, 5vh, 4rem);
+  bottom: clamp(1.75rem, 5vh, 3.5rem);
   display: flex;
   align-items: center;
   justify-content: center;

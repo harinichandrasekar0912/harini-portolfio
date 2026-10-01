@@ -701,6 +701,13 @@ html.is-ball-animating {
     border-color var(--duration-medium) var(--ease-standard);
 }
 
+.nav-travel-ball.is-restoring {
+  transition:
+    opacity var(--restore-duration, var(--duration-medium)) var(--ease-standard),
+    background-color var(--duration-medium) var(--ease-standard),
+    border-color var(--duration-medium) var(--ease-standard);
+}
+
 @keyframes radialPop {
   0% {
     opacity: 0;
@@ -937,7 +944,7 @@ html.is-ball-animating {
 }
 
 .project-viewer[data-project-side="left"] .project-hero-frame,
-.project-viewer[data-project-side="left"] .project-panel-image {
+.project-panel-image.is-initial-left-edge {
   border-radius: 0 var(--image-radius) var(--image-radius) 0;
 }
 

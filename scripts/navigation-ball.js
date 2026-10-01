@@ -19,6 +19,11 @@
     return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
   }
 
+  function easeOutCubic(t) {
+    var safeT = clamp(t, 0, 1);
+    return 1 - Math.pow(1 - safeT, 3);
+  }
+
   function easeRollOut(t) {
     var safeT = clamp(t, 0, 1);
     return 1 - Math.pow(1 - safeT, 2.2);
@@ -460,6 +465,7 @@
       ball.style.setProperty("--ball-scale-x", "1");
       ball.style.setProperty("--ball-scale-y", "1");
       ball.style.setProperty("--ball-rotation", "0deg");
+      ball.style.removeProperty("--restore-duration");
       resetTimelineShadow();
     }
 
@@ -1101,16 +1107,27 @@
       updateCurrentSection(detectCurrentSection(), true);
     }
 
-    function contactFloor() {
+    function sectionTopScroll(sectionId) {
       var maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+      var section = document.getElementById(sectionId);
+      var scrollY = window.scrollY || window.pageYOffset;
+      var sectionTop = section ? section.getBoundingClientRect().top + scrollY : maxScroll;
+
+      return clamp(sectionTop, 0, maxScroll);
+    }
+
+    function contactFloor() {
+      var contact = document.getElementById("contact");
+      var scrollY = window.scrollY || window.pageYOffset;
+      var contactTop = contact ? contact.getBoundingClientRect().top + scrollY : sectionTopScroll("contact");
 
       return {
-        element: document.getElementById("contact"),
+        element: contact,
         section: "contact",
         side: "right",
         kind: "floor",
         x: window.innerWidth * 0.78,
-        y: maxScroll + window.innerHeight,
+        y: contactTop + window.innerHeight,
         width: window.innerWidth,
         height: 1
       };
@@ -1143,6 +1160,10 @@
 
     function targetScrollFor(point) {
       var maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+
+      if (point.kind === "floor" && point.section === "contact") {
+        return sectionTopScroll("contact");
+      }
 
       if (point.kind === "floor") {
         return maxScroll;
@@ -1181,6 +1202,10 @@
       var radius = ballRadius();
       var maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
       var desiredCenterY = 0;
+
+      if (endPoint.kind === "floor" && endPoint.section === "contact") {
+        return sectionTopScroll("contact");
+      }
 
       if (endPoint.kind === "floor") {
         return maxScroll;
@@ -1333,13 +1358,16 @@
       debugOverlay.marker("landing point", config.path.end.x, config.path.end.y, "rgb(210, 0, 0)");
     }
 
-    function restorePlus(token, targetId) {
+    function restorePlus(token, targetId, options) {
+      var restoreDuration = options && typeof options.duration === "number" ? options.duration : 260;
+
       if (!isCurrentAnimation(token)) {
         debugNavBall("stale nav ball frame cancelled");
         return;
       }
 
       setState(STATES.PLUS_RESTORED);
+      ball.style.setProperty("--restore-duration", restoreDuration + "ms");
       ball.classList.add("is-restoring");
       clearChoiceState(STATES.PLUS_RESTORED);
       document.documentElement.classList.remove("is-ball-animating");
@@ -1349,7 +1377,7 @@
         resetBallState(STATES.PLUS_IDLE);
         setState(STATES.PLUS_IDLE);
         updateCurrentSection(detectCurrentSection(), true);
-      }, reducedMotion.matches ? 1 : 260);
+      }, reducedMotion.matches ? 1 : restoreDuration);
     }
 
     function bounceLift(raw, height) {
@@ -1369,7 +1397,13 @@
       var secondPrepHeight = clamp(firstPrepHeight * 1.7, 40, 58);
       var firstPrepDuration = clamp(window.innerHeight * 0.52, 380, 440);
       var secondPrepDuration = clamp(firstPrepDuration + 80, 420, 540);
-      var arcDuration = clamp(Math.abs(startScreen.y - endScreen.y) * 0.78 + Math.abs(dx) * 0.28 + 900, 1300, 2200) * 2.1;
+      var previousHomeArcDuration = clamp(Math.abs(startScreen.y - endScreen.y) * 0.78 + Math.abs(dx) * 0.28 + 900, 1300, 2200) * 2.1;
+      var homeRouteLeadProgress = 0.65;
+      var routeLeadDuration = previousHomeArcDuration * homeRouteLeadProgress;
+      var finalHomeApproachDuration = previousHomeArcDuration * (1 - homeRouteLeadProgress) * 1.6;
+      var homeArcDuration = routeLeadDuration + finalHomeApproachDuration;
+      var homeMorphDuration = 560;
+      var arcDuration = homeArcDuration;
       var prep1End = firstPrepDuration;
       var prep2End = prep1End + secondPrepDuration;
       var arcEnd = prep2End + arcDuration;
@@ -1418,7 +1452,11 @@
           homeTargetX: round(endScreen.x),
           homeTargetY: round(endScreen.y)
         });
-        console.debug("home return active duration", arcDuration);
+        console.debug("home timing", {
+          homeArcDuration: homeArcDuration,
+          finalHomeApproachDuration: finalHomeApproachDuration,
+          homeMorphDuration: homeMorphDuration
+        });
       }
 
       ball.classList.remove("is-forming", "is-landed", "is-ready", "is-landing", "is-contact-landing");
@@ -1427,6 +1465,8 @@
 
       function frame(now) {
         var elapsed;
+        var arcElapsed;
+        var finalRaw;
         var raw;
         var point;
 
@@ -1452,7 +1492,15 @@
           ball.classList.add("is-launching", "is-lifting");
           setBallPosition(startScreen.x, startScreen.y - bounceLift(raw, secondPrepHeight));
         } else if (elapsed < arcEnd) {
-          raw = (elapsed - prep2End) / arcDuration;
+          arcElapsed = elapsed - prep2End;
+
+          if (arcElapsed < routeLeadDuration) {
+            raw = (arcElapsed / routeLeadDuration) * homeRouteLeadProgress;
+          } else {
+            finalRaw = (arcElapsed - routeLeadDuration) / finalHomeApproachDuration;
+            raw = homeRouteLeadProgress + (1 - homeRouteLeadProgress) * easeOutCubic(finalRaw);
+          }
+
           point = cubicPointAt(raw, path);
           setState(STATES.BALL_FLYING);
           ball.classList.remove("is-launching", "is-lifting");
@@ -1469,7 +1517,7 @@
             window.history.replaceState(null, "", cleanUrl);
           }
 
-          restorePlus(token, targetId);
+          restorePlus(token, targetId, { duration: homeMorphDuration });
           return;
         }
 

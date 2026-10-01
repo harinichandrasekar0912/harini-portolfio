@@ -168,12 +168,9 @@
 }
 
 @media (max-height: 760px) {
-  .contact-layout {
-    padding-bottom: 6.5rem;
-  }
-
   .contact-form {
-    transform: translateY(-4vh);
+    gap: clamp(1rem, 2.8vh, 1.75rem);
+    transform: translateY(-2vh);
   }
 
   .contact-links {
