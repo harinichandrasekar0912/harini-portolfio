@@ -262,7 +262,7 @@
       ].join(";");
 
       polyline.setAttribute("fill", "none");
-      polyline.setAttribute("stroke", "rgba(255, 129, 0, 0.92)");
+      polyline.setAttribute("stroke", "rgba(218, 22, 22, 0.88)");
       polyline.setAttribute("stroke-width", "1.25");
       polyline.setAttribute("stroke-linecap", "round");
       polyline.setAttribute("stroke-linejoin", "round");
@@ -624,19 +624,14 @@
       var laneX = whitespaceLaneX(config, attempt);
       var lift = clamp(window.innerHeight * (0.09 + attempt * 0.055), 72, 190);
       var controlBias = clamp(0.46 + attempt * 0.16, 0.46, 0.78);
-      var topClear = collision ? collision.rect.top - lift : Math.min(config.path.controlA.y, config.path.controlB.y) - lift;
+      var topClear = collision ? collision.rect.top - lift : config.path.apex.y - lift;
 
-      config.path.controlA = fitControlPointInsideBounds({
-        x: mix(config.path.controlA.x, laneX, controlBias),
-        y: Math.min(config.path.controlA.y, topClear)
+      config.path.apex = fitControlPointInsideBounds({
+        x: mix(config.path.apex.x, laneX, controlBias * 0.66),
+        y: Math.min(config.path.apex.y, topClear)
       }, config.bounds);
 
-      config.path.controlB = fitControlPointInsideBounds({
-        x: mix(config.path.controlB.x, laneX, controlBias * 0.9),
-        y: Math.min(config.path.controlB.y, topClear + lift * 0.34)
-      }, config.bounds);
-
-      config.impact = createImpactApproach(config.path, config.endScreen, config);
+      rebuildPhasedPathControls(config.path, config);
     }
 
     function adjustPathForObstacles(config) {
@@ -1008,6 +1003,10 @@
         debugOverlay.clearTrajectory();
         debugOverlay.clearOutline();
         debugOverlay.hideMarker("ball start");
+        debugOverlay.hideMarker("start point");
+        debugOverlay.hideMarker("apex point");
+        debugOverlay.hideMarker("vertical approach start");
+        debugOverlay.hideMarker("landing point");
         debugOverlay.hideMarker("landing target");
         window.requestAnimationFrame(function () {
           updateSpokeGeometry({ resetDraw: true });
@@ -1153,90 +1152,87 @@
       return clamp(endPoint.y - (desiredCenterY + radius), 0, maxScroll);
     }
 
-    function createSmoothFlightPath(startScreen, endScreen, config) {
+    function rebuildPhasedPathControls(path, config) {
       var bounds = config.bounds;
-      var downward = config.downward;
-      var horizontalDirection = config.horizontalDirection;
-      var dx = endScreen.x - startScreen.x;
-      var viewportLift = clamp(window.innerHeight * (downward ? 0.1 : 0.18), downward ? 42 : 86, downward ? 116 : 190);
-      var sidePush = horizontalDirection * clamp(window.innerWidth * 0.055, 34, 88);
-      var controlA;
-      var controlB;
+      var start = path.start;
+      var apex = path.apex;
+      var verticalStart = path.verticalApproachStart;
+      var landing = path.end;
+      var dx = landing.x - start.x;
+      var ascentLift = Math.max(90, start.y - apex.y);
+      var verticalHeight = Math.max(1, landing.y - verticalStart.y);
 
-      if (config.targetId === "contact") {
-        viewportLift = clamp(window.innerHeight * 0.08, 42, 96);
-        controlA = {
-          x: startScreen.x + dx * 0.24 + sidePush * 0.35,
-          y: startScreen.y - viewportLift
-        };
-        controlB = {
-          x: startScreen.x + dx * 0.74 + sidePush * 0.12,
-          y: Math.min(endScreen.y - 28, mix(startScreen.y, endScreen.y, 0.78))
-        };
-      } else if (downward) {
-        controlA = {
-          x: startScreen.x + dx * 0.24 + sidePush * 0.38,
-          y: startScreen.y - viewportLift
-        };
-        controlB = {
-          x: startScreen.x + dx * 0.74 + sidePush * 0.12,
-          y: mix(startScreen.y, endScreen.y, 0.76)
-        };
-      } else {
-        controlA = {
-          x: startScreen.x + dx * 0.22 + sidePush * 0.4,
-          y: startScreen.y - viewportLift
-        };
-        controlB = {
-          x: startScreen.x + dx * 0.72 + sidePush * 0.1,
-          y: endScreen.y - clamp(window.innerHeight * 0.06, 34, 68)
-        };
-      }
+      path.ascent = {
+        start: start,
+        controlA: fitControlPointInsideBounds({
+          x: start.x + dx * 0.055,
+          y: start.y - clamp(ascentLift * 0.58, 92, 250)
+        }, bounds),
+        controlB: fitControlPointInsideBounds({
+          x: mix(start.x, apex.x, 0.56),
+          y: apex.y
+        }, bounds),
+        end: apex
+      };
 
-      return {
-        start: fitControlPointInsideBounds(startScreen, bounds),
-        controlA: fitControlPointInsideBounds(controlA, bounds),
-        controlB: fitControlPointInsideBounds(controlB, bounds),
-        end: fitControlPointInsideBounds(endScreen, bounds)
+      path.descent = {
+        start: apex,
+        controlA: fitControlPointInsideBounds({
+          x: mix(apex.x, verticalStart.x, 0.22),
+          y: apex.y
+        }, bounds),
+        controlB: fitControlPointInsideBounds({
+          x: verticalStart.x,
+          y: mix(apex.y, verticalStart.y, 0.68)
+        }, bounds),
+        end: verticalStart
+      };
+
+      path.vertical = {
+        start: verticalStart,
+        controlA: {
+          x: landing.x,
+          y: verticalStart.y + verticalHeight * 0.34
+        },
+        controlB: {
+          x: landing.x,
+          y: landing.y - verticalHeight * 0.16
+        },
+        end: landing
       };
     }
 
-    function createImpactApproach(path, endScreen, config) {
+    function createSmoothFlightPath(startScreen, endScreen, config) {
       var bounds = config.bounds;
-      var startRaw = config.targetId === "contact" ? 0.72 : 0.7;
-      var alignAt = 0.42;
-      var approachHeight = clamp(window.innerHeight * (config.targetId === "contact" ? 0.1 : 0.1), 70, 140);
-      var join = cubicPointAt(easeInOut(startRaw), path);
-      var previous = cubicPointAt(easeInOut(Math.max(0, startRaw - 0.035)), path);
-      var above = fitControlPointInsideBounds({
-        x: endScreen.x,
-        y: endScreen.y - approachHeight
+      var start = fitControlPointInsideBounds(startScreen, bounds);
+      var landing = config.targetId === "contact" ? {
+        x: clamp(endScreen.x, bounds.minX, bounds.maxX),
+        y: bounds.floorY
+      } : fitControlPointInsideBounds(endScreen, bounds);
+      var dx = landing.x - start.x;
+      var distanceX = Math.abs(dx);
+      var verticalApproachHeight = clamp(window.innerHeight * 0.16, 90, 180);
+      var verticalApproachStart = fitControlPointInsideBounds({
+        x: landing.x,
+        y: landing.y - verticalApproachHeight
       }, bounds);
-      var tangent = {
-        x: join.x - previous.x,
-        y: join.y - previous.y
+      var arcHeight = clamp(Math.max(window.innerHeight * 0.38, distanceX * 0.38, Math.abs(landing.y - start.y) * 0.42), 230, 460);
+      var apexY = Math.max(bounds.minY + 12, Math.min(start.y, verticalApproachStart.y, landing.y) - arcHeight);
+      var apexX = clamp(mix(start.x, landing.x, distanceX > 40 ? 0.58 : 0.5), bounds.minX, bounds.maxX);
+      var path = {
+        start: start,
+        apex: {
+          x: apexX,
+          y: apexY
+        },
+        verticalApproachStart: verticalApproachStart,
+        end: landing,
+        phaseAEnd: 0.44,
+        phaseBEnd: 0.84
       };
-      var controlA = fitControlPointInsideBounds({
-        x: join.x + tangent.x * 1.15,
-        y: join.y + tangent.y * 1.15
-      }, bounds);
-      var controlB = fitControlPointInsideBounds({
-        x: mix(join.x, above.x, 0.88),
-        y: mix(join.y, above.y, 0.76)
-      }, bounds);
 
-      return {
-        startRaw: startRaw,
-        alignAt: alignAt,
-        above: above,
-        end: fitControlPointInsideBounds(endScreen, bounds),
-        joinCurve: {
-          start: fitControlPointInsideBounds(join, bounds),
-          controlA: controlA,
-          controlB: controlB,
-          end: above
-        }
-      };
+      rebuildPhasedPathControls(path, config);
+      return path;
     }
 
     function createFlightConfig(startPoint, endPoint, targetId, startScroll) {
@@ -1284,35 +1280,22 @@
       };
 
       config.path = createSmoothFlightPath(startScreen, endScreen, config);
-      config.impact = createImpactApproach(config.path, config.endScreen, config);
       adjustPathForObstacles(config);
       return config;
     }
 
-    function baseFlightPointAt(raw, config) {
-      return cubicPointAt(easeInOut(raw), config.path);
-    }
-
     function flightPointAt(raw, config) {
-      var impact = config.impact;
+      var path = config.path;
 
-      if (!impact || raw < impact.startRaw) {
-        return baseFlightPointAt(raw, config);
+      if (raw < path.phaseAEnd) {
+        return cubicPointAt(easeInOut(raw / path.phaseAEnd), path.ascent);
       }
 
-      var local = clamp((raw - impact.startRaw) / (1 - impact.startRaw), 0, 1);
-
-      if (local < impact.alignAt) {
-        return cubicPointAt(easeInOut(local / impact.alignAt), impact.joinCurve);
+      if (raw < path.phaseBEnd) {
+        return cubicPointAt(easeInOut((raw - path.phaseAEnd) / (path.phaseBEnd - path.phaseAEnd)), path.descent);
       }
 
-      var descent = clamp((local - impact.alignAt) / (1 - impact.alignAt), 0, 1);
-      var easedDescent = Math.pow(descent, 1.55);
-
-      return {
-        x: impact.end.x,
-        y: mix(impact.above.y, impact.end.y, easedDescent)
-      };
+      return cubicPointAt(clamp((raw - path.phaseBEnd) / (1 - path.phaseBEnd), 0, 1), path.vertical);
     }
 
     function flightScrollAt(raw, config) {
@@ -1335,13 +1318,17 @@
       var config = createFlightConfig(startPoint, endPoint, targetId, startScroll);
       var points = [];
 
-      for (var step = 0; step <= 36; step += 1) {
-        var raw = step / 36;
+      for (var step = 0; step <= 72; step += 1) {
+        var raw = step / 72;
         var point = flightPointAt(raw, config);
         points.push(point);
       }
 
       debugOverlay.trajectory(points);
+      debugOverlay.marker("start point", config.path.start.x, config.path.start.y, "rgb(132, 0, 255)");
+      debugOverlay.marker("apex point", config.path.apex.x, config.path.apex.y, "rgb(194, 0, 160)");
+      debugOverlay.marker("vertical approach start", config.path.verticalApproachStart.x, config.path.verticalApproachStart.y, "rgb(0, 98, 190)");
+      debugOverlay.marker("landing point", config.path.end.x, config.path.end.y, "rgb(210, 0, 0)");
     }
 
     function restorePlus(token, targetId) {
