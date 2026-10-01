@@ -1356,8 +1356,9 @@
       requestBallFrame(frame, token);
     }
 
-    function runBounce(screen, height, duration, token, secondBounce, callback) {
+    function runBounce(screen, height, duration, token, secondBounce, callback, initialAdvance) {
       var startTime = 0;
+      var advance = initialAdvance || 0;
 
       ball.classList.remove("is-rebounding", "is-second-bounce");
       void ball.offsetWidth;
@@ -1375,7 +1376,7 @@
         }
 
         if (!startTime) {
-          startTime = now;
+          startTime = now - advance;
         }
 
         var raw = clamp((now - startTime) / duration, 0, 1);
@@ -1396,8 +1397,9 @@
       requestBallFrame(frame, token);
     }
 
-    function runLaunchBounce(screen, height, duration, token, callback) {
+    function runLaunchBounce(screen, height, duration, token, callback, initialAdvance) {
       var startTime = 0;
+      var advance = initialAdvance || 0;
 
       function frame(now) {
         if (!isCurrentAnimation(token)) {
@@ -1406,7 +1408,7 @@
         }
 
         if (!startTime) {
-          startTime = now;
+          startTime = now - advance;
         }
 
         var raw = clamp((now - startTime) / duration, 0, 1);
@@ -1426,6 +1428,47 @@
       requestBallFrame(frame, token);
     }
 
+    function runLaunchIntoFlight(config, height, duration, launchProgress, token, callback) {
+      var startTime = 0;
+      var advance = 10;
+
+      function frame(now) {
+        if (!isCurrentAnimation(token)) {
+          debugNavBall("stale nav ball frame cancelled");
+          return;
+        }
+
+        if (!startTime) {
+          startTime = now - advance;
+        }
+
+        var raw = clamp((now - startTime) / duration, 0, 1);
+        var pathRaw = mix(0, launchProgress, raw);
+        var point = flightPointAt(pathRaw, config);
+        var lift = Math.sin(Math.PI * raw) * height * (1 - raw * 0.18);
+        var screen = emergencyClampToViewport({
+          x: point.x,
+          y: point.y - lift
+        }, config, pathRaw);
+
+        window.scrollTo(0, flightScrollAt(pathRaw, config));
+        setBallPosition(screen.x, screen.y);
+        debugRenderLandingTarget(config.endPoint, config.finalScroll);
+
+        if (raw < 1) {
+          requestBallFrame(frame, token);
+          return;
+        }
+
+        point = emergencyClampToViewport(flightPointAt(launchProgress, config), config, launchProgress);
+        window.scrollTo(0, flightScrollAt(launchProgress, config));
+        setBallPosition(point.x, point.y);
+        callback(launchProgress, 12);
+      }
+
+      requestBallFrame(frame, token);
+    }
+
     function upwardLaunchBounce(config, token, callback) {
       if (reducedMotion.matches || !config.upward) {
         callback();
@@ -1435,12 +1478,14 @@
       setState(STATES.BALL_TAKEOFF);
       ball.classList.add("is-launching", "is-lifting");
 
-      runLaunchBounce(config.startScreen, clamp(window.innerHeight * 0.014, 8, 12), clamp(window.innerHeight * 0.24, 160, 220), token, function () {
-        runLaunchBounce(config.startScreen, clamp(window.innerHeight * 0.048, 24, 42), clamp(window.innerHeight * 0.4, 260, 360), token, function () {
-          ball.classList.remove("is-launching", "is-lifting");
-          callback();
-        });
-      });
+      runLaunchBounce(config.startScreen, clamp(window.innerHeight * 0.02, 12, 18), clamp(window.innerHeight * 0.2, 130, 180), token, function () {
+        runLaunchBounce(config.startScreen, clamp(window.innerHeight * 0.045, 24, 38), clamp(window.innerHeight * 0.26, 165, 230), token, function () {
+          runLaunchIntoFlight(config, clamp(window.innerHeight * 0.055, 34, 52), clamp(window.innerHeight * 0.3, 190, 270), 0.12, token, function (launchProgress, carryMs) {
+            ball.classList.remove("is-launching", "is-lifting");
+            callback(launchProgress, carryMs);
+          });
+        }, 10);
+      }, 10);
     }
 
     function landingBounce(targetId, screen, token, callback) {
@@ -1449,14 +1494,14 @@
         return;
       }
 
-      var firstHeight = clamp(window.innerHeight * 0.03, 18, 28);
-      var secondHeight = clamp(firstHeight * 0.36, 6, 12);
-      var firstDuration = clamp(window.innerHeight * 0.38, 260, 360);
-      var secondDuration = clamp(window.innerHeight * 0.26, 180, 260);
+      var firstHeight = clamp(window.innerHeight * 0.032, 20, 28);
+      var secondHeight = clamp(firstHeight * 0.34, 7, 11);
+      var firstDuration = clamp(window.innerHeight * 0.31, 220, 300);
+      var secondDuration = clamp(window.innerHeight * 0.22, 150, 215);
 
       runBounce(screen, firstHeight, firstDuration, token, false, function () {
-        runBounce(screen, secondHeight, secondDuration, token, true, callback);
-      });
+        runBounce(screen, secondHeight, secondDuration, token, true, callback, 10);
+      }, 12);
     }
 
     function finishTravel(targetId, config, token) {
@@ -1506,6 +1551,8 @@
       var startScroll = window.scrollY || window.pageYOffset;
       var config = createFlightConfig(startPoint, endPoint, targetId, startScroll);
       var startTime = 0;
+      var flightStartProgress = 0;
+      var carryIntoFlight = 0;
 
       if (!isCurrentAnimation(token)) {
         debugNavBall("stale nav ball frame cancelled");
@@ -1530,10 +1577,11 @@
         }
 
         if (!startTime) {
-          startTime = now;
+          startTime = now - carryIntoFlight;
         }
 
-        var raw = clamp((now - startTime) / config.duration, 0, 1);
+        var remainingDuration = config.duration * (1 - flightStartProgress);
+        var raw = mix(flightStartProgress, 1, clamp((now - startTime) / remainingDuration, 0, 1));
         var point = flightPointAt(raw, config);
         var actualScroll = flightScrollAt(raw, config);
         var screen = emergencyClampToViewport(point, config, raw);
@@ -1558,12 +1606,15 @@
         finishTravel(targetId, config, token);
       }
 
-      function beginFlightFrames() {
+      function beginFlightFrames(startProgress, carryMs) {
         if (!isCurrentAnimation(token)) {
           debugNavBall("stale nav ball frame cancelled");
           return;
         }
 
+        flightStartProgress = clamp(startProgress || 0, 0, 0.22);
+        carryIntoFlight = carryMs || 0;
+        startTime = 0;
         setState(STATES.BALL_FLYING);
         ball.classList.remove("is-launching", "is-lifting");
         ball.classList.add("is-flying");
