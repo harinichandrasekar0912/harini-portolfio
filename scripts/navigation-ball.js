@@ -1,6 +1,16 @@
 (function () {
   const DEBUG_NAV_GEOMETRY = true;
 
+  var SECTION_IDS = ["landing", "about", "work", "archive", "contact"];
+  var SECTION_INDEX = {
+    landing: 0,
+    about: 1,
+    work: 2,
+    archive: 3,
+    contact: 4
+  };
+  var LANDING_BOUNCE_HEIGHT = 14;
+
   function clamp(value, min, max) {
     return Math.min(Math.max(value, min), max);
   }
@@ -22,8 +32,6 @@
     return Number.isFinite(parsed) ? parsed : 0;
   }
 
-  var TAKEOFF_HEIGHT = 32;
-
   function centerOf(element) {
     var rect = element.getBoundingClientRect();
     return {
@@ -32,21 +40,46 @@
     };
   }
 
+  function sectionIndex(section) {
+    return Object.prototype.hasOwnProperty.call(SECTION_INDEX, section) ? SECTION_INDEX[section] : 0;
+  }
+
+  function targetSideFor(section) {
+    if (section === "about" || section === "work") {
+      return "left";
+    }
+
+    if (section === "archive" || section === "contact") {
+      return "right";
+    }
+
+    return "center";
+  }
+
+  function rollDirectionFor(section) {
+    if (section === "archive" || section === "contact") {
+      return 1;
+    }
+
+    return -1;
+  }
+
   function platformFromElement(element, section, side, kind) {
-    var rect = element.getBoundingClientRect();
+    var safeElement = element || document.body;
+    var rect = safeElement.getBoundingClientRect();
     var scrollY = window.scrollY || window.pageYOffset;
     var x = rect.left + rect.width / 2;
 
     if (side === "left") {
-      x = rect.left + rect.width * 0.22;
+      x = rect.left + rect.width * 0.72;
     }
 
     if (side === "right") {
-      x = rect.right - rect.width * 0.22;
+      x = rect.left + rect.width * 0.28;
     }
 
     return {
-      element: element,
+      element: safeElement,
       section: section,
       side: side || "center",
       kind: kind || "platform",
@@ -97,9 +130,21 @@
     var isTravelling = false;
     var closeOnBlurTimer = 0;
     var resetTimer = 0;
-    var activeLabel = "";
+    var sectionFrame = 0;
+    var currentSection = "landing";
     var navState = STATES.PLUS_IDLE;
     var debugOverlay = createDebugOverlay();
+
+    items.forEach(function (item) {
+      var original = item.getAttribute("data-nav-target");
+      item.dataset.navOriginalTarget = original;
+      item.dataset.navOriginalLabel = item.textContent.trim();
+      item.setAttribute("aria-label", "go to " + original);
+    });
+
+    function originalTarget(button) {
+      return button.dataset.navOriginalTarget || button.getAttribute("data-nav-target");
+    }
 
     function createDebugOverlay() {
       if (!DEBUG_NAV_GEOMETRY) {
@@ -268,6 +313,67 @@
       });
     }
 
+    function detectCurrentSection() {
+      var scrollY = window.scrollY || window.pageYOffset;
+      var probe = scrollY + window.innerHeight * 0.52;
+      var detected = "landing";
+
+      SECTION_IDS.forEach(function (id) {
+        var section = document.getElementById(id);
+
+        if (!section) {
+          return;
+        }
+
+        var rect = section.getBoundingClientRect();
+        var top = rect.top + scrollY;
+
+        if (top <= probe) {
+          detected = id;
+        }
+      });
+
+      return detected;
+    }
+
+    function updateCurrentSection(section, force) {
+      var nextSection = section || detectCurrentSection();
+
+      if (!force && isTravelling) {
+        return;
+      }
+
+      currentSection = nextSection;
+      items.forEach(function (button) {
+        var original = originalTarget(button);
+        var isCurrentDestination = currentSection !== "landing" && original === currentSection;
+        var nextLabel = isCurrentDestination ? "home" : button.dataset.navOriginalLabel || original;
+        var nextTarget = isCurrentDestination ? "landing" : original;
+
+        if (button.textContent.trim() !== nextLabel) {
+          button.textContent = nextLabel;
+        }
+
+        button.setAttribute("data-nav-target", nextTarget);
+        button.setAttribute("aria-label", isCurrentDestination ? "go home" : "go to " + original);
+      });
+
+      if (isOpen) {
+        updateSpokeGeometry();
+      }
+    }
+
+    function queueCurrentSectionUpdate() {
+      if (isTravelling || sectionFrame) {
+        return;
+      }
+
+      sectionFrame = window.requestAnimationFrame(function () {
+        sectionFrame = 0;
+        updateCurrentSection(detectCurrentSection());
+      });
+    }
+
     function readPlusGeometry() {
       var coreRect = core.getBoundingClientRect();
       var coreStyle = window.getComputedStyle(core);
@@ -296,7 +402,7 @@
 
     function naviCircleCentres() {
       return items.map(function (button) {
-        var label = button.getAttribute("data-nav-target");
+        var label = originalTarget(button);
         var centre = centerOf(button);
 
         return {
@@ -310,20 +416,43 @@
     function debugSnapshot(extra) {
       var plus = readPlusGeometry();
       var selected = extra || {};
+      var centres = {
+        aboutCircleCentreX: null,
+        aboutCircleCentreY: null,
+        workCircleCentreX: null,
+        workCircleCentreY: null,
+        archiveCircleCentreX: null,
+        archiveCircleCentreY: null,
+        contactCircleCentreX: null,
+        contactCircleCentreY: null
+      };
+
+      naviCircleCentres().forEach(function (point) {
+        centres[point.label + "CircleCentreX"] = round(point.x);
+        centres[point.label + "CircleCentreY"] = round(point.y);
+      });
 
       return {
         viewportWidth: round(plus.viewportWidth),
         viewportHeight: round(plus.viewportHeight),
         plusCircleSize: round(plus.plusCircleSize),
         bottomBuffer: round(plus.bottomBuffer),
-        measuredPlusCentreX: round(plus.measuredPlusCentreX),
-        measuredPlusCentreY: round(plus.measuredPlusCentreY),
-        expectedPlusCentreX: round(plus.expectedPlusCentreX),
-        expectedPlusCentreY: round(plus.expectedPlusCentreY),
-        measuredSpokeOriginX: round(plus.measuredSpokeOriginX),
-        measuredSpokeOriginY: round(plus.measuredSpokeOriginY),
+        plusCircleCentreX: round(plus.measuredPlusCentreX),
+        plusCircleCentreY: round(plus.measuredPlusCentreY),
+        expectedPlusCircleCentreX: round(plus.expectedPlusCentreX),
+        expectedPlusCircleCentreY: round(plus.expectedPlusCentreY),
+        spokeOriginX: round(plus.measuredSpokeOriginX),
+        spokeOriginY: round(plus.measuredSpokeOriginY),
         expectedSpokeOriginX: round(plus.expectedSpokeOriginX),
         expectedSpokeOriginY: round(plus.expectedSpokeOriginY),
+        aboutCircleCentreX: centres.aboutCircleCentreX,
+        aboutCircleCentreY: centres.aboutCircleCentreY,
+        workCircleCentreX: centres.workCircleCentreX,
+        workCircleCentreY: centres.workCircleCentreY,
+        archiveCircleCentreX: centres.archiveCircleCentreX,
+        archiveCircleCentreY: centres.archiveCircleCentreY,
+        contactCircleCentreX: centres.contactCircleCentreX,
+        contactCircleCentreY: centres.contactCircleCentreY,
         selectedNaviCircle: selected.selectedNaviCircle || null,
         selectedNaviCircleCentreX: round(selected.selectedNaviCircleCentreX),
         selectedNaviCircleCentreY: round(selected.selectedNaviCircleCentreY),
@@ -355,15 +484,31 @@
       });
     }
 
-    function landingTargetScreenRect(platform) {
-      if (platform && platform.element && platform.kind !== "floor") {
-        return platform.element.getBoundingClientRect();
+    function landingTargetScreenRect(platform, finalScroll) {
+      if (platform && platform.kind === "floor") {
+        return {
+          left: 0,
+          top: window.innerHeight - 1,
+          width: window.innerWidth,
+          height: 1
+        };
       }
 
-      var y = platform ? platform.y - (window.scrollY || window.pageYOffset) : window.innerHeight - 34;
+      if (platform && platform.element) {
+        var rect = platform.element.getBoundingClientRect();
+        var scrollY = window.scrollY || window.pageYOffset;
+
+        return {
+          left: rect.left,
+          top: rect.top + scrollY - finalScroll,
+          width: rect.width,
+          height: rect.height
+        };
+      }
+
       return {
         left: 0,
-        top: y,
+        top: window.innerHeight - 1,
         width: window.innerWidth,
         height: 1
       };
@@ -374,57 +519,12 @@
         return;
       }
 
-      var rect = landingTargetScreenRect(platform);
-      var scrollY = window.scrollY || window.pageYOffset;
-      var screenPoint = documentPointToScreen(platform, scrollY);
+      var finalScroll = targetScrollFor(platform);
+      var rect = landingTargetScreenRect(platform, finalScroll);
+      var screenPoint = documentPointToScreen(platform, finalScroll);
 
       debugOverlay.outline(rect);
       debugOverlay.marker("landing target", screenPoint.x, screenPoint.y + ballRadius(), "rgb(220, 0, 0)");
-    }
-
-    function debugRenderTrajectory(startPoint, endPoint, targetId, startScroll) {
-      if (!DEBUG_NAV_GEOMETRY) {
-        return;
-      }
-
-      var distance = Math.abs(endPoint.y - startPoint.y);
-      var horizontalDirection = targetId === "about" || targetId === "work" ? -1 : 1;
-      var takeoffHeight = TAKEOFF_HEIGHT;
-      var points = [];
-
-      function trajectoryPoint(raw) {
-        if (raw < 0.16) {
-          var bounce = raw / 0.16;
-          return {
-            x: startPoint.x,
-            y: startPoint.y - Math.sin(Math.PI * bounce) * takeoffHeight
-          };
-        }
-
-        var local = (raw - 0.16) / 0.84;
-        var eased = easeInOut(local);
-        var lift = targetId === "contact" ? 58 : clamp(distance * 0.07, 48, 104);
-        var control = {
-          x: mix(startPoint.x, endPoint.x, 0.48) + horizontalDirection * clamp(window.innerWidth * 0.08, 38, 110),
-          y: Math.min(startPoint.y, endPoint.y) - lift
-        };
-        var inverse = 1 - eased;
-
-        return {
-          x: inverse * inverse * startPoint.x + 2 * inverse * eased * control.x + eased * eased * endPoint.x,
-          y: inverse * inverse * startPoint.y + 2 * inverse * eased * control.y + eased * eased * endPoint.y
-        };
-      }
-
-      for (var step = 0; step <= 28; step += 1) {
-        var raw = step / 28;
-        var point = trajectoryPoint(raw);
-        var desiredScroll = targetScrollFor(raw > 0.82 ? endPoint : point);
-        var actualScroll = mix(startScroll, desiredScroll, easeInOut(raw));
-        points.push(documentPointToScreen(point, actualScroll));
-      }
-
-      debugOverlay.trajectory(points);
     }
 
     function setBallPosition(x, y) {
@@ -449,7 +549,8 @@
         "is-arrived",
         "is-paused",
         "is-rolling",
-        "is-restoring"
+        "is-restoring",
+        "is-contact-landing"
       );
     }
 
@@ -461,7 +562,7 @@
       spokes.setAttribute("viewBox", "0 0 " + window.innerWidth + " " + window.innerHeight);
 
       items.forEach(function (button) {
-        var label = button.getAttribute("data-nav-target");
+        var label = originalTarget(button);
         var line = lines[label];
         var point = centerOf(button);
 
@@ -484,6 +585,11 @@
       }
 
       window.clearTimeout(closeOnBlurTimer);
+
+      if (open) {
+        updateCurrentSection(detectCurrentSection(), true);
+      }
+
       isOpen = open;
       nav.classList.toggle("is-open", open);
       setState(open ? STATES.MENU_OPEN : STATES.PLUS_IDLE);
@@ -511,7 +617,6 @@
       setMenuA11y(false);
       isOpen = false;
       isTravelling = false;
-      activeLabel = "";
       setState(finalState || STATES.PLUS_IDLE);
     }
 
@@ -523,27 +628,27 @@
     }
 
     function contactFloor() {
-      var section = document.getElementById("contact");
-      var rect = section ? section.getBoundingClientRect() : { top: 0, height: window.innerHeight };
-      var scrollY = window.scrollY || window.pageYOffset;
-      var documentBottom = document.documentElement.scrollHeight;
-      var floorY = Math.min(rect.top + scrollY + rect.height - 34, documentBottom - 24);
+      var maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
 
       return {
-        element: section,
+        element: document.getElementById("contact"),
         section: "contact",
         side: "right",
         kind: "floor",
         x: window.innerWidth * 0.78,
-        y: floorY,
+        y: maxScroll + window.innerHeight,
         width: window.innerWidth,
         height: 1
       };
     }
 
     function targetPlatformFor(section) {
+      if (section === "landing") {
+        return platformFromElement(document.querySelector(".landing-media") || document.getElementById("landing"), "landing", "center");
+      }
+
       if (section === "about") {
-        return platformFromElement(document.querySelector(".about-portrait img"), "about", "left");
+        return platformFromElement(document.querySelector(".about-portrait img") || document.querySelector(".about-portrait"), "about", "left");
       }
 
       if (section === "work") {
@@ -563,30 +668,119 @@
     }
 
     function targetScrollFor(point) {
-      var maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+      var maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
 
       if (point.kind === "floor") {
-        return clamp(point.y - window.innerHeight + 76, 0, Math.max(0, maxScroll));
+        return maxScroll;
       }
 
-      return clamp(point.y - window.innerHeight * 0.48, 0, Math.max(0, maxScroll));
+      return clamp(point.y - window.innerHeight * 0.48, 0, maxScroll);
+    }
+
+    function createFlightConfig(startPoint, endPoint, targetId, startScroll) {
+      var fromIndex = sectionIndex(currentSection || detectCurrentSection());
+      var toIndex = sectionIndex(targetId);
+      var upward = toIndex < fromIndex;
+      var side = targetSideFor(targetId);
+      var horizontalDirection = side === "right" ? 1 : side === "left" ? -1 : endPoint.x >= startPoint.x ? 1 : -1;
+      var distanceX = Math.abs(endPoint.x - startPoint.x);
+      var distanceY = Math.abs(endPoint.y - startPoint.y);
+      var pathDistance = Math.sqrt(distanceX * distanceX + distanceY * distanceY);
+      var lift = upward ? clamp(pathDistance * 0.16, 160, 280) : clamp(pathDistance * 0.08, 72, 170);
+      var controlX = mix(startPoint.x, endPoint.x, upward ? 0.42 : 0.5) + horizontalDirection * clamp(window.innerWidth * 0.08, 42, 130);
+      var controlY = Math.min(startPoint.y, endPoint.y) - lift;
+      var finalScroll = targetScrollFor(endPoint);
+      var duration = reducedMotion.matches ? 1 : clamp(pathDistance * 0.34 + 820, 1050, 2200);
+      var denominator = startPoint.y - 2 * controlY + endPoint.y;
+      var peakT = denominator === 0 ? 0.38 : clamp((startPoint.y - controlY) / denominator, 0.22, 0.58);
+
+      if (targetId === "contact") {
+        controlY = Math.min(startPoint.y, endPoint.y) - clamp(pathDistance * 0.05, 52, 110);
+        peakT = upward ? 0.32 : 0.4;
+      }
+
+      if (targetId === "landing") {
+        controlY = Math.min(startPoint.y, endPoint.y) - clamp(pathDistance * 0.12, 100, 220);
+        peakT = upward ? 0.2 : 0.36;
+      }
+
+      return {
+        targetId: targetId,
+        startPoint: startPoint,
+        endPoint: endPoint,
+        startScroll: startScroll,
+        finalScroll: finalScroll,
+        control: {
+          x: controlX,
+          y: controlY
+        },
+        upward: upward,
+        duration: duration,
+        scrollDelay: upward ? 0 : peakT,
+        hasShadow: endPoint.kind !== "floor"
+      };
+    }
+
+    function flightPointAt(raw, config) {
+      var eased = easeInOut(raw);
+      var inverse = 1 - eased;
+      var startPoint = config.startPoint;
+      var endPoint = config.endPoint;
+      var control = config.control;
+
+      return {
+        x: inverse * inverse * startPoint.x + 2 * inverse * eased * control.x + eased * eased * endPoint.x,
+        y: inverse * inverse * startPoint.y + 2 * inverse * eased * control.y + eased * eased * endPoint.y
+      };
+    }
+
+    function flightScrollAt(raw, config) {
+      var progress = 0;
+
+      if (config.upward) {
+        progress = easeInOut(raw);
+      } else if (raw > config.scrollDelay) {
+        progress = easeInOut((raw - config.scrollDelay) / (1 - config.scrollDelay));
+      }
+
+      return mix(config.startScroll, config.finalScroll, clamp(progress, 0, 1));
+    }
+
+    function debugRenderTrajectory(startPoint, endPoint, targetId, startScroll) {
+      if (!DEBUG_NAV_GEOMETRY) {
+        return;
+      }
+
+      var config = createFlightConfig(startPoint, endPoint, targetId, startScroll);
+      var points = [];
+
+      for (var step = 0; step <= 36; step += 1) {
+        var raw = step / 36;
+        var point = flightPointAt(raw, config);
+        var actualScroll = flightScrollAt(raw, config);
+        points.push(documentPointToScreen(point, actualScroll));
+      }
+
+      debugOverlay.trajectory(points);
     }
 
     function restorePlus() {
       setState(STATES.PLUS_RESTORED);
       ball.classList.add("is-restoring");
       clearChoiceState(STATES.PLUS_RESTORED);
+      document.documentElement.classList.remove("is-ball-animating");
 
       window.clearTimeout(resetTimer);
       resetTimer = window.setTimeout(function () {
         resetBallClasses();
         ballLabel.textContent = "";
         setState(STATES.PLUS_IDLE);
+        updateCurrentSection(detectCurrentSection(), true);
       }, reducedMotion.matches ? 1 : 260);
     }
 
     function rollOut(targetId, landingPoint) {
-      var direction = targetId === "about" || targetId === "work" ? -1 : 1;
+      var direction = rollDirectionFor(targetId);
       var startX = landingPoint.x;
       var endX = direction < 0 ? -ballRadius() - 18 : window.innerWidth + ballRadius() + 18;
       var y = landingPoint.screenY;
@@ -594,8 +788,8 @@
       var startTime = 0;
 
       setState(STATES.BALL_ROLLING_OUT);
-      ball.classList.remove("is-arrived");
-      ball.classList.add("is-rolling", "is-landed");
+      ball.classList.remove("is-arrived", "is-landing", "is-landed");
+      ball.classList.add("is-rolling");
 
       function frame(now) {
         if (!startTime) {
@@ -618,76 +812,14 @@
       window.requestAnimationFrame(frame);
     }
 
-    function finishTravel(targetId, endPoint) {
-      var endScroll = targetScrollFor(endPoint);
-      var screen = documentPointToScreen(endPoint, endScroll);
-      var target = document.getElementById(targetId);
-
-      window.scrollTo(0, endScroll);
-      setBallPosition(screen.x, screen.y);
-      debugRenderLandingTarget(endPoint);
-      setState(STATES.BALL_LANDING);
-      ball.classList.remove("is-moving", "is-flying", "is-lifting");
-      ball.classList.add("is-landing", "is-landed", "is-arrived");
-
-      if (target) {
-        target.focus({ preventScroll: true });
-      }
-
-      if (window.history && window.history.replaceState) {
-        window.history.replaceState(null, "", "#" + targetId);
-      }
-
-      window.setTimeout(function () {
-        rollOut(targetId, {
-          x: screen.x,
-          screenY: screen.y
-        });
-      }, reducedMotion.matches ? 1 : 360);
-    }
-
-    function flyBall(startPoint, target, targetId) {
-      var endPoint = targetPlatformFor(targetId);
-      var startScroll = window.scrollY || window.pageYOffset;
-      var distance = Math.abs(endPoint.y - startPoint.y);
-      var duration = reducedMotion.matches ? 0 : clamp(distance * 0.42 + 720, 950, 1900);
-      var horizontalDirection = targetId === "about" || targetId === "work" ? -1 : 1;
-      var startTime = 0;
-      var takeoffHeight = reducedMotion.matches ? 0 : TAKEOFF_HEIGHT;
-
-      if (reducedMotion.matches) {
-        window.scrollTo(0, targetScrollFor(endPoint));
-        finishTravel(targetId, endPoint);
+    function landingBounce(targetId, screen, callback) {
+      if (reducedMotion.matches || targetId === "contact") {
+        callback();
         return;
       }
 
-      setState(STATES.BALL_TAKEOFF);
-      ball.classList.remove("is-forming", "is-landed", "is-ready");
-      ball.classList.add("is-visible", "is-lifting");
-
-      function pointAt(raw) {
-        if (raw < 0.16) {
-          var bounce = raw / 0.16;
-          return {
-            x: startPoint.x,
-            y: startPoint.y - Math.sin(Math.PI * bounce) * takeoffHeight
-          };
-        }
-
-        var local = (raw - 0.16) / 0.84;
-        var eased = easeInOut(local);
-        var lift = targetId === "contact" ? 58 : clamp(distance * 0.07, 48, 104);
-        var control = {
-          x: mix(startPoint.x, endPoint.x, 0.48) + horizontalDirection * clamp(window.innerWidth * 0.08, 38, 110),
-          y: Math.min(startPoint.y, endPoint.y) - lift
-        };
-        var inverse = 1 - eased;
-
-        return {
-          x: inverse * inverse * startPoint.x + 2 * inverse * eased * control.x + eased * eased * endPoint.x,
-          y: inverse * inverse * startPoint.y + 2 * inverse * eased * control.y + eased * eased * endPoint.y
-        };
-      }
+      var duration = 260;
+      var startTime = 0;
 
       function frame(now) {
         if (!startTime) {
@@ -695,25 +827,98 @@
         }
 
         var raw = clamp((now - startTime) / duration, 0, 1);
-        var point = pointAt(raw);
-        var desiredScroll = targetScrollFor(raw > 0.82 ? endPoint : point);
-        var actualScroll = mix(startScroll, desiredScroll, easeInOut(raw));
+        var bounce = Math.sin(Math.PI * raw) * LANDING_BOUNCE_HEIGHT;
+
+        setBallPosition(screen.x, screen.y - bounce);
+
+        if (raw < 1) {
+          window.requestAnimationFrame(frame);
+          return;
+        }
+
+        setBallPosition(screen.x, screen.y);
+        callback();
+      }
+
+      window.requestAnimationFrame(frame);
+    }
+
+    function finishTravel(targetId, endPoint) {
+      var endScroll = targetScrollFor(endPoint);
+      var screen = documentPointToScreen(endPoint, endScroll);
+      var target = document.getElementById(targetId);
+      var cleanUrl = window.location.pathname + window.location.search;
+
+      window.scrollTo(0, endScroll);
+      setBallPosition(screen.x, screen.y);
+      debugRenderLandingTarget(endPoint);
+      setState(STATES.BALL_LANDING);
+      ball.classList.remove("is-moving", "is-flying", "is-lifting");
+
+      if (endPoint.kind === "floor") {
+        ball.classList.add("is-contact-landing", "is-arrived");
+      } else {
+        ball.classList.add("is-landing", "is-landed", "is-arrived");
+      }
+
+      if (target) {
+        target.focus({ preventScroll: true });
+      }
+
+      updateCurrentSection(targetId, true);
+
+      if (window.history && window.history.replaceState) {
+        window.history.replaceState(null, "", targetId === "landing" ? cleanUrl : "#" + targetId);
+      }
+
+      landingBounce(targetId, screen, function () {
+        window.setTimeout(function () {
+          rollOut(targetId, {
+            x: screen.x,
+            screenY: screen.y
+          });
+        }, reducedMotion.matches ? 1 : 160);
+      });
+    }
+
+    function flyBall(startPoint, targetId) {
+      var endPoint = targetPlatformFor(targetId);
+      var startScroll = window.scrollY || window.pageYOffset;
+      var config = createFlightConfig(startPoint, endPoint, targetId, startScroll);
+      var startTime = 0;
+
+      document.documentElement.classList.add("is-ball-animating");
+
+      if (reducedMotion.matches) {
+        window.scrollTo(0, config.finalScroll);
+        finishTravel(targetId, endPoint);
+        return;
+      }
+
+      setState(STATES.BALL_FLYING);
+      ball.classList.remove("is-forming", "is-landed", "is-ready", "is-landing", "is-contact-landing");
+      ball.classList.add("is-visible", "is-moving", "is-flying");
+
+      function frame(now) {
+        if (!startTime) {
+          startTime = now;
+        }
+
+        var raw = clamp((now - startTime) / config.duration, 0, 1);
+        var point = flightPointAt(raw, config);
+        var actualScroll = flightScrollAt(raw, config);
         var screen = documentPointToScreen(point, actualScroll);
 
         window.scrollTo(0, actualScroll);
         setBallPosition(screen.x, screen.y);
         debugRenderLandingTarget(endPoint);
 
-        if (raw > 0.16 && raw < 0.85) {
-          setState(STATES.BALL_FLYING);
-          ball.classList.remove("is-lifting", "is-landing", "is-landed");
-          ball.classList.add("is-moving", "is-flying");
-        }
-
-        if (raw >= 0.85) {
+        if (config.hasShadow && raw >= 0.85) {
           setState(STATES.BALL_LANDING);
           ball.classList.remove("is-flying");
           ball.classList.add("is-landing");
+        } else {
+          ball.classList.remove("is-landing", "is-landed", "is-arrived");
         }
 
         if (raw < 1) {
@@ -766,11 +971,10 @@
         ballStartX: startX,
         ballStartY: startY,
         landingTargetX: debugEndPoint.x,
-        landingTargetY: debugEndPoint.y - scrollY
+        landingTargetY: debugEndPoint.y - targetScrollFor(debugEndPoint)
       });
 
       isTravelling = true;
-      activeLabel = label;
       setState(STATES.NAVI_SELECTED);
       nav.classList.remove("is-open");
       nav.classList.add("is-choosing");
@@ -798,7 +1002,7 @@
         setState(STATES.BALL_READY);
         ball.classList.remove("is-forming");
         ball.classList.add("is-ready");
-        flyBall(startPoint, target, targetId);
+        flyBall(startPoint, targetId);
       }, reducedMotion.matches ? 1 : 1250);
     }
 
@@ -856,7 +1060,11 @@
       }
     });
 
+    window.addEventListener("scroll", queueCurrentSectionUpdate, { passive: true });
+
     window.addEventListener("resize", function () {
+      updateCurrentSection(detectCurrentSection(), true);
+
       if (isOpen) {
         updateSpokeGeometry();
       }
@@ -864,6 +1072,8 @@
 
     setMenuA11y(false);
     setState(STATES.PLUS_IDLE);
+    updateCurrentSection(detectCurrentSection(), true);
+    debugRenderBase();
   }
 
   window.HariniNavigationBall = {

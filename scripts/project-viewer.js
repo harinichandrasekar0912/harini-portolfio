@@ -64,6 +64,8 @@
       var bottomBuffer = stacked ? 72 : clamp(vh * 0.08, 48, 96);
       var focusHeight = stacked ? Math.min(vw - 32, 560) : Math.max(260, vh - topBuffer - bottomBuffer);
       var focusWidth = stacked ? Math.min(vw - 32, 560) : Math.min(vw * 0.58, focusHeight * 1.25, 860);
+      var panelPeek = stacked ? 0 : clamp(vw * 0.16, 72, 220);
+      var panelWidth = stacked ? vw : vw - panelPeek;
       var focusLeft = stacked ? 16 : side === "right" ? vw - focusWidth : 0;
       var focusTop = stacked ? topBuffer : topBuffer;
 
@@ -77,7 +79,8 @@
       viewer.style.setProperty("--focus-top", focusTop + "px");
       viewer.style.setProperty("--focus-width", focusWidth + "px");
       viewer.style.setProperty("--focus-height", focusHeight + "px");
-      viewer.style.setProperty("--panel-width", vw + "px");
+      viewer.style.setProperty("--project-panel-peek", panelPeek + "px");
+      viewer.style.setProperty("--panel-width", panelWidth + "px");
     }
 
     function updateMaxShift() {
