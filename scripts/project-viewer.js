@@ -67,10 +67,11 @@
       var vh = window.innerHeight;
       var stacked = isStackedMode();
       var side = rect.left + rect.width / 2 > vw / 2 ? "right" : "left";
-      var topBuffer = stacked ? Math.max(88, vh * 0.12) : clamp(vh * 0.08, 48, 96);
-      var bottomBuffer = stacked ? 72 : clamp(vh * 0.08, 48, 96);
-      var focusHeight = stacked ? Math.min(vw - 32, 560) : Math.max(260, vh - topBuffer - bottomBuffer);
-      var focusWidth = stacked ? Math.min(vw - 32, 560) : Math.min(vw * 0.58, focusHeight * 1.25, 860);
+      var topBuffer = stacked ? Math.max(88, vh * 0.12) : clamp(vh * 0.07, 48, 88);
+      var bottomUiZone = stacked ? clamp(vh * 0.14, 104, 150) : clamp(vh * 0.16, 120, 180);
+      var maxFocusHeight = Math.max(240, vh - topBuffer - bottomUiZone);
+      var focusHeight = stacked ? Math.min(vw - 32, maxFocusHeight, 520) : maxFocusHeight;
+      var focusWidth = stacked ? Math.min(vw - 32, 520) : Math.min(vw * 0.54, focusHeight * 1.25, 780);
       var panelPeek = stacked ? 0 : clamp(vw * 0.16, 72, 220);
       var panelWidth = stacked ? vw : vw - panelPeek;
       var focusLeft = stacked ? 16 : side === "right" ? vw - focusWidth : 0;
@@ -86,6 +87,8 @@
       viewer.style.setProperty("--focus-top", focusTop + "px");
       viewer.style.setProperty("--focus-width", focusWidth + "px");
       viewer.style.setProperty("--focus-height", focusHeight + "px");
+      viewer.style.setProperty("--project-top-buffer", topBuffer + "px");
+      viewer.style.setProperty("--project-bottom-ui-zone", bottomUiZone + "px");
       viewer.style.setProperty("--project-panel-peek", panelPeek + "px");
       viewer.style.setProperty("--panel-width", panelWidth + "px");
     }
@@ -208,6 +211,7 @@
       viewer.classList.remove("is-ready", "is-closing");
       viewer.setAttribute("aria-hidden", "false");
       document.body.classList.add("is-project-open", "is-project-dark");
+      document.body.classList.remove("is-project-closing");
       notifyProjectState("harini:project-open");
 
       window.requestAnimationFrame(function () {
@@ -224,7 +228,7 @@
     function finishClose() {
       viewer.classList.remove("is-active", "is-expanded", "is-ready", "is-closing");
       viewer.setAttribute("aria-hidden", "true");
-      document.body.classList.remove("is-project-open", "is-project-dark");
+      document.body.classList.remove("is-project-open", "is-project-dark", "is-project-closing");
       track.innerHTML = "";
       hero.removeAttribute("src");
       activeProject = null;
@@ -252,18 +256,21 @@
 
       viewer.classList.add("is-closing");
       viewer.classList.remove("is-ready");
+      document.body.classList.add("is-project-closing");
+      notifyProjectState("harini:project-closing");
       setShift(0, false);
       story.scrollTop = 0;
       window.clearTimeout(closeTimer);
 
-      closeTimer = window.setTimeout(function () {
-        if (activeTrigger) {
-          setViewerVars(activeTrigger);
-        }
+      if (activeTrigger) {
+        setViewerVars(activeTrigger);
+      }
 
+      window.requestAnimationFrame(function () {
         viewer.classList.remove("is-expanded");
-        closeTimer = window.setTimeout(finishClose, reducedMotion.matches ? 1 : 820);
-      }, reducedMotion.matches ? 1 : 720);
+      });
+
+      closeTimer = window.setTimeout(finishClose, reducedMotion.matches ? 1 : 980);
     }
 
     triggers.forEach(function (trigger) {

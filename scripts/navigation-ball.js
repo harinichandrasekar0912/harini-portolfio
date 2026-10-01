@@ -10,7 +10,7 @@
     contact: 4
   };
   var LANDING_BOUNCE_HEIGHT = 14;
-  var FLIGHT_DURATION_MULTIPLIER = 1.22;
+  var FLIGHT_DURATION_MULTIPLIER = 1.32;
 
   function clamp(value, min, max) {
     return Math.min(Math.max(value, min), max);
@@ -315,25 +315,62 @@
       });
     }
 
-    function getSafeViewportBounds() {
+    function getSafeBounds(options) {
       var radius = ballRadius();
-      var margin = Math.max(radius + 16, 16);
+      var margin = Math.max(radius + 18, 18);
+      var allowFloor = Boolean(options && options.allowFloor);
 
       return {
-        safeMinX: margin,
-        safeMaxX: window.innerWidth - margin,
-        safeMinY: margin,
-        safeMaxY: window.innerHeight - margin
+        minX: margin,
+        maxX: window.innerWidth - margin,
+        minY: margin,
+        maxY: allowFloor ? window.innerHeight - radius : window.innerHeight - margin,
+        floorY: window.innerHeight - radius,
+        marginX: margin,
+        marginY: margin
+      };
+    }
+
+    function getSafeViewportBounds() {
+      var bounds = getSafeBounds();
+
+      return {
+        safeMinX: bounds.minX,
+        safeMaxX: bounds.maxX,
+        safeMinY: bounds.minY,
+        safeMaxY: bounds.maxY
+      };
+    }
+
+    function fitControlPointInsideBounds(point, bounds) {
+      return {
+        x: clamp(point.x, bounds.minX, bounds.maxX),
+        y: clamp(point.y, bounds.minY, bounds.maxY)
       };
     }
 
     function clampToViewport(point) {
-      var bounds = getSafeViewportBounds();
+      return fitControlPointInsideBounds(point, getSafeBounds());
+    }
 
-      return {
-        x: clamp(point.x, bounds.safeMinX, bounds.safeMaxX),
-        y: clamp(point.y, bounds.safeMinY, bounds.safeMaxY)
-      };
+    function emergencyClampToViewport(point, config, raw) {
+      var bounds = config.bounds;
+      var clamped = fitControlPointInsideBounds(point, bounds);
+      var changed = Math.abs(clamped.x - point.x) > 0.5 || Math.abs(clamped.y - point.y) > 0.5;
+
+      if (changed && DEBUG_NAV_GEOMETRY && !config.emergencyClampLogged) {
+        config.emergencyClampLogged = true;
+        console.warn("Navigation ball emergency clamp activated", {
+          target: config.targetId,
+          progress: round(raw),
+          x: round(point.x),
+          y: round(point.y),
+          clampedX: round(clamped.x),
+          clampedY: round(clamped.y)
+        });
+      }
+
+      return clamped;
     }
 
     function detectCurrentSection() {
@@ -549,12 +586,12 @@
       };
     }
 
-    function debugRenderLandingTarget(platform) {
+    function debugRenderLandingTarget(platform, finalScrollOverride) {
       if (!DEBUG_NAV_GEOMETRY || !platform) {
         return;
       }
 
-      var finalScroll = targetScrollFor(platform);
+      var finalScroll = typeof finalScrollOverride === "number" ? finalScrollOverride : targetScrollFor(platform);
       var rect = landingTargetScreenRect(platform, finalScroll);
       var screenPoint = documentPointToScreen(platform, finalScroll);
 
@@ -674,14 +711,24 @@
       }
 
       isProjectMode = true;
+      nav.classList.remove("is-project-closing");
       nav.classList.add("is-project-close");
       setState(STATES.PLUS_IDLE);
       setMenuA11y(false);
     }
 
+    function beginProjectClose() {
+      if (!isProjectMode) {
+        return;
+      }
+
+      nav.classList.add("is-project-closing");
+      setMenuA11y(false);
+    }
+
     function exitProjectMode() {
       isProjectMode = false;
-      nav.classList.remove("is-project-close");
+      nav.classList.remove("is-project-close", "is-project-closing");
       setMenuA11y(false);
       updateCurrentSection(detectCurrentSection(), true);
     }
@@ -736,6 +783,87 @@
       return clamp(point.y - window.innerHeight * 0.48, 0, maxScroll);
     }
 
+    function cubicPointAt(t, path) {
+      var inverse = 1 - t;
+      var p0 = path.start;
+      var p1 = path.controlA;
+      var p2 = path.controlB;
+      var p3 = path.end;
+
+      return {
+        x: inverse * inverse * inverse * p0.x + 3 * inverse * inverse * t * p1.x + 3 * inverse * t * t * p2.x + t * t * t * p3.x,
+        y: inverse * inverse * inverse * p0.y + 3 * inverse * inverse * t * p1.y + 3 * inverse * t * t * p2.y + t * t * t * p3.y
+      };
+    }
+
+    function resolveFinalScroll(endPoint, startScreen, downward, targetId, bounds) {
+      var radius = ballRadius();
+      var maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+      var desiredCenterY = 0;
+
+      if (endPoint.kind === "floor") {
+        return maxScroll;
+      }
+
+      if (targetId === "landing") {
+        desiredCenterY = clamp(window.innerHeight * 0.42, bounds.minY, bounds.maxY);
+      } else if (downward) {
+        desiredCenterY = clamp(Math.max(startScreen.y + 48, window.innerHeight * 0.7), bounds.minY, bounds.maxY);
+      } else {
+        desiredCenterY = clamp(Math.min(startScreen.y - 54, window.innerHeight * 0.42), bounds.minY, bounds.maxY);
+      }
+
+      return clamp(endPoint.y - (desiredCenterY + radius), 0, maxScroll);
+    }
+
+    function createSmoothFlightPath(startScreen, endScreen, config) {
+      var bounds = config.bounds;
+      var downward = config.downward;
+      var horizontalDirection = config.horizontalDirection;
+      var dx = endScreen.x - startScreen.x;
+      var viewportLift = clamp(window.innerHeight * (downward ? 0.1 : 0.18), downward ? 42 : 86, downward ? 116 : 190);
+      var sidePush = horizontalDirection * clamp(window.innerWidth * 0.055, 34, 88);
+      var controlA;
+      var controlB;
+
+      if (config.targetId === "contact") {
+        viewportLift = clamp(window.innerHeight * 0.08, 42, 96);
+        controlA = {
+          x: startScreen.x + dx * 0.24 + sidePush * 0.35,
+          y: startScreen.y - viewportLift
+        };
+        controlB = {
+          x: startScreen.x + dx * 0.74 + sidePush * 0.12,
+          y: Math.min(endScreen.y - 28, mix(startScreen.y, endScreen.y, 0.78))
+        };
+      } else if (downward) {
+        controlA = {
+          x: startScreen.x + dx * 0.24 + sidePush * 0.38,
+          y: startScreen.y - viewportLift
+        };
+        controlB = {
+          x: startScreen.x + dx * 0.74 + sidePush * 0.12,
+          y: mix(startScreen.y, endScreen.y, 0.76)
+        };
+      } else {
+        controlA = {
+          x: startScreen.x + dx * 0.22 + sidePush * 0.4,
+          y: startScreen.y - viewportLift
+        };
+        controlB = {
+          x: startScreen.x + dx * 0.72 + sidePush * 0.1,
+          y: endScreen.y - clamp(window.innerHeight * 0.06, 34, 68)
+        };
+      }
+
+      return {
+        start: fitControlPointInsideBounds(startScreen, bounds),
+        controlA: fitControlPointInsideBounds(controlA, bounds),
+        controlB: fitControlPointInsideBounds(controlB, bounds),
+        end: fitControlPointInsideBounds(endScreen, bounds)
+      };
+    }
+
     function createFlightConfig(startPoint, endPoint, targetId, startScroll) {
       var fromIndex = sectionIndex(currentSection || detectCurrentSection());
       var toIndex = sectionIndex(targetId);
@@ -745,55 +873,47 @@
       var distanceX = Math.abs(endPoint.x - startPoint.x);
       var distanceY = Math.abs(endPoint.y - startPoint.y);
       var pathDistance = Math.sqrt(distanceX * distanceX + distanceY * distanceY);
-      var lift = upward ? clamp(pathDistance * 0.16, 160, 280) : clamp(pathDistance * 0.08, 72, 170);
-      var safeBounds = getSafeViewportBounds();
-      var controlX = mix(startPoint.x, endPoint.x, upward ? 0.42 : 0.5) + horizontalDirection * clamp(window.innerWidth * 0.08, 42, 130);
-      var controlY = Math.min(startPoint.y, endPoint.y) - lift;
-      var finalScroll = targetScrollFor(endPoint);
-      var duration = reducedMotion.matches ? 1 : clamp((pathDistance * 0.34 + 820) * FLIGHT_DURATION_MULTIPLIER, 1280, 2680);
-      var denominator = startPoint.y - 2 * controlY + endPoint.y;
-      var peakT = denominator === 0 ? 0.38 : clamp((startPoint.y - controlY) / denominator, 0.22, 0.58);
-
-      controlX = clamp(controlX, safeBounds.safeMinX, safeBounds.safeMaxX);
+      var downward = toIndex > fromIndex;
+      var bounds = getSafeBounds({ allowFloor: targetId === "contact" });
+      var startScreen = fitControlPointInsideBounds(documentPointToScreen(startPoint, startScroll), bounds);
+      var finalScroll = resolveFinalScroll(endPoint, startScreen, downward, targetId, bounds);
+      var endScreen = documentPointToScreen(endPoint, finalScroll);
+      var duration = reducedMotion.matches ? 1 : clamp((pathDistance * 0.34 + 820) * FLIGHT_DURATION_MULTIPLIER, 1400, 2600);
 
       if (targetId === "contact") {
-        controlY = Math.min(startPoint.y, endPoint.y) - clamp(pathDistance * 0.05, 52, 110);
-        peakT = upward ? 0.32 : 0.4;
+        endScreen = {
+          x: clamp(endScreen.x, bounds.minX, bounds.maxX),
+          y: bounds.floorY
+        };
+      } else {
+        endScreen = fitControlPointInsideBounds(endScreen, bounds);
       }
 
-      if (targetId === "landing") {
-        controlY = Math.min(startPoint.y, endPoint.y) - clamp(pathDistance * 0.12, 100, 220);
-        peakT = upward ? 0.2 : 0.36;
-      }
-
-      return {
+      var config = {
         targetId: targetId,
         startPoint: startPoint,
         endPoint: endPoint,
         startScroll: startScroll,
         finalScroll: finalScroll,
-        control: {
-          x: controlX,
-          y: controlY
-        },
+        startScreen: startScreen,
+        endScreen: endScreen,
+        bounds: bounds,
+        horizontalDirection: horizontalDirection,
         upward: upward,
+        downward: downward,
         duration: duration,
-        scrollDelay: upward ? 0 : peakT,
-        hasShadow: endPoint.kind !== "floor"
+        scrollDelay: upward ? 0 : targetId === "contact" ? 0.04 : 0.08,
+        hasShadow: endPoint.kind !== "floor",
+        emergencyClampLogged: false,
+        path: null
       };
+
+      config.path = createSmoothFlightPath(startScreen, endScreen, config);
+      return config;
     }
 
     function flightPointAt(raw, config) {
-      var eased = easeInOut(raw);
-      var inverse = 1 - eased;
-      var startPoint = config.startPoint;
-      var endPoint = config.endPoint;
-      var control = config.control;
-
-      return {
-        x: inverse * inverse * startPoint.x + 2 * inverse * eased * control.x + eased * eased * endPoint.x,
-        y: inverse * inverse * startPoint.y + 2 * inverse * eased * control.y + eased * eased * endPoint.y
-      };
+      return cubicPointAt(easeInOut(raw), config.path);
     }
 
     function flightScrollAt(raw, config) {
@@ -819,8 +939,7 @@
       for (var step = 0; step <= 36; step += 1) {
         var raw = step / 36;
         var point = flightPointAt(raw, config);
-        var actualScroll = flightScrollAt(raw, config);
-        points.push(clampToViewport(documentPointToScreen(point, actualScroll)));
+        points.push(point);
       }
 
       debugOverlay.trajectory(points);
@@ -905,15 +1024,16 @@
       window.requestAnimationFrame(frame);
     }
 
-    function finishTravel(targetId, endPoint) {
-      var endScroll = targetScrollFor(endPoint);
-      var screen = clampToViewport(documentPointToScreen(endPoint, endScroll));
+    function finishTravel(targetId, config) {
+      var endPoint = config.endPoint;
+      var endScroll = config.finalScroll;
+      var screen = config.endScreen;
       var target = document.getElementById(targetId);
       var cleanUrl = window.location.pathname + window.location.search;
 
       window.scrollTo(0, endScroll);
       setBallPosition(screen.x, screen.y);
-      debugRenderLandingTarget(endPoint);
+      debugRenderLandingTarget(endPoint, endScroll);
       setState(STATES.BALL_LANDING);
       ball.classList.remove("is-moving", "is-flying", "is-lifting");
 
@@ -953,7 +1073,7 @@
 
       if (reducedMotion.matches) {
         window.scrollTo(0, config.finalScroll);
-        finishTravel(targetId, endPoint);
+        finishTravel(targetId, config);
         return;
       }
 
@@ -969,11 +1089,11 @@
         var raw = clamp((now - startTime) / config.duration, 0, 1);
         var point = flightPointAt(raw, config);
         var actualScroll = flightScrollAt(raw, config);
-        var screen = clampToViewport(documentPointToScreen(point, actualScroll));
+        var screen = emergencyClampToViewport(point, config, raw);
 
         window.scrollTo(0, actualScroll);
         setBallPosition(screen.x, screen.y);
-        debugRenderLandingTarget(endPoint);
+        debugRenderLandingTarget(endPoint, config.finalScroll);
 
         if (config.hasShadow && raw >= 0.85) {
           setState(STATES.BALL_LANDING);
@@ -988,7 +1108,7 @@
           return;
         }
 
-        finishTravel(targetId, endPoint);
+        finishTravel(targetId, config);
       }
 
       window.requestAnimationFrame(frame);
@@ -1022,9 +1142,10 @@
       }
 
       var debugEndPoint = targetPlatformFor(targetId);
+      var debugConfig = createFlightConfig(startPoint, debugEndPoint, targetId, scrollY);
       debugRenderBase();
       debugOverlay.marker("ball start", startX, startY, "rgb(132, 0, 255)");
-      debugRenderLandingTarget(debugEndPoint);
+      debugRenderLandingTarget(debugEndPoint, debugConfig.finalScroll);
       debugRenderTrajectory(startPoint, debugEndPoint, targetId, scrollY);
       debugLogGeometry({
         selectedNaviCircle: label,
@@ -1032,8 +1153,8 @@
         selectedNaviCircleCentreY: startY,
         ballStartX: startX,
         ballStartY: startY,
-        landingTargetX: debugEndPoint.x,
-        landingTargetY: debugEndPoint.y - targetScrollFor(debugEndPoint)
+        landingTargetX: debugConfig.endScreen.x,
+        landingTargetY: debugConfig.endScreen.y
       });
 
       isTravelling = true;
@@ -1070,6 +1191,7 @@
 
     core.addEventListener("click", function () {
       if (isProjectMode) {
+        beginProjectClose();
         document.dispatchEvent(new CustomEvent("harini:project-close-request"));
         return;
       }
@@ -1128,6 +1250,7 @@
     });
 
     document.addEventListener("harini:project-open", enterProjectMode);
+    document.addEventListener("harini:project-closing", beginProjectClose);
     document.addEventListener("harini:project-closed", exitProjectMode);
 
     window.addEventListener("scroll", queueCurrentSectionUpdate, { passive: true });

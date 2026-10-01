@@ -11,10 +11,6 @@ html.is-ball-animating {
   scroll-behavior: auto;
 }
 
-body.is-project-dark {
-  background: #050505;
-}
-
 .nav-core {
   position: fixed;
   left: 50vw;
@@ -352,10 +348,18 @@ body.is-project-dark {
 }
 
 .nav-object.is-project-close .nav-core::after {
-  opacity: 1;
-  border-color: rgba(255, 255, 255, 0.34);
+  opacity: 0;
+  border-color: rgba(255, 255, 255, 0.52);
   background: transparent;
   transform: scale(1);
+  transition:
+    opacity 300ms var(--ease-standard),
+    border-color 300ms var(--ease-standard),
+    transform 300ms var(--ease-standard);
+}
+
+.nav-object.is-project-close.is-project-closing .nav-core::after {
+  opacity: 1;
 }
 
 .nav-object.is-project-close .plus-arm,
@@ -374,9 +378,23 @@ body.is-project-dark {
   transform: translate(-50%, -50%) rotate(-45deg);
 }
 
+.nav-object.is-project-close.is-project-closing .plus-arm {
+  transform: translate(-50%, -50%) rotate(0deg);
+}
+
+.nav-object.is-project-close.is-project-closing .plus-stem {
+  transform: translate(-50%, -50%) rotate(90deg);
+}
+
 .nav-object.is-project-close .nav-core:hover::after,
 .nav-object.is-project-close .nav-core:focus-visible::after {
-  border-color: rgba(255, 255, 255, 0.58);
+  opacity: 0;
+}
+
+.nav-object.is-project-close.is-project-closing .nav-core:hover::after,
+.nav-object.is-project-close.is-project-closing .nav-core:focus-visible::after {
+  opacity: 1;
+  border-color: rgba(255, 255, 255, 0.72);
 }
 
 .nav-travel-ball {
@@ -700,12 +718,14 @@ body.is-project-dark {
 }
 
 .project-viewer {
-  --project-bg: #050505;
-  --project-text: #f5f2ea;
-  --project-text-soft: rgba(255, 255, 255, 0.62);
-  --project-line: rgba(255, 255, 255, 0.22);
-  --project-line-strong: rgba(255, 255, 255, 0.42);
-  --project-grey: #1c1c1c;
+  --project-bg: var(--color-paper);
+  --project-text: var(--color-ink);
+  --project-text-soft: rgba(21, 20, 18, 0.62);
+  --project-line: rgba(21, 20, 18, 0.18);
+  --project-line-strong: rgba(21, 20, 18, 0.42);
+  --project-grey: var(--color-paper-warm);
+  --project-top-buffer: clamp(48px, 7vh, 88px);
+  --project-bottom-ui-zone: clamp(120px, 16vh, 180px);
   --tile-left: 0px;
   --tile-top: 0px;
   --tile-width: 0px;
@@ -720,24 +740,37 @@ body.is-project-dark {
   position: fixed;
   inset: 0;
   z-index: 900;
+  visibility: hidden;
   opacity: 0;
   pointer-events: none;
   color: var(--project-text);
+  transition:
+    opacity 900ms var(--ease-standard),
+    visibility 0ms linear 900ms,
+    color 780ms var(--ease-standard);
 }
 
 .project-viewer.is-active {
+  --project-bg: #050505;
+  --project-text: #f7f4ed;
+  --project-text-soft: rgba(255, 255, 255, 0.62);
+  --project-line: rgba(255, 255, 255, 0.28);
+  --project-line-strong: rgba(255, 255, 255, 0.86);
+  --project-grey: #1c1c1c;
+  visibility: visible;
   opacity: 1;
   pointer-events: auto;
+  transition-delay: 0ms;
 }
 
 .project-glass {
   position: absolute;
   inset: 0;
-  background: rgba(5, 5, 5, 0.94);
+  background: #050505;
   opacity: 0;
   backdrop-filter: blur(0);
   -webkit-backdrop-filter: blur(0);
-  box-shadow: inset 0 0 0 100vmax rgba(0, 0, 0, 0.22);
+  box-shadow: inset 0 0 0 100vmax rgba(0, 0, 0, 0.2);
 }
 
 .project-hero-frame {
@@ -747,6 +780,7 @@ body.is-project-dark {
   z-index: 2;
   width: var(--tile-width);
   height: var(--tile-height);
+  max-height: calc(100vh - var(--project-top-buffer) - var(--project-bottom-ui-zone));
   margin: 0;
   border: var(--line-thin) solid var(--project-line-strong);
   background: var(--project-bg);
@@ -808,6 +842,7 @@ body.is-project-dark {
 .project-panel-image {
   width: var(--focus-width);
   height: var(--focus-height);
+  max-height: calc(100vh - var(--project-top-buffer) - var(--project-bottom-ui-zone));
   margin: 0;
   border: var(--line-thin) solid var(--project-line);
   background: var(--project-bg);
@@ -917,7 +952,7 @@ body.is-project-dark {
 }
 
 .project-viewer.is-expanded .project-glass {
-  opacity: 1;
+  opacity: 0.96;
   backdrop-filter: blur(18px) saturate(0.78);
   -webkit-backdrop-filter: blur(18px) saturate(0.78);
 }
@@ -1018,10 +1053,10 @@ body.is-project-dark {
 .project-progress {
   position: fixed;
   left: 50%;
-  bottom: calc(var(--nav-bottom-buffer) + var(--plus-circle-size) + 18px);
+  bottom: clamp(10px, 1.8vh, 20px);
   z-index: 4;
-  width: clamp(180px, 24vw, 360px);
-  height: 1px;
+  width: clamp(200px, 28vw, 420px);
+  height: 2px;
   background: rgba(255, 255, 255, 0.28);
   opacity: 0;
   transform: translate(-50%, 8px);
@@ -1030,8 +1065,8 @@ body.is-project-dark {
 .project-progress span {
   display: block;
   width: 100%;
-  height: 1px;
-  background: #ffffff;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.92);
   transform: scaleX(0);
   transform-origin: left center;
 }
@@ -1052,7 +1087,30 @@ body.is-project-dark {
     top var(--duration-slow) var(--ease-standard),
     width var(--duration-slow) var(--ease-standard),
     height var(--duration-slow) var(--ease-standard),
+    color 780ms var(--ease-standard),
+    background-color 780ms var(--ease-standard),
+    border-color 780ms var(--ease-standard),
     backdrop-filter var(--duration-slow) var(--ease-standard);
+}
+
+.project-glass {
+  transition:
+    opacity 920ms var(--ease-standard),
+    background-color 920ms var(--ease-standard),
+    backdrop-filter 920ms var(--ease-standard),
+    -webkit-backdrop-filter 920ms var(--ease-standard);
+}
+
+.project-step,
+.project-panel h3,
+.project-panel p,
+.project-panel::before {
+  transition:
+    color 780ms var(--ease-standard),
+    background-color 780ms var(--ease-standard),
+    border-color 780ms var(--ease-standard),
+    opacity var(--duration-slow) var(--ease-standard),
+    transform var(--duration-slow) var(--ease-standard);
 }
 
 .project-track.is-dragging {
