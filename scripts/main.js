@@ -2,15 +2,31 @@
   function initContactForm() {
     var form = document.querySelector("[data-contact-form]");
     var response = document.querySelector("[data-form-response]");
+    var expandingTextareas = Array.prototype.slice.call(document.querySelectorAll("[data-auto-expand]"));
 
     if (!form || !response) {
       return;
     }
 
+    function expandTextarea(textarea) {
+      textarea.style.height = "auto";
+      textarea.style.height = textarea.scrollHeight + "px";
+    }
+
+    expandingTextareas.forEach(function (textarea) {
+      expandTextarea(textarea);
+      textarea.addEventListener("input", function () {
+        expandTextarea(textarea);
+      });
+    });
+
     form.addEventListener("submit", function (event) {
       event.preventDefault();
       response.textContent = "message noted — form backend coming soon.";
       form.reset();
+      expandingTextareas.forEach(function (textarea) {
+        expandTextarea(textarea);
+      });
     });
   }
 

@@ -1,7 +1,6 @@
 @media (max-width: 980px) {
   .about-layout,
-  .archive-layout,
-  .contact-layout {
+  .archive-layout {
     grid-template-columns: 1fr;
   }
 
@@ -17,10 +16,6 @@
     display: none;
   }
 
-  .contact-links {
-    grid-template-columns: repeat(2, minmax(0, max-content));
-    column-gap: var(--space-6);
-  }
 }
 
 @media (max-width: 760px) {
@@ -49,8 +44,7 @@
   }
 
   .about-section,
-  .archive-section,
-  .contact-section {
+  .archive-section {
     align-items: start;
   }
 
@@ -114,8 +108,13 @@
     --bar-width: 68vw;
   }
 
+  .contact-form {
+    width: min(88vw, 30rem);
+  }
+
   .contact-links {
-    grid-template-columns: 1fr;
+    bottom: clamp(1rem, 4vh, 2rem);
+    gap: var(--space-4);
   }
 
   .radial-item-about {
@@ -182,7 +181,7 @@
   }
 
   .contact-form {
-    max-width: none;
+    width: min(90vw, 26rem);
   }
 
   .radial-item-about {

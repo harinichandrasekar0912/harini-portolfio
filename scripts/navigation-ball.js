@@ -135,7 +135,16 @@
     var sectionFrame = 0;
     var currentSection = "landing";
     var navState = STATES.PLUS_IDLE;
+    var activeAnimationToken = 0;
+    var ballFrames = [];
+    var ballTimers = [];
     var debugOverlay = createDebugOverlay();
+
+    Array.prototype.slice.call(document.querySelectorAll("[data-travel-ball]")).forEach(function (travelBall, index) {
+      if (index > 0) {
+        travelBall.remove();
+      }
+    });
 
     items.forEach(function (item) {
       var original = item.getAttribute("data-nav-target");
@@ -365,6 +374,96 @@
       navState = nextState;
       nav.dataset.navState = nextState;
       ball.dataset.ballState = nextState;
+    }
+
+    function debugNavBall(message, detail) {
+      if (DEBUG_NAV_GEOMETRY) {
+        console.debug(message, detail || "");
+      }
+    }
+
+    function clearBallTimersAndFrames() {
+      ballFrames.forEach(function (frameId) {
+        window.cancelAnimationFrame(frameId);
+      });
+      ballTimers.forEach(function (timerId) {
+        window.clearTimeout(timerId);
+      });
+      ballFrames = [];
+      ballTimers = [];
+      window.clearTimeout(resetTimer);
+      resetTimer = 0;
+    }
+
+    function isCurrentAnimation(token) {
+      return token === activeAnimationToken;
+    }
+
+    function requestBallFrame(callback, token) {
+      var frameId = window.requestAnimationFrame(function (now) {
+        ballFrames = ballFrames.filter(function (storedFrameId) {
+          return storedFrameId !== frameId;
+        });
+
+        if (!isCurrentAnimation(token)) {
+          debugNavBall("stale nav ball frame cancelled");
+          return;
+        }
+
+        callback(now);
+      });
+
+      ballFrames.push(frameId);
+      return frameId;
+    }
+
+    function setBallTimeout(callback, delay, token) {
+      var timerId = window.setTimeout(function () {
+        ballTimers = ballTimers.filter(function (storedTimerId) {
+          return storedTimerId !== timerId;
+        });
+
+        if (!isCurrentAnimation(token)) {
+          debugNavBall("stale nav ball frame cancelled");
+          return;
+        }
+
+        callback();
+      }, delay);
+
+      ballTimers.push(timerId);
+      return timerId;
+    }
+
+    function cancelBallAnimation() {
+      activeAnimationToken += 1;
+      clearBallTimersAndFrames();
+    }
+
+    function beginBallAnimation(targetId) {
+      cancelBallAnimation();
+      activeAnimationToken += 1;
+      debugNavBall("nav ball animation start", targetId);
+      return activeAnimationToken;
+    }
+
+    function hideTravelBallImmediately() {
+      resetBallClasses();
+      ball.classList.remove("is-second-bounce");
+      ball.style.opacity = "0";
+      ball.style.setProperty("--ball-lift", "0px");
+      ball.style.setProperty("--ball-scale-x", "1");
+      ball.style.setProperty("--ball-scale-y", "1");
+      ball.style.setProperty("--ball-rotation", "0deg");
+    }
+
+    function resetBallState(finalState) {
+      cancelBallAnimation();
+      hideTravelBallImmediately();
+      ballLabel.textContent = "";
+      isTravelling = false;
+      document.documentElement.classList.remove("is-ball-animating");
+      setState(finalState || STATES.PLUS_IDLE);
     }
 
     function setMenuA11y(open) {
@@ -684,7 +783,8 @@
         "is-rolling",
         "is-restoring",
         "is-contact-landing",
-        "is-rebounding"
+        "is-rebounding",
+        "is-second-bounce"
       );
     }
 
@@ -795,12 +895,13 @@
     }
 
     function enterProjectMode() {
+      resetBallState(STATES.PLUS_IDLE);
+
       if (isOpen) {
         isOpen = false;
-        nav.classList.remove("is-open", "is-choosing", "is-travelling");
-        setMenuA11y(false);
       }
 
+      nav.classList.remove("is-open", "is-choosing", "is-travelling");
       isProjectMode = true;
       nav.classList.remove("is-project-closing");
       nav.classList.add("is-project-close");
@@ -955,6 +1056,44 @@
       };
     }
 
+    function createImpactApproach(path, endScreen, config) {
+      var bounds = config.bounds;
+      var startRaw = config.targetId === "contact" ? 0.74 : 0.76;
+      var alignAt = 0.52;
+      var approachHeight = clamp(window.innerHeight * (config.targetId === "contact" ? 0.12 : 0.115), 80, 150);
+      var join = cubicPointAt(easeInOut(startRaw), path);
+      var previous = cubicPointAt(easeInOut(Math.max(0, startRaw - 0.035)), path);
+      var above = fitControlPointInsideBounds({
+        x: endScreen.x,
+        y: endScreen.y - approachHeight
+      }, bounds);
+      var tangent = {
+        x: join.x - previous.x,
+        y: join.y - previous.y
+      };
+      var controlA = fitControlPointInsideBounds({
+        x: join.x + tangent.x * 1.15,
+        y: join.y + tangent.y * 1.15
+      }, bounds);
+      var controlB = fitControlPointInsideBounds({
+        x: mix(join.x, above.x, 0.88),
+        y: mix(join.y, above.y, 0.76)
+      }, bounds);
+
+      return {
+        startRaw: startRaw,
+        alignAt: alignAt,
+        above: above,
+        end: fitControlPointInsideBounds(endScreen, bounds),
+        joinCurve: {
+          start: fitControlPointInsideBounds(join, bounds),
+          controlA: controlA,
+          controlB: controlB,
+          end: above
+        }
+      };
+    }
+
     function createFlightConfig(startPoint, endPoint, targetId, startScroll) {
       var fromIndex = sectionIndex(currentSection || detectCurrentSection());
       var toIndex = sectionIndex(targetId);
@@ -1000,11 +1139,34 @@
       };
 
       config.path = createSmoothFlightPath(startScreen, endScreen, config);
+      config.impact = createImpactApproach(config.path, config.endScreen, config);
       return config;
     }
 
-    function flightPointAt(raw, config) {
+    function baseFlightPointAt(raw, config) {
       return cubicPointAt(easeInOut(raw), config.path);
+    }
+
+    function flightPointAt(raw, config) {
+      var impact = config.impact;
+
+      if (!impact || raw < impact.startRaw) {
+        return baseFlightPointAt(raw, config);
+      }
+
+      var local = clamp((raw - impact.startRaw) / (1 - impact.startRaw), 0, 1);
+
+      if (local < impact.alignAt) {
+        return cubicPointAt(easeInOut(local / impact.alignAt), impact.joinCurve);
+      }
+
+      var descent = clamp((local - impact.alignAt) / (1 - impact.alignAt), 0, 1);
+      var easedDescent = Math.pow(descent, 1.55);
+
+      return {
+        x: impact.end.x,
+        y: mix(impact.above.y, impact.end.y, easedDescent)
+      };
     }
 
     function flightScrollAt(raw, config) {
@@ -1036,89 +1198,134 @@
       debugOverlay.trajectory(points);
     }
 
-    function restorePlus() {
+    function restorePlus(token, targetId) {
+      if (!isCurrentAnimation(token)) {
+        debugNavBall("stale nav ball frame cancelled");
+        return;
+      }
+
       setState(STATES.PLUS_RESTORED);
       ball.classList.add("is-restoring");
       clearChoiceState(STATES.PLUS_RESTORED);
       document.documentElement.classList.remove("is-ball-animating");
 
-      window.clearTimeout(resetTimer);
-      resetTimer = window.setTimeout(function () {
-        resetBallClasses();
-        ballLabel.textContent = "";
+      resetTimer = setBallTimeout(function () {
+        debugNavBall("nav ball animation end", targetId);
+        resetBallState(STATES.PLUS_IDLE);
         setState(STATES.PLUS_IDLE);
         updateCurrentSection(detectCurrentSection(), true);
       }, reducedMotion.matches ? 1 : 260);
     }
 
-    function rollOut(targetId, landingPoint) {
+    function rollOut(targetId, landingPoint, token) {
       var direction = rollDirectionFor(targetId);
       var startX = landingPoint.x;
       var endX = direction < 0 ? -ballRadius() - 18 : window.innerWidth + ballRadius() + 18;
       var y = landingPoint.screenY;
       var duration = reducedMotion.matches ? 1 : 860;
+      var circumference = Math.max(1, Math.PI * ballRadius() * 2);
       var startTime = 0;
+
+      if (!isCurrentAnimation(token)) {
+        debugNavBall("stale nav ball frame cancelled");
+        return;
+      }
 
       setState(STATES.BALL_ROLLING_OUT);
       ball.classList.remove("is-arrived", "is-landing", "is-landed");
       ball.classList.add("is-rolling");
 
       function frame(now) {
+        if (!isCurrentAnimation(token)) {
+          debugNavBall("stale nav ball frame cancelled");
+          return;
+        }
+
         if (!startTime) {
           startTime = now;
         }
 
         var raw = clamp((now - startTime) / duration, 0, 1);
         var eased = easeInOut(raw);
+        var x = mix(startX, endX, eased);
+        var rotation = direction * (Math.abs(x - startX) / circumference) * 360;
 
-        setBallPosition(mix(startX, endX, eased), y);
+        ball.style.setProperty("--ball-rotation", rotation + "deg");
+        setBallPosition(x, y);
 
         if (raw < 1) {
-          window.requestAnimationFrame(frame);
+          requestBallFrame(frame, token);
           return;
         }
 
-        restorePlus();
+        restorePlus(token, targetId);
       }
 
-      window.requestAnimationFrame(frame);
+      requestBallFrame(frame, token);
     }
 
-    function landingBounce(targetId, screen, callback) {
-      if (reducedMotion.matches || targetId === "contact") {
-        callback();
-        return;
-      }
-
-      var duration = 360;
-      var reboundHeight = clamp(window.innerHeight * 0.028, 16, 26);
+    function runBounce(screen, height, duration, token, secondBounce, callback) {
       var startTime = 0;
+
+      ball.classList.remove("is-rebounding", "is-second-bounce");
+      void ball.offsetWidth;
+      ball.style.setProperty("--bounce-duration", duration + "ms");
       ball.classList.add("is-rebounding");
 
+      if (secondBounce) {
+        ball.classList.add("is-second-bounce");
+      }
+
       function frame(now) {
+        if (!isCurrentAnimation(token)) {
+          debugNavBall("stale nav ball frame cancelled");
+          return;
+        }
+
         if (!startTime) {
           startTime = now;
         }
 
         var raw = clamp((now - startTime) / duration, 0, 1);
-        var bounce = Math.sin(Math.PI * raw) * reboundHeight;
+        var bounce = Math.sin(Math.PI * raw) * height;
 
         setBallPosition(screen.x, screen.y - bounce);
 
         if (raw < 1) {
-          window.requestAnimationFrame(frame);
+          requestBallFrame(frame, token);
           return;
         }
 
         setBallPosition(screen.x, screen.y);
-        ball.classList.remove("is-rebounding");
+        ball.classList.remove("is-rebounding", "is-second-bounce");
         callback();
       }
 
-      window.requestAnimationFrame(frame);
+      requestBallFrame(frame, token);
     }
 
-    function finishTravel(targetId, config) {
+    function landingBounce(targetId, screen, token, callback) {
+      if (reducedMotion.matches) {
+        callback();
+        return;
+      }
+
+      var firstHeight = clamp(window.innerHeight * 0.03, 18, 28);
+      var secondHeight = clamp(firstHeight * 0.36, 6, 12);
+      var firstDuration = clamp(window.innerHeight * 0.38, 260, 360);
+      var secondDuration = clamp(window.innerHeight * 0.26, 180, 260);
+
+      runBounce(screen, firstHeight, firstDuration, token, false, function () {
+        runBounce(screen, secondHeight, secondDuration, token, true, callback);
+      });
+    }
+
+    function finishTravel(targetId, config, token) {
+      if (!isCurrentAnimation(token)) {
+        debugNavBall("stale nav ball frame cancelled");
+        return;
+      }
+
       var endPoint = config.endPoint;
       var endScroll = config.finalScroll;
       var screen = config.endScreen;
@@ -1147,25 +1354,30 @@
         window.history.replaceState(null, "", targetId === "landing" ? cleanUrl : "#" + targetId);
       }
 
-      landingBounce(targetId, screen, function () {
+      landingBounce(targetId, screen, token, function () {
         rollOut(targetId, {
           x: screen.x,
           screenY: screen.y
-        });
+        }, token);
       });
     }
 
-    function flyBall(startPoint, targetId) {
+    function flyBall(startPoint, targetId, token) {
       var endPoint = targetPlatformFor(targetId);
       var startScroll = window.scrollY || window.pageYOffset;
       var config = createFlightConfig(startPoint, endPoint, targetId, startScroll);
       var startTime = 0;
 
+      if (!isCurrentAnimation(token)) {
+        debugNavBall("stale nav ball frame cancelled");
+        return;
+      }
+
       document.documentElement.classList.add("is-ball-animating");
 
       if (reducedMotion.matches) {
         window.scrollTo(0, config.finalScroll);
-        finishTravel(targetId, config);
+        finishTravel(targetId, config, token);
         return;
       }
 
@@ -1174,6 +1386,11 @@
       ball.classList.add("is-visible", "is-moving", "is-flying");
 
       function frame(now) {
+        if (!isCurrentAnimation(token)) {
+          debugNavBall("stale nav ball frame cancelled");
+          return;
+        }
+
         if (!startTime) {
           startTime = now;
         }
@@ -1196,14 +1413,14 @@
         }
 
         if (raw < 1) {
-          window.requestAnimationFrame(frame);
+          requestBallFrame(frame, token);
           return;
         }
 
-        finishTravel(targetId, config);
+        finishTravel(targetId, config, token);
       }
 
-      window.requestAnimationFrame(frame);
+      requestBallFrame(frame, token);
     }
 
     function chooseDestination(button) {
@@ -1233,6 +1450,7 @@
         return;
       }
 
+      var token = beginBallAnimation(targetId);
       var debugEndPoint = targetPlatformFor(targetId);
       var debugConfig = createFlightConfig(startPoint, debugEndPoint, targetId, scrollY);
       debugRenderBase();
@@ -1260,25 +1478,30 @@
       setMenuA11y(false);
 
       setBallPosition(startX, startY);
+      ball.style.opacity = "";
+      ball.style.setProperty("--ball-lift", "0px");
+      ball.style.setProperty("--ball-scale-x", "1");
+      ball.style.setProperty("--ball-scale-y", "1");
+      ball.style.setProperty("--ball-rotation", "0deg");
       ballLabel.textContent = "";
       resetBallClasses();
       ball.classList.add("is-visible", "is-forming");
 
-      window.setTimeout(function () {
+      setBallTimeout(function () {
         setState(STATES.NAVI_TEXT_VANISHING);
-      }, reducedMotion.matches ? 1 : 80);
+      }, reducedMotion.matches ? 1 : 80, token);
 
-      window.setTimeout(function () {
+      setBallTimeout(function () {
         setState(STATES.NAVI_TO_BALL_MORPH);
-      }, reducedMotion.matches ? 1 : 280);
+      }, reducedMotion.matches ? 1 : 280, token);
 
-      window.setTimeout(function () {
+      setBallTimeout(function () {
         nav.classList.add("is-travelling");
         setState(STATES.BALL_READY);
         ball.classList.remove("is-forming");
         ball.classList.add("is-ready");
-        flyBall(startPoint, targetId);
-      }, reducedMotion.matches ? 1 : 1320);
+        flyBall(startPoint, targetId, token);
+      }, reducedMotion.matches ? 1 : 1320, token);
     }
 
     core.addEventListener("click", function () {
@@ -1355,6 +1578,7 @@
       }
     }, { passive: true });
 
+    hideTravelBallImmediately();
     setMenuA11y(false);
     setState(STATES.PLUS_IDLE);
     updateCurrentSection(detectCurrentSection(), true);

@@ -407,6 +407,8 @@ html.is-ball-animating {
   --ball-lift: 0px;
   --ball-scale-x: 1;
   --ball-scale-y: 1;
+  --ball-rotation: 0deg;
+  --bounce-duration: 360ms;
   position: fixed;
   left: 0;
   top: 0;
@@ -425,7 +427,7 @@ html.is-ball-animating {
     calc(var(--ball-x) - (var(--ball-size) / 2)),
     calc(var(--ball-y) - (var(--ball-size) / 2) + var(--ball-lift)),
     0
-  ) scale(var(--ball-scale-x), var(--ball-scale-y));
+  ) rotate(var(--ball-rotation)) scale(var(--ball-scale-x), var(--ball-scale-y));
   will-change: transform, opacity;
   box-shadow:
     inset -7px -8px 14px rgba(0, 0, 0, 0.38),
@@ -558,7 +560,11 @@ html.is-ball-animating {
 }
 
 .nav-travel-ball.is-rebounding .travel-shadow {
-  animation: landingShadowPulse 360ms var(--ease-standard) both;
+  animation: landingShadowPulse var(--bounce-duration) var(--ease-standard) both;
+}
+
+.nav-travel-ball.is-rebounding.is-second-bounce .travel-shadow {
+  animation-name: landingShadowPulseSmall;
 }
 
 .nav-travel-ball.is-rolling .travel-shadow,
@@ -626,7 +632,15 @@ html.is-ball-animating {
 
 .submit-button:hover,
 .submit-button:focus-visible {
-  color: var(--color-ink-soft);
+  background: rgba(21, 20, 18, 0.1);
+  border-color: rgba(21, 20, 18, 0.28);
+  color: var(--color-ink);
+}
+
+.contact-links a:hover,
+.contact-links a:focus-visible {
+  opacity: 0.58;
+  text-decoration: none;
 }
 
 .nav-core,
@@ -698,6 +712,23 @@ html.is-ball-animating {
   100% {
     opacity: 0.31;
     transform: translateX(-50%) scaleX(1.14);
+  }
+}
+
+@keyframes landingShadowPulseSmall {
+  0% {
+    opacity: 0.28;
+    transform: translateX(-50%) scaleX(1.08);
+  }
+
+  48% {
+    opacity: 0.14;
+    transform: translateX(-50%) scaleX(0.82);
+  }
+
+  100% {
+    opacity: 0.28;
+    transform: translateX(-50%) scaleX(1.04);
   }
 }
 
@@ -786,6 +817,31 @@ html.is-ball-animating {
   opacity: 1;
   pointer-events: auto;
   transition-delay: 0ms;
+}
+
+.project-open-clone {
+  position: fixed;
+  z-index: 940;
+  margin: 0;
+  border: var(--line-thin) solid rgba(255, 255, 255, 0.72);
+  background: #050505;
+  overflow: hidden;
+  pointer-events: none;
+  transform: translate3d(0, 0, 0);
+  will-change: left, top, width, height;
+  transition:
+    left 860ms var(--ease-standard),
+    top 860ms var(--ease-standard),
+    width 860ms var(--ease-standard),
+    height 860ms var(--ease-standard),
+    opacity var(--duration-medium) var(--ease-standard);
+}
+
+.project-open-clone img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: grayscale(1);
 }
 
 .project-glass {
@@ -997,6 +1053,19 @@ html.is-ball-animating {
 .project-viewer.is-expanded .project-progress {
   opacity: 1;
   transform: translate(-50%, 0);
+}
+
+.project-viewer.is-preparing .project-hero-frame,
+.project-viewer.is-preparing .project-story,
+.project-viewer.is-preparing .project-panel-image,
+.project-viewer.is-preparing .project-panel-copy {
+  transition-duration: 1ms;
+}
+
+.project-viewer.is-preparing .project-hero-frame,
+.project-viewer.is-preparing .project-panel-image,
+.project-viewer.is-preparing .project-panel-copy {
+  opacity: 0;
 }
 
 .project-viewer.is-ready .project-hero-frame {

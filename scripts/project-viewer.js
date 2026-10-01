@@ -41,6 +41,8 @@
     var readyTimer = 0;
     var pendingShift = 0;
     var shiftFrame = 0;
+    var openToken = 0;
+    var activeClone = null;
 
     function notifyProjectState(name) {
       document.dispatchEvent(new CustomEvent(name));
@@ -61,8 +63,8 @@
       progressBar.style.transform = "scaleX(" + clamp(amount, 0, 1) + ")";
     }
 
-    function setViewerVars(trigger) {
-      var rect = trigger.getBoundingClientRect();
+    function setViewerVars(trigger, measuredRect) {
+      var rect = measuredRect || trigger.getBoundingClientRect();
       var vw = window.innerWidth;
       var vh = window.innerHeight;
       var stacked = isStackedMode();
@@ -91,6 +93,131 @@
       viewer.style.setProperty("--project-bottom-ui-zone", bottomUiZone + "px");
       viewer.style.setProperty("--project-panel-peek", panelPeek + "px");
       viewer.style.setProperty("--panel-width", panelWidth + "px");
+    }
+
+    function waitForFrame() {
+      return new Promise(function (resolve) {
+        window.requestAnimationFrame(resolve);
+      });
+    }
+
+    function waitForLayout() {
+      return waitForFrame().then(waitForFrame);
+    }
+
+    function ensureImageReady(img) {
+      if (!img) {
+        return Promise.resolve();
+      }
+
+      if (img.decode) {
+        return img.decode().catch(function () {});
+      }
+
+      if (img.complete) {
+        return Promise.resolve();
+      }
+
+      return new Promise(function (resolve) {
+        img.addEventListener("load", resolve, { once: true });
+        img.addEventListener("error", resolve, { once: true });
+      });
+    }
+
+    function removeActiveClone() {
+      if (activeClone && activeClone.parentElement) {
+        activeClone.parentElement.removeChild(activeClone);
+      }
+
+      activeClone = null;
+    }
+
+    function createOpenClone(trigger, project, rect) {
+      var sourceImage = trigger.querySelector("img");
+      var clone = document.createElement("div");
+      var cloneImage = document.createElement("img");
+
+      clone.className = "project-open-clone";
+      clone.style.left = rect.left + "px";
+      clone.style.top = rect.top + "px";
+      clone.style.width = rect.width + "px";
+      clone.style.height = rect.height + "px";
+      cloneImage.src = sourceImage ? sourceImage.currentSrc || sourceImage.src : project.image;
+      cloneImage.alt = "";
+      cloneImage.decoding = "async";
+      clone.appendChild(cloneImage);
+      document.body.appendChild(clone);
+      activeClone = clone;
+
+      return {
+        element: clone,
+        image: cloneImage
+      };
+    }
+
+    function measureProjectTargetRect() {
+      return frame.getBoundingClientRect();
+    }
+
+    function animateCloneTo(clone, targetRect) {
+      if (!clone || reducedMotion.matches) {
+        return Promise.resolve();
+      }
+
+      return new Promise(function (resolve) {
+        var finished = false;
+
+        function finish() {
+          if (finished) {
+            return;
+          }
+
+          finished = true;
+          clone.removeEventListener("transitionend", handleTransitionEnd);
+          resolve();
+        }
+
+        function handleTransitionEnd(event) {
+          if (event.target === clone) {
+            finish();
+          }
+        }
+
+        clone.addEventListener("transitionend", handleTransitionEnd);
+        window.setTimeout(finish, 980);
+        window.requestAnimationFrame(function () {
+          clone.classList.add("is-moving");
+          clone.style.left = targetRect.left + "px";
+          clone.style.top = targetRect.top + "px";
+          clone.style.width = targetRect.width + "px";
+          clone.style.height = targetRect.height + "px";
+        });
+      });
+    }
+
+    function prepareProjectOpen(trigger, project, rect) {
+      activeTrigger = trigger;
+      activeProject = project;
+      currentShift = 0;
+      pendingShift = 0;
+      window.clearTimeout(closeTimer);
+      window.clearTimeout(readyTimer);
+
+      if (shiftFrame) {
+        window.cancelAnimationFrame(shiftFrame);
+        shiftFrame = 0;
+      }
+
+      setViewerVars(trigger, rect);
+      fillProject(project);
+      viewer.style.setProperty("--project-shift", "0px");
+      story.scrollTop = 0;
+      viewer.classList.add("is-active", "is-preparing");
+      viewer.classList.remove("is-ready", "is-closing", "is-expanded");
+      viewer.setAttribute("aria-hidden", "false");
+      document.body.classList.add("is-project-open", "is-project-dark");
+      document.body.classList.remove("is-project-closing");
+      notifyProjectState("harini:project-open");
     }
 
     function updateMaxShift() {
@@ -197,48 +324,70 @@
       }).join("");
     }
 
-    function openProject(trigger) {
+    async function openProject(trigger) {
+      if (viewer.classList.contains("is-active")) {
+        return;
+      }
+
       var project = findProject(trigger.getAttribute("data-project-trigger"));
 
       if (!project) {
         return;
       }
 
-      activeTrigger = trigger;
-      activeProject = project;
-      currentShift = 0;
-      pendingShift = 0;
-      window.clearTimeout(closeTimer);
-      window.clearTimeout(readyTimer);
-      setViewerVars(trigger);
-      fillProject(project);
-      viewer.style.setProperty("--project-shift", "0px");
-      story.scrollTop = 0;
-      viewer.classList.add("is-active");
-      viewer.classList.remove("is-ready", "is-closing");
-      viewer.setAttribute("aria-hidden", "false");
-      document.body.classList.add("is-project-open", "is-project-dark");
-      document.body.classList.remove("is-project-closing");
-      notifyProjectState("harini:project-open");
+      var token = openToken + 1;
+      var tileRect = trigger.getBoundingClientRect();
+      var cloneParts;
+      var targetRect;
+      openToken = token;
+      removeActiveClone();
+      cloneParts = createOpenClone(trigger, project, tileRect);
+      prepareProjectOpen(trigger, project, tileRect);
 
-      window.requestAnimationFrame(function () {
-        viewer.classList.add("is-expanded");
-        updateMaxShift();
-        setProgress();
-        viewer.focus({ preventScroll: true });
-        readyTimer = window.setTimeout(function () {
-          viewer.classList.add("is-ready");
-        }, reducedMotion.matches ? 1 : 520);
-      });
+      await Promise.all([
+        ensureImageReady(cloneParts.image),
+        ensureImageReady(hero),
+        waitForLayout()
+      ]);
+
+      if (token !== openToken) {
+        removeActiveClone();
+        return;
+      }
+
+      viewer.classList.add("is-expanded");
+      updateMaxShift();
+      setProgress();
+
+      await waitForLayout();
+
+      if (token !== openToken) {
+        removeActiveClone();
+        return;
+      }
+
+      targetRect = measureProjectTargetRect();
+      await animateCloneTo(cloneParts.element, targetRect);
+
+      if (token !== openToken) {
+        removeActiveClone();
+        return;
+      }
+
+      viewer.classList.remove("is-preparing");
+      viewer.classList.add("is-ready");
+      viewer.focus({ preventScroll: true });
+      readyTimer = window.setTimeout(removeActiveClone, reducedMotion.matches ? 1 : 180);
     }
 
     function finishClose() {
-      viewer.classList.remove("is-active", "is-expanded", "is-ready", "is-closing");
+      viewer.classList.remove("is-active", "is-expanded", "is-ready", "is-closing", "is-preparing");
       viewer.setAttribute("aria-hidden", "true");
       document.body.classList.remove("is-project-open", "is-project-dark", "is-project-closing");
       track.innerHTML = "";
       hero.removeAttribute("src");
       activeProject = null;
+      removeActiveClone();
       notifyProjectState("harini:project-closed");
 
       if (activeTrigger) {
@@ -254,6 +403,8 @@
       }
 
       pendingShift = 0;
+      openToken += 1;
+      removeActiveClone();
       window.clearTimeout(readyTimer);
 
       if (shiftFrame) {
@@ -282,7 +433,9 @@
 
     triggers.forEach(function (trigger) {
       trigger.addEventListener("click", function () {
-        openProject(trigger);
+        openProject(trigger).catch(function (error) {
+          console.error("Project open failed", error);
+        });
       });
     });
 
