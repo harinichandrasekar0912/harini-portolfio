@@ -408,7 +408,6 @@ html.is-ball-animating {
   --ball-scale-x: 1;
   --ball-scale-y: 1;
   --ball-rotation: 0deg;
-  --bounce-duration: 360ms;
   position: fixed;
   left: 0;
   top: 0;
@@ -587,19 +586,6 @@ html.is-ball-animating {
   transform: translateX(-50%) scaleX(1.16);
 }
 
-.nav-travel-ball.is-rebounding .travel-shadow {
-  animation: landingShadowPulse var(--bounce-duration) var(--ease-standard) both;
-}
-
-.nav-travel-ball.is-rebounding.is-second-bounce .travel-shadow {
-  animation-name: landingShadowPulseSmall;
-}
-
-.nav-travel-ball.is-contact-landing.is-rebounding .travel-shadow {
-  opacity: 0;
-  animation: none;
-}
-
 .nav-travel-ball.is-rolling .travel-shadow,
 .nav-travel-ball.is-contact-landing .travel-shadow {
   opacity: 0;
@@ -730,40 +716,6 @@ html.is-ball-animating {
   100% {
     opacity: 1;
     transform: translate(calc(-50% + var(--item-x)), var(--item-y)) scale(1);
-  }
-}
-
-@keyframes landingShadowPulse {
-  0% {
-    opacity: 0.42;
-    transform: translateX(-50%) scaleX(1.32);
-  }
-
-  46% {
-    opacity: 0.1;
-    transform: translateX(-50%) scaleX(0.62);
-  }
-
-  100% {
-    opacity: 0.36;
-    transform: translateX(-50%) scaleX(1.22);
-  }
-}
-
-@keyframes landingShadowPulseSmall {
-  0% {
-    opacity: 0.32;
-    transform: translateX(-50%) scaleX(1.14);
-  }
-
-  48% {
-    opacity: 0.16;
-    transform: translateX(-50%) scaleX(0.8);
-  }
-
-  100% {
-    opacity: 0.3;
-    transform: translateX(-50%) scaleX(1.08);
   }
 }
 
