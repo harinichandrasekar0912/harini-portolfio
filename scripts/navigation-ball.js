@@ -1161,15 +1161,16 @@
       var dx = landing.x - start.x;
       var ascentLift = Math.max(90, start.y - apex.y);
       var verticalHeight = Math.max(1, landing.y - verticalStart.y);
+      var isRightLanding = path.side === "right";
 
       path.ascent = {
         start: start,
         controlA: fitControlPointInsideBounds({
-          x: start.x + dx * 0.055,
-          y: start.y - clamp(ascentLift * 0.58, 92, 250)
+          x: start.x + dx * (isRightLanding ? 0.015 : 0.055),
+          y: start.y - clamp(ascentLift * (isRightLanding ? 0.72 : 0.58), 92, isRightLanding ? 320 : 250)
         }, bounds),
         controlB: fitControlPointInsideBounds({
-          x: mix(start.x, apex.x, 0.56),
+          x: mix(start.x, apex.x, isRightLanding ? 0.3 : 0.56),
           y: apex.y
         }, bounds),
         end: apex
@@ -1178,12 +1179,12 @@
       path.descent = {
         start: apex,
         controlA: fitControlPointInsideBounds({
-          x: mix(apex.x, verticalStart.x, 0.22),
+          x: mix(apex.x, verticalStart.x, isRightLanding ? 0.46 : 0.22),
           y: apex.y
         }, bounds),
         controlB: fitControlPointInsideBounds({
           x: verticalStart.x,
-          y: mix(apex.y, verticalStart.y, 0.68)
+          y: mix(apex.y, verticalStart.y, isRightLanding ? 0.28 : 0.68)
         }, bounds),
         end: verticalStart
       };
@@ -1211,14 +1212,15 @@
       } : fitControlPointInsideBounds(endScreen, bounds);
       var dx = landing.x - start.x;
       var distanceX = Math.abs(dx);
-      var verticalApproachHeight = clamp(window.innerHeight * 0.16, 90, 180);
+      var isRightLanding = config.horizontalDirection > 0;
+      var verticalApproachHeight = isRightLanding ? clamp(window.innerHeight * 0.18, 120, 190) : clamp(window.innerHeight * 0.16, 90, 180);
       var verticalApproachStart = fitControlPointInsideBounds({
         x: landing.x,
         y: landing.y - verticalApproachHeight
       }, bounds);
-      var arcHeight = clamp(Math.max(window.innerHeight * 0.38, distanceX * 0.38, Math.abs(landing.y - start.y) * 0.42), 230, 460);
+      var arcHeight = isRightLanding ? clamp(Math.max(window.innerHeight * 0.48, distanceX * 0.5, Math.abs(landing.y - start.y) * 0.48), 280, 560) : clamp(Math.max(window.innerHeight * 0.38, distanceX * 0.38, Math.abs(landing.y - start.y) * 0.42), 230, 460);
       var apexY = Math.max(bounds.minY + 12, Math.min(start.y, verticalApproachStart.y, landing.y) - arcHeight);
-      var apexX = clamp(mix(start.x, landing.x, distanceX > 40 ? 0.58 : 0.5), bounds.minX, bounds.maxX);
+      var apexX = clamp(mix(start.x, landing.x, isRightLanding && distanceX > 40 ? 0.24 : distanceX > 40 ? 0.58 : 0.5), bounds.minX, bounds.maxX);
       var path = {
         start: start,
         apex: {
@@ -1227,8 +1229,9 @@
         },
         verticalApproachStart: verticalApproachStart,
         end: landing,
-        phaseAEnd: 0.44,
-        phaseBEnd: 0.84
+        side: isRightLanding ? "right" : "other",
+        phaseAEnd: isRightLanding ? 0.34 : 0.44,
+        phaseBEnd: isRightLanding ? 0.82 : 0.84
       };
 
       rebuildPhasedPathControls(path, config);
