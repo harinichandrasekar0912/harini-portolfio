@@ -626,12 +626,17 @@
       var controlBias = clamp(0.46 + attempt * 0.16, 0.46, 0.78);
       var topClear = collision ? collision.rect.top - lift : config.path.apex.y - lift;
 
-      config.path.apex = fitControlPointInsideBounds({
-        x: mix(config.path.apex.x, laneX, controlBias * 0.66),
-        y: Math.min(config.path.apex.y, topClear)
+      config.path.controlA = fitControlPointInsideBounds({
+        x: mix(config.path.controlA.x, laneX, controlBias * 0.28),
+        y: Math.min(config.path.controlA.y, topClear)
       }, config.bounds);
 
-      rebuildPhasedPathControls(config.path, config);
+      config.path.controlB = fitControlPointInsideBounds({
+        x: config.path.end.x,
+        y: Math.min(config.path.controlB.y, topClear + lift * 0.18)
+      }, config.bounds);
+
+      updatePathApex(config.path);
     }
 
     function adjustPathForObstacles(config) {
@@ -1004,8 +1009,9 @@
         debugOverlay.clearOutline();
         debugOverlay.hideMarker("ball start");
         debugOverlay.hideMarker("start point");
+        debugOverlay.hideMarker("ascent control");
+        debugOverlay.hideMarker("descent control");
         debugOverlay.hideMarker("apex point");
-        debugOverlay.hideMarker("vertical approach start");
         debugOverlay.hideMarker("landing point");
         debugOverlay.hideMarker("landing target");
         window.requestAnimationFrame(function () {
@@ -1152,55 +1158,18 @@
       return clamp(endPoint.y - (desiredCenterY + radius), 0, maxScroll);
     }
 
-    function rebuildPhasedPathControls(path, config) {
-      var bounds = config.bounds;
-      var start = path.start;
-      var apex = path.apex;
-      var verticalStart = path.verticalApproachStart;
-      var landing = path.end;
-      var dx = landing.x - start.x;
-      var ascentLift = Math.max(90, start.y - apex.y);
-      var verticalHeight = Math.max(1, landing.y - verticalStart.y);
-      var isRightLanding = path.side === "right";
+    function updatePathApex(path) {
+      var apex = path.start;
 
-      path.ascent = {
-        start: start,
-        controlA: fitControlPointInsideBounds({
-          x: start.x + dx * (isRightLanding ? 0.015 : 0.055),
-          y: start.y - clamp(ascentLift * (isRightLanding ? 0.72 : 0.58), 92, isRightLanding ? 320 : 250)
-        }, bounds),
-        controlB: fitControlPointInsideBounds({
-          x: mix(start.x, apex.x, isRightLanding ? 0.3 : 0.56),
-          y: apex.y
-        }, bounds),
-        end: apex
-      };
+      for (var step = 1; step <= 48; step += 1) {
+        var point = cubicPointAt(step / 48, path);
 
-      path.descent = {
-        start: apex,
-        controlA: fitControlPointInsideBounds({
-          x: mix(apex.x, verticalStart.x, isRightLanding ? 0.46 : 0.22),
-          y: apex.y
-        }, bounds),
-        controlB: fitControlPointInsideBounds({
-          x: verticalStart.x,
-          y: mix(apex.y, verticalStart.y, isRightLanding ? 0.28 : 0.68)
-        }, bounds),
-        end: verticalStart
-      };
+        if (point.y < apex.y) {
+          apex = point;
+        }
+      }
 
-      path.vertical = {
-        start: verticalStart,
-        controlA: {
-          x: landing.x,
-          y: verticalStart.y + verticalHeight * 0.34
-        },
-        controlB: {
-          x: landing.x,
-          y: landing.y - verticalHeight * 0.16
-        },
-        end: landing
-      };
+      path.apex = apex;
     }
 
     function createSmoothFlightPath(startScreen, endScreen, config) {
@@ -1212,29 +1181,25 @@
       } : fitControlPointInsideBounds(endScreen, bounds);
       var dx = landing.x - start.x;
       var distanceX = Math.abs(dx);
-      var isRightLanding = config.horizontalDirection > 0;
-      var verticalApproachHeight = isRightLanding ? clamp(window.innerHeight * 0.18, 120, 190) : clamp(window.innerHeight * 0.16, 90, 180);
-      var verticalApproachStart = fitControlPointInsideBounds({
-        x: landing.x,
-        y: landing.y - verticalApproachHeight
-      }, bounds);
-      var arcHeight = isRightLanding ? clamp(Math.max(window.innerHeight * 0.48, distanceX * 0.5, Math.abs(landing.y - start.y) * 0.48), 280, 560) : clamp(Math.max(window.innerHeight * 0.38, distanceX * 0.38, Math.abs(landing.y - start.y) * 0.42), 230, 460);
-      var apexY = Math.max(bounds.minY + 12, Math.min(start.y, verticalApproachStart.y, landing.y) - arcHeight);
-      var apexX = clamp(mix(start.x, landing.x, isRightLanding && distanceX > 40 ? 0.24 : distanceX > 40 ? 0.58 : 0.5), bounds.minX, bounds.maxX);
-      var path = {
+      var arcHeight = clamp(Math.max(window.innerHeight * 0.42, distanceX * 0.42, Math.abs(landing.y - start.y) * 0.48), 230, 520);
+      var controlY = Math.max(bounds.minY + 12, Math.min(start.y, landing.y) - arcHeight);
+      var path;
+
+      path = {
         start: start,
-        apex: {
-          x: apexX,
-          y: apexY
-        },
-        verticalApproachStart: verticalApproachStart,
-        end: landing,
-        side: isRightLanding ? "right" : "other",
-        phaseAEnd: isRightLanding ? 0.34 : 0.44,
-        phaseBEnd: isRightLanding ? 0.82 : 0.84
+        controlA: fitControlPointInsideBounds({
+          x: start.x + dx * 0.05,
+          y: controlY
+        }, bounds),
+        controlB: fitControlPointInsideBounds({
+          x: landing.x,
+          y: controlY
+        }, bounds),
+        end: landing
       };
 
-      rebuildPhasedPathControls(path, config);
+      path.controlB.x = landing.x;
+      updatePathApex(path);
       return path;
     }
 
@@ -1288,17 +1253,7 @@
     }
 
     function flightPointAt(raw, config) {
-      var path = config.path;
-
-      if (raw < path.phaseAEnd) {
-        return cubicPointAt(easeInOut(raw / path.phaseAEnd), path.ascent);
-      }
-
-      if (raw < path.phaseBEnd) {
-        return cubicPointAt(easeInOut((raw - path.phaseAEnd) / (path.phaseBEnd - path.phaseAEnd)), path.descent);
-      }
-
-      return cubicPointAt(clamp((raw - path.phaseBEnd) / (1 - path.phaseBEnd), 0, 1), path.vertical);
+      return cubicPointAt(easeInOut(raw), config.path);
     }
 
     function flightScrollAt(raw, config) {
@@ -1329,8 +1284,9 @@
 
       debugOverlay.trajectory(points);
       debugOverlay.marker("start point", config.path.start.x, config.path.start.y, "rgb(132, 0, 255)");
+      debugOverlay.marker("ascent control", config.path.controlA.x, config.path.controlA.y, "rgb(0, 98, 190)");
+      debugOverlay.marker("descent control", config.path.controlB.x, config.path.controlB.y, "rgb(0, 130, 96)");
       debugOverlay.marker("apex point", config.path.apex.x, config.path.apex.y, "rgb(194, 0, 160)");
-      debugOverlay.marker("vertical approach start", config.path.verticalApproachStart.x, config.path.verticalApproachStart.y, "rgb(0, 98, 190)");
       debugOverlay.marker("landing point", config.path.end.x, config.path.end.y, "rgb(210, 0, 0)");
     }
 
