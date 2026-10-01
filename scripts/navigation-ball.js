@@ -1369,7 +1369,7 @@
       var secondPrepHeight = clamp(firstPrepHeight * 1.7, 40, 58);
       var firstPrepDuration = clamp(window.innerHeight * 0.52, 380, 440);
       var secondPrepDuration = clamp(firstPrepDuration + 80, 420, 540);
-      var arcDuration = clamp(Math.abs(startScreen.y - endScreen.y) * 0.78 + Math.abs(dx) * 0.28 + 900, 1300, 2200) * 1.4;
+      var arcDuration = clamp(Math.abs(startScreen.y - endScreen.y) * 0.78 + Math.abs(dx) * 0.28 + 900, 1300, 2200) * 2.1;
       var prep1End = firstPrepDuration;
       var prep2End = prep1End + secondPrepDuration;
       var arcEnd = prep2End + arcDuration;
@@ -1418,6 +1418,7 @@
           homeTargetX: round(endScreen.x),
           homeTargetY: round(endScreen.y)
         });
+        console.debug("home return active duration", arcDuration);
       }
 
       ball.classList.remove("is-forming", "is-landed", "is-ready", "is-landing", "is-contact-landing");
@@ -1501,7 +1502,7 @@
       var secondLandingHeight = clamp(baseFirstLandingHeight * 0.34, 10, 16);
       var firstLandingDuration = clamp(window.innerHeight * 0.42, 300, 380);
       var secondLandingDuration = clamp(window.innerHeight * 0.28, 190, 260);
-      var rollDuration = 1400;
+      var rollDuration = 2030;
       var prep1End = firstPrepDuration;
       var prep2End = prep1End + secondPrepDuration;
       var flightEnd = prep2End + flightDuration;
@@ -1546,6 +1547,7 @@
           delayBetweenImpactAndBounceMs: 0,
           impactVelocityY: round(impactVelocityY)
         });
+        console.debug("roll duration active", rollDuration);
       }
 
       ball.classList.remove("is-forming", "is-landed", "is-ready", "is-landing", "is-contact-landing");

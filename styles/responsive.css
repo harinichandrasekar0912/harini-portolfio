@@ -113,7 +113,7 @@
   }
 
   .contact-links {
-    bottom: clamp(0.25rem, 1.2vh, 0.85rem);
+    bottom: clamp(1.25rem, 4vh, 2.5rem);
     gap: var(--space-4);
   }
 
@@ -167,13 +167,17 @@
   }
 }
 
-@media (max-height: 720px) {
+@media (max-height: 760px) {
   .contact-layout {
-    padding-bottom: 3.5rem;
+    padding-bottom: 6.5rem;
+  }
+
+  .contact-form {
+    transform: translateY(-4vh);
   }
 
   .contact-links {
-    bottom: 0.25rem;
+    bottom: 1.25rem;
   }
 }
 

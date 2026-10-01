@@ -589,7 +589,7 @@ body.is-project-open .viewport-edge-blur {
   align-items: center;
   justify-content: center;
   min-height: calc(100svh - clamp(6rem, 12vh, 9rem) - calc(var(--space-10) + var(--nav-size)));
-  padding-bottom: clamp(5.5rem, 12vh, 8rem);
+  padding-bottom: clamp(8.5rem, 18vh, 12rem);
 }
 
 .contact-form {
@@ -716,7 +716,7 @@ body.is-project-open .viewport-edge-blur {
 .contact-links {
   position: absolute;
   left: 50%;
-  bottom: clamp(0.25rem, 1.4vh, 1rem);
+  bottom: clamp(1.75rem, 5vh, 4rem);
   display: flex;
   align-items: center;
   justify-content: center;
