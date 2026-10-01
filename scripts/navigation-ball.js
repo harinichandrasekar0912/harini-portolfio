@@ -1356,10 +1356,11 @@
       requestBallFrame(frame, token);
     }
 
-    function runBounce(screen, height, duration, token, secondBounce, callback, initialAdvance) {
-      var startTime = 0;
-      var advance = initialAdvance || 0;
+    function bounceLift(raw, height) {
+      return Math.sin(Math.PI * raw) * height;
+    }
 
+    function startLandingShadowPulse(duration, secondBounce) {
       ball.classList.remove("is-rebounding", "is-second-bounce");
       void ball.offsetWidth;
       ball.style.setProperty("--bounce-duration", duration + "ms");
@@ -1368,105 +1369,6 @@
       if (secondBounce) {
         ball.classList.add("is-second-bounce");
       }
-
-      function frame(now) {
-        if (!isCurrentAnimation(token)) {
-          debugNavBall("stale nav ball frame cancelled");
-          return;
-        }
-
-        if (!startTime) {
-          startTime = now - advance;
-        }
-
-        var raw = clamp((now - startTime) / duration, 0, 1);
-        var bounce = Math.sin(Math.PI * raw) * height;
-
-        setBallPosition(screen.x, screen.y - bounce);
-
-        if (raw < 1) {
-          requestBallFrame(frame, token);
-          return;
-        }
-
-        setBallPosition(screen.x, screen.y);
-        ball.classList.remove("is-rebounding", "is-second-bounce");
-        callback();
-      }
-
-      requestBallFrame(frame, token);
-    }
-
-    function runLaunchBounce(screen, height, duration, token, callback, initialAdvance) {
-      var startTime = 0;
-      var advance = initialAdvance || 0;
-
-      function frame(now) {
-        if (!isCurrentAnimation(token)) {
-          debugNavBall("stale nav ball frame cancelled");
-          return;
-        }
-
-        if (!startTime) {
-          startTime = now - advance;
-        }
-
-        var raw = clamp((now - startTime) / duration, 0, 1);
-        var bounce = Math.sin(Math.PI * raw) * height;
-
-        setBallPosition(screen.x, screen.y - bounce);
-
-        if (raw < 1) {
-          requestBallFrame(frame, token);
-          return;
-        }
-
-        setBallPosition(screen.x, screen.y);
-        callback();
-      }
-
-      requestBallFrame(frame, token);
-    }
-
-    function runLaunchIntoFlight(config, height, duration, launchProgress, token, callback) {
-      var startTime = 0;
-      var advance = 10;
-
-      function frame(now) {
-        if (!isCurrentAnimation(token)) {
-          debugNavBall("stale nav ball frame cancelled");
-          return;
-        }
-
-        if (!startTime) {
-          startTime = now - advance;
-        }
-
-        var raw = clamp((now - startTime) / duration, 0, 1);
-        var pathRaw = mix(0, launchProgress, raw);
-        var point = flightPointAt(pathRaw, config);
-        var lift = Math.sin(Math.PI * raw) * height * (1 - raw * 0.18);
-        var screen = emergencyClampToViewport({
-          x: point.x,
-          y: point.y - lift
-        }, config, pathRaw);
-
-        window.scrollTo(0, flightScrollAt(pathRaw, config));
-        setBallPosition(screen.x, screen.y);
-        debugRenderLandingTarget(config.endPoint, config.finalScroll);
-
-        if (raw < 1) {
-          requestBallFrame(frame, token);
-          return;
-        }
-
-        point = emergencyClampToViewport(flightPointAt(launchProgress, config), config, launchProgress);
-        window.scrollTo(0, flightScrollAt(launchProgress, config));
-        setBallPosition(point.x, point.y);
-        callback(launchProgress, 12);
-      }
-
-      requestBallFrame(frame, token);
     }
 
     function upwardLaunchBounce(config, token, callback) {
@@ -1478,14 +1380,68 @@
       setState(STATES.BALL_TAKEOFF);
       ball.classList.add("is-launching", "is-lifting");
 
-      runLaunchBounce(config.startScreen, clamp(window.innerHeight * 0.02, 12, 18), clamp(window.innerHeight * 0.2, 130, 180), token, function () {
-        runLaunchBounce(config.startScreen, clamp(window.innerHeight * 0.045, 24, 38), clamp(window.innerHeight * 0.26, 165, 230), token, function () {
-          runLaunchIntoFlight(config, clamp(window.innerHeight * 0.055, 34, 52), clamp(window.innerHeight * 0.3, 190, 270), 0.12, token, function (launchProgress, carryMs) {
-            ball.classList.remove("is-launching", "is-lifting");
-            callback(launchProgress, carryMs);
-          });
-        }, 10);
-      }, 10);
+      var firstHeight = clamp(window.innerHeight * 0.018, 10, 16);
+      var secondHeight = clamp(window.innerHeight * 0.036, 20, 32);
+      var launchHeight = clamp(window.innerHeight * 0.058, 34, 52);
+      var firstDuration = clamp(window.innerHeight * 0.34, 240, 340);
+      var secondDuration = clamp(window.innerHeight * 0.38, 280, 380);
+      var launchDuration = clamp(window.innerHeight * 0.32, 220, 320);
+      var launchProgress = 0.12;
+      var totalDuration = firstDuration + secondDuration + launchDuration;
+      var startTime = 0;
+      var advance = 8;
+
+      function frame(now) {
+        if (!isCurrentAnimation(token)) {
+          debugNavBall("stale nav ball frame cancelled");
+          return;
+        }
+
+        if (!startTime) {
+          startTime = now - advance;
+        }
+
+        var elapsed = clamp(now - startTime, 0, totalDuration);
+        var raw = 0;
+        var point;
+        var screen;
+        var pathRaw;
+        var lift;
+
+        if (elapsed < firstDuration) {
+          raw = elapsed / firstDuration;
+          setBallPosition(config.startScreen.x, config.startScreen.y - bounceLift(raw, firstHeight));
+        } else if (elapsed < firstDuration + secondDuration) {
+          raw = (elapsed - firstDuration) / secondDuration;
+          setBallPosition(config.startScreen.x, config.startScreen.y - bounceLift(raw, secondHeight));
+        } else {
+          raw = (elapsed - firstDuration - secondDuration) / launchDuration;
+          pathRaw = mix(0, launchProgress, raw);
+          point = flightPointAt(pathRaw, config);
+          lift = bounceLift(raw, launchHeight) * (1 - raw);
+          screen = emergencyClampToViewport({
+            x: point.x,
+            y: point.y - lift
+          }, config, pathRaw);
+
+          window.scrollTo(0, flightScrollAt(pathRaw, config));
+          setBallPosition(screen.x, screen.y);
+          debugRenderLandingTarget(config.endPoint, config.finalScroll);
+        }
+
+        if (elapsed < totalDuration) {
+          requestBallFrame(frame, token);
+          return;
+        }
+
+        point = emergencyClampToViewport(flightPointAt(launchProgress, config), config, launchProgress);
+        window.scrollTo(0, flightScrollAt(launchProgress, config));
+        setBallPosition(point.x, point.y);
+        ball.classList.remove("is-launching", "is-lifting");
+        callback(launchProgress, 10);
+      }
+
+      requestBallFrame(frame, token);
     }
 
     function landingBounce(targetId, screen, token, callback) {
@@ -1498,10 +1454,58 @@
       var secondHeight = clamp(firstHeight * 0.34, 8, 14);
       var firstDuration = clamp(window.innerHeight * 0.42, 300, 380);
       var secondDuration = clamp(window.innerHeight * 0.28, 180, 260);
+      var totalDuration = firstDuration + secondDuration;
+      var startTime = 0;
+      var advance = 12;
+      var currentBounce = 1;
 
-      runBounce(screen, firstHeight, firstDuration, token, false, function () {
-        runBounce(screen, secondHeight, secondDuration, token, true, callback, 10);
-      }, 12);
+      startLandingShadowPulse(firstDuration, false);
+
+      function frame(now) {
+        if (!isCurrentAnimation(token)) {
+          debugNavBall("stale nav ball frame cancelled");
+          return;
+        }
+
+        if (!startTime) {
+          startTime = now - advance;
+        }
+
+        var elapsed = clamp(now - startTime, 0, totalDuration);
+        var raw = 0;
+        var lift = 0;
+
+        if (elapsed < firstDuration) {
+          if (currentBounce !== 1) {
+            currentBounce = 1;
+            startLandingShadowPulse(firstDuration, false);
+          }
+
+          raw = elapsed / firstDuration;
+          lift = bounceLift(raw, firstHeight);
+        } else {
+          if (currentBounce !== 2) {
+            currentBounce = 2;
+            startLandingShadowPulse(secondDuration, true);
+          }
+
+          raw = (elapsed - firstDuration) / secondDuration;
+          lift = bounceLift(raw, secondHeight);
+        }
+
+        setBallPosition(screen.x, screen.y - lift);
+
+        if (elapsed < totalDuration) {
+          requestBallFrame(frame, token);
+          return;
+        }
+
+        setBallPosition(screen.x, screen.y);
+        ball.classList.remove("is-rebounding", "is-second-bounce");
+        callback();
+      }
+
+      requestBallFrame(frame, token);
     }
 
     function finishTravel(targetId, config, token) {
