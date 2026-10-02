@@ -295,14 +295,16 @@ html.is-ball-animating {
 }
 
 .nav-object.is-choosing .radial-item.is-selected button::after {
-  opacity: 0.28;
-  transform: scale(1.08);
+  opacity: 0;
+  border-color: transparent;
+  transform: scale(1);
 }
 
 .nav-object.is-choosing .radial-item.is-selected button {
   background: var(--color-ink);
-  border-color: var(--color-ink);
+  border-color: transparent;
   color: transparent;
+  box-shadow: none;
   transform: scale(0.72);
   transition:
     background-color 500ms var(--ease-standard),
@@ -505,19 +507,19 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
   --ball-sphere-opacity: 0;
   border: 0;
   outline: 0;
-  background: var(--color-ink);
+  background: #050505;
   box-shadow: none;
-  animation: ballForm var(--nav-ball-form-duration, 1280ms) cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: ballForm var(--nav-ball-form-duration, 1300ms) cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .nav-travel-ball.is-forming::before {
   opacity: 0;
-  animation: ballLightBuild var(--nav-ball-form-duration, 1280ms) cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: ballLightBuild var(--nav-ball-form-duration, 1300ms) cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .nav-travel-ball.is-forming::after {
   opacity: 0;
-  animation: ballSphereReveal var(--nav-ball-form-duration, 1280ms) cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: ballSphereReveal var(--nav-ball-form-duration, 1300ms) cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .nav-travel-ball.is-ready,
@@ -788,15 +790,15 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
       calc(var(--ball-x) - (var(--ball-size) / 2)),
       calc(var(--ball-y) - (var(--ball-size) / 2)),
       0
-    ) scale(0.995);
+    ) scale(0.992);
   }
 
-  52% {
+  58% {
     transform: translate3d(
       calc(var(--ball-x) - (var(--ball-size) / 2)),
       calc(var(--ball-y) - (var(--ball-size) / 2)),
       0
-    ) scale(0.998);
+    ) scale(0.994);
   }
 
   100% {
@@ -813,29 +815,29 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
     opacity: 0;
   }
 
-  38% {
-    opacity: 0.02;
+  34% {
+    opacity: 0.01;
   }
 
-  76% {
-    opacity: 0.38;
+  68% {
+    opacity: 0.3;
   }
 
   100% {
-    opacity: 0.76;
+    opacity: 0.74;
   }
 }
 
 @keyframes ballSphereReveal {
   0%,
-  34% {
+  42% {
     opacity: 0;
-    transform: scale(0.988);
+    transform: scale(0.996);
   }
 
-  76% {
-    opacity: 0.5;
-    transform: scale(0.997);
+  72% {
+    opacity: 0.48;
+    transform: scale(0.998);
   }
 
   100% {

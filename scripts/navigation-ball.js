@@ -11,6 +11,7 @@
   };
   var FLIGHT_DURATION_MULTIPLIER = 1.32;
   var MOBILE_BALL_TIME_SCALE = 1.42;
+  var BALL_MORPH_DURATION = 1300;
 
   function clamp(value, min, max) {
     return Math.min(Math.max(value, min), max);
@@ -1386,17 +1387,32 @@
       path.apex = apex;
     }
 
+    function landingApproachHeight() {
+      return clamp(window.innerHeight * 0.155, 112, 156);
+    }
+
+    function enforceLandingVelocity(path, bounds) {
+      var minVisibleY = Math.max(bounds.minY, 36);
+      var approachHeight = landingApproachHeight();
+
+      path.controlB = fitControlPointInsideBounds({
+        x: path.end.x,
+        y: Math.max(minVisibleY, path.end.y - approachHeight)
+      }, bounds);
+
+      updatePathApex(path);
+    }
+
     function createUpwardFlightPath(start, landing, config) {
       var bounds = config.bounds;
       var dx = landing.x - start.x;
       var direction = dx < 0 ? -1 : 1;
       var distanceX = Math.abs(dx);
       var verticalSpan = Math.abs(landing.y - start.y);
-      var upwardOvershoot = clamp(window.innerHeight * 0.095, 72, 128);
-      var apexLift = clamp(Math.max(window.innerHeight * 0.54, distanceX * 0.48, verticalSpan * 0.74) * 1.45 + upwardOvershoot, 450, 840);
-      var apexY = clamp(Math.min(start.y, landing.y) - apexLift, bounds.minY + 8, bounds.maxY);
-      var transferDrop = clamp(window.innerHeight * 0.19, 120, 210);
-      var transferMaxY = Math.max(bounds.minY + 34, Math.min(start.y, landing.y) - 72);
+      var minVisibleY = Math.max(bounds.minY, 36);
+      var upwardOvershoot = clamp(window.innerHeight * 0.13, 96, 168);
+      var apexLift = clamp(Math.max(window.innerHeight * 0.54, distanceX * 0.48, verticalSpan * 0.74) * 1.72 + upwardOvershoot, 520, 980);
+      var apexY = clamp(Math.min(start.y, landing.y) - apexLift, minVisibleY, bounds.maxY);
       var path = {
         start: start,
         controlA: fitControlPointInsideBounds({
@@ -1404,13 +1420,13 @@
           y: apexY
         }, bounds),
         controlB: fitControlPointInsideBounds({
-          x: start.x + dx * 0.96,
-          y: clamp(apexY + transferDrop, bounds.minY + 22, transferMaxY)
+          x: landing.x,
+          y: Math.max(minVisibleY, landing.y - landingApproachHeight())
         }, bounds),
         end: landing
       };
 
-      updatePathApex(path);
+      enforceLandingVelocity(path, bounds);
       return path;
     }
 
@@ -1439,13 +1455,12 @@
         }, bounds),
         controlB: fitControlPointInsideBounds({
           x: landing.x,
-          y: controlY
+          y: Math.max(Math.max(bounds.minY, 36), landing.y - landingApproachHeight())
         }, bounds),
         end: landing
       };
 
-      path.controlB.x = landing.x;
-      updatePathApex(path);
+      enforceLandingVelocity(path, bounds);
       return path;
     }
 
@@ -1495,6 +1510,7 @@
 
       config.path = createSmoothFlightPath(startScreen, endScreen, config);
       adjustPathForObstacles(config);
+      enforceLandingVelocity(config.path, bounds);
       return config;
     }
 
@@ -1758,9 +1774,9 @@
       var startTime = 0;
       var impactVelocity = flightVelocityAt(1, config);
       var impactVelocityY = Math.max(0, impactVelocity.y);
-      var firstPrepHeight = clamp(window.innerHeight * 0.046, 32, 48);
-      var secondPrepHeight = clamp(firstPrepHeight * 1.82, 56, 78);
-      var thirdPrepHeight = clamp(secondPrepHeight * 1.4, 76, 104);
+      var firstPrepHeight = clamp(window.innerHeight * 0.054, 38, 57);
+      var secondPrepHeight = clamp(firstPrepHeight * 1.9, 66, 92);
+      var thirdPrepHeight = clamp(secondPrepHeight * 1.43, 92, 128);
       var baseFirstPrepDuration = clamp(window.innerHeight * 0.52, 380, 440);
       var baseSecondPrepDuration = clamp(baseFirstPrepDuration + 80, 420, 540);
       var baseThirdPrepDuration = clamp(baseSecondPrepDuration + 70, 460, 620);
@@ -1768,9 +1784,8 @@
       var secondPrepDuration = config.upward ? scaleMotionDuration(baseSecondPrepDuration) : 0;
       var thirdPrepDuration = config.upward ? scaleMotionDuration(baseThirdPrepDuration) : 0;
       var flightDuration = scaleMotionDuration(clamp(config.duration * (config.upward ? 0.9 : 1), 1150, 2500));
-      var baseFirstLandingHeight = clamp(Math.max(window.innerHeight * 0.04, impactVelocityY * 0.024), 32, 44);
-      var firstLandingHeight = clamp(baseFirstLandingHeight * (config.upward ? 1.52 : 1.42), 40, 62);
-      var secondLandingHeight = clamp(baseFirstLandingHeight * (config.upward ? 0.39 : 0.37), 11, 18);
+      var firstLandingHeight = clamp(Math.max(window.innerHeight * 0.055, impactVelocityY * 0.16) * (config.upward ? 1.06 : 1), 50, 74);
+      var secondLandingHeight = clamp(firstLandingHeight * 0.23, 13, 18);
       var firstLandingDuration = scaleMotionDuration(clamp(window.innerHeight * 0.46, 330, 430));
       var secondLandingDuration = scaleMotionDuration(clamp(window.innerHeight * 0.3, 200, 280));
       var rollDuration = scaleMotionDuration(2030);
@@ -1821,7 +1836,16 @@
           impactVelocityY: round(impactVelocityY),
           upwardArcLiftNew: config.upward ? round(config.path.start.y - config.path.apex.y) : 0,
           usesEaseOutNearLanding: false,
-          morphDurationNew: 1280
+          morphDurationNew: BALL_MORPH_DURATION
+        });
+        console.debug("landing velocity check", {
+          usedEaseOutNearLanding: false,
+          p2: config.path.controlB,
+          p3: config.path.end,
+          endpointVelocity: {
+            x: 3 * (config.path.end.x - config.path.controlB.x),
+            y: 3 * (config.path.end.y - config.path.controlB.y)
+          }
         });
         console.debug("roll duration active", rollDuration);
       }
@@ -1997,6 +2021,7 @@
       var startX = buttonRect.left + buttonRect.width / 2;
       var startY = buttonRect.top + buttonRect.height / 2;
       var scrollY = window.scrollY || window.pageYOffset;
+      var morphDuration = reducedMotion.matches ? 1 : BALL_MORPH_DURATION;
       var startPoint = {
         element: button,
         section: "menu",
@@ -2054,17 +2079,18 @@
       ball.style.setProperty("--ball-scale-x", "1");
       ball.style.setProperty("--ball-scale-y", "1");
       ball.style.setProperty("--ball-rotation", "0deg");
+      ball.style.setProperty("--nav-ball-form-duration", morphDuration + "ms");
       ballLabel.textContent = "";
       resetBallClasses();
       ball.classList.add("is-visible", "is-forming");
 
       setBallTimeout(function () {
         setState(STATES.NAVI_TEXT_VANISHING);
-      }, scaleMotionDuration(120), token);
+      }, reducedMotion.matches ? 1 : morphDuration * 0.14, token);
 
       setBallTimeout(function () {
         setState(STATES.NAVI_TO_BALL_MORPH);
-      }, scaleMotionDuration(220), token);
+      }, reducedMotion.matches ? 1 : morphDuration * 0.24, token);
 
       setBallTimeout(function () {
         nav.classList.add("is-travelling");
@@ -2072,7 +2098,7 @@
         ball.classList.remove("is-forming");
         ball.classList.add("is-ready");
         flyBall(startPoint, targetId, token);
-      }, scaleMotionDuration(1280), token);
+      }, morphDuration, token);
     }
 
     core.addEventListener("click", function (event) {
