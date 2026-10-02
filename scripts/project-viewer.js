@@ -49,7 +49,7 @@
     }
 
     function isStackedMode() {
-      return window.innerWidth < 760;
+      return window.innerWidth <= 767;
     }
 
     function findProject(id) {
@@ -72,11 +72,12 @@
       var topBuffer = stacked ? Math.max(88, vh * 0.12) : clamp(vh * 0.07, 48, 88);
       var bottomUiZone = stacked ? clamp(vh * 0.14, 104, 150) : clamp(vh * 0.16, 120, 180);
       var maxFocusHeight = Math.max(240, vh - topBuffer - bottomUiZone);
-      var focusHeight = stacked ? Math.min(vw - 32, maxFocusHeight, 520) : maxFocusHeight;
-      var focusWidth = stacked ? Math.min(vw - 32, 520) : Math.min(vw * 0.54, focusHeight * 1.25, 780);
+      var mobileFocusWidth = Math.min(vw * 0.9, 520);
+      var focusHeight = stacked ? Math.min(mobileFocusWidth, maxFocusHeight, 520) : maxFocusHeight;
+      var focusWidth = stacked ? mobileFocusWidth : Math.min(vw * 0.54, focusHeight * 1.25, 780);
       var panelPeek = stacked || side === "right" ? 0 : clamp(vw * 0.16, 72, 220);
       var panelWidth = stacked ? vw : vw - panelPeek;
-      var focusLeft = stacked ? 16 : side === "right" ? vw - focusWidth : 0;
+      var focusLeft = stacked ? (vw - focusWidth) / 2 : side === "right" ? vw - focusWidth : 0;
       var focusTop = stacked ? topBuffer : topBuffer;
 
       viewer.dataset.projectMode = stacked ? "stacked" : "horizontal";
@@ -137,7 +138,7 @@
       var clone = document.createElement("div");
       var cloneImage = document.createElement("img");
 
-      clone.className = "project-open-clone " + (rect.left + rect.width / 2 > window.innerWidth / 2 ? "is-right-attached" : "is-left-attached");
+      clone.className = "project-open-clone" + (isStackedMode() ? "" : " " + (rect.left + rect.width / 2 > window.innerWidth / 2 ? "is-right-attached" : "is-left-attached"));
       clone.style.left = rect.left + "px";
       clone.style.top = rect.top + "px";
       clone.style.width = rect.width + "px";

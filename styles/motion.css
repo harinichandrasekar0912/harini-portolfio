@@ -498,19 +498,19 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
   box-shadow:
     inset -5px -6px 12px rgba(0, 0, 0, 0.16),
     inset 5px 5px 10px rgba(255, 255, 255, 0.08);
-  animation: ballForm 1100ms var(--ease-standard) forwards;
+  animation: ballForm var(--nav-ball-form-duration, 1100ms) var(--ease-standard) forwards;
 }
 
 .nav-travel-ball.is-forming::before {
   opacity: 0;
-  animation: ballLightBuild 1100ms var(--ease-standard) forwards;
+  animation: ballLightBuild var(--nav-ball-form-duration, 1100ms) var(--ease-standard) forwards;
 }
 
 .nav-travel-ball.is-forming::after {
   opacity: 1;
   background: var(--color-ink);
   box-shadow: none;
-  animation: ballFlatFade 1100ms var(--ease-standard) forwards;
+  animation: ballFlatFade var(--nav-ball-form-duration, 1100ms) var(--ease-standard) forwards;
 }
 
 .nav-travel-ball.is-ready,

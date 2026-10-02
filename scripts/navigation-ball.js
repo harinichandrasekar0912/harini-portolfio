@@ -10,6 +10,7 @@
     contact: 4
   };
   var FLIGHT_DURATION_MULTIPLIER = 1.32;
+  var MOBILE_BALL_TIME_SCALE = 1.35;
 
   function clamp(value, min, max) {
     return Math.min(Math.max(value, min), max);
@@ -137,6 +138,8 @@
     }
 
     var canHover = window.matchMedia("(hover: hover) and (pointer: fine)");
+    var coarsePointer = window.matchMedia("(pointer: coarse)");
+    var mobileViewport = window.matchMedia("(max-width: 767px)");
     var reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     var isOpen = false;
     var isTravelling = false;
@@ -144,6 +147,7 @@
     var closeOnBlurTimer = 0;
     var resetTimer = 0;
     var sectionFrame = 0;
+    var navGeometryFrame = 0;
     var currentSection = "landing";
     var navState = STATES.PLUS_IDLE;
     var activeAnimationToken = 0;
@@ -444,6 +448,42 @@
 
       ballTimers.push(timerId);
       return timerId;
+    }
+
+    function isMobileViewport() {
+      return mobileViewport.matches;
+    }
+
+    function isCoarsePointer() {
+      return coarsePointer.matches;
+    }
+
+    function isMobileTapMode() {
+      return isMobileViewport() || isCoarsePointer();
+    }
+
+    function canUseHoverNav() {
+      return canHover.matches && !isMobileTapMode();
+    }
+
+    function mobileMotionScale() {
+      return isMobileViewport() ? MOBILE_BALL_TIME_SCALE : 1;
+    }
+
+    function scaleMotionDuration(duration) {
+      return reducedMotion.matches ? 1 : duration * mobileMotionScale();
+    }
+
+    function queueNavGeometryUpdate() {
+      if (navGeometryFrame) {
+        return;
+      }
+
+      navGeometryFrame = window.requestAnimationFrame(function () {
+        navGeometryFrame = 0;
+        updateSpokeGeometry();
+        debugRenderBase();
+      });
     }
 
     function cancelBallAnimation() {
@@ -1440,7 +1480,7 @@
     }
 
     function restorePlus(token, targetId, options) {
-      var restoreDuration = options && typeof options.duration === "number" ? options.duration : 260;
+      var restoreDuration = scaleMotionDuration(options && typeof options.duration === "number" ? options.duration : 260);
 
       if (!isCurrentAnimation(token)) {
         debugNavBall("stale nav ball frame cancelled");
@@ -1477,10 +1517,13 @@
       var firstPrepHeight = clamp(window.innerHeight * 0.034, 24, 34);
       var secondPrepHeight = clamp(firstPrepHeight * 1.7, 40, 58);
       var thirdPrepHeight = clamp(secondPrepHeight * 1.34, 52, 76);
-      var firstPrepDuration = clamp(window.innerHeight * 0.52, 380, 440);
-      var secondPrepDuration = clamp(firstPrepDuration + 80, 420, 540);
-      var thirdPrepDuration = clamp(secondPrepDuration + 70, 460, 620);
-      var previousHomeArcDuration = clamp(Math.abs(startScreen.y - endScreen.y) * 0.78 + Math.abs(dx) * 0.28 + 900, 1300, 2200) * 2.1;
+      var baseFirstPrepDuration = clamp(window.innerHeight * 0.52, 380, 440);
+      var baseSecondPrepDuration = clamp(baseFirstPrepDuration + 80, 420, 540);
+      var baseThirdPrepDuration = clamp(baseSecondPrepDuration + 70, 460, 620);
+      var firstPrepDuration = scaleMotionDuration(baseFirstPrepDuration);
+      var secondPrepDuration = scaleMotionDuration(baseSecondPrepDuration);
+      var thirdPrepDuration = scaleMotionDuration(baseThirdPrepDuration);
+      var previousHomeArcDuration = scaleMotionDuration(clamp(Math.abs(startScreen.y - endScreen.y) * 0.78 + Math.abs(dx) * 0.28 + 900, 1300, 2200) * 2.1);
       var homeRouteLeadProgress = 0.65;
       var routeLeadDuration = previousHomeArcDuration * homeRouteLeadProgress;
       var finalHomeApproachDuration = previousHomeArcDuration * (1 - homeRouteLeadProgress) * 1.6;
@@ -1634,16 +1677,19 @@
       var firstPrepHeight = clamp(window.innerHeight * 0.034, 24, 34);
       var secondPrepHeight = clamp(firstPrepHeight * 1.7, 40, 58);
       var thirdPrepHeight = clamp(secondPrepHeight * 1.34, 52, 76);
-      var firstPrepDuration = config.upward ? clamp(window.innerHeight * 0.52, 380, 440) : 0;
-      var secondPrepDuration = config.upward ? clamp(firstPrepDuration + 80, 420, 540) : 0;
-      var thirdPrepDuration = config.upward ? clamp(secondPrepDuration + 70, 460, 620) : 0;
-      var flightDuration = clamp(config.duration * (config.upward ? 0.9 : 1), 1150, 2500);
+      var baseFirstPrepDuration = clamp(window.innerHeight * 0.52, 380, 440);
+      var baseSecondPrepDuration = clamp(baseFirstPrepDuration + 80, 420, 540);
+      var baseThirdPrepDuration = clamp(baseSecondPrepDuration + 70, 460, 620);
+      var firstPrepDuration = config.upward ? scaleMotionDuration(baseFirstPrepDuration) : 0;
+      var secondPrepDuration = config.upward ? scaleMotionDuration(baseSecondPrepDuration) : 0;
+      var thirdPrepDuration = config.upward ? scaleMotionDuration(baseThirdPrepDuration) : 0;
+      var flightDuration = scaleMotionDuration(clamp(config.duration * (config.upward ? 0.9 : 1), 1150, 2500));
       var baseFirstLandingHeight = clamp(Math.max(window.innerHeight * 0.04, impactVelocityY * 0.024), 32, 44);
       var firstLandingHeight = clamp(baseFirstLandingHeight * 1.15, 32, 44);
       var secondLandingHeight = clamp(baseFirstLandingHeight * 0.34, 10, 16);
-      var firstLandingDuration = clamp(window.innerHeight * 0.42, 300, 380);
-      var secondLandingDuration = clamp(window.innerHeight * 0.28, 190, 260);
-      var rollDuration = 2030;
+      var firstLandingDuration = scaleMotionDuration(clamp(window.innerHeight * 0.42, 300, 380));
+      var secondLandingDuration = scaleMotionDuration(clamp(window.innerHeight * 0.28, 190, 260));
+      var rollDuration = scaleMotionDuration(2030);
       var prep1End = firstPrepDuration;
       var prep2End = prep1End + secondPrepDuration;
       var prep3End = prep2End + thirdPrepDuration;
@@ -1927,11 +1973,11 @@
 
       setBallTimeout(function () {
         setState(STATES.NAVI_TEXT_VANISHING);
-      }, reducedMotion.matches ? 1 : 120, token);
+      }, scaleMotionDuration(120), token);
 
       setBallTimeout(function () {
         setState(STATES.NAVI_TO_BALL_MORPH);
-      }, reducedMotion.matches ? 1 : 220, token);
+      }, scaleMotionDuration(220), token);
 
       setBallTimeout(function () {
         nav.classList.add("is-travelling");
@@ -1939,17 +1985,21 @@
         ball.classList.remove("is-forming");
         ball.classList.add("is-ready");
         flyBall(startPoint, targetId, token);
-      }, reducedMotion.matches ? 1 : 1360, token);
+      }, scaleMotionDuration(1360), token);
     }
 
-    core.addEventListener("click", function () {
+    core.addEventListener("click", function (event) {
       if (isProjectMode) {
         beginProjectClose();
         document.dispatchEvent(new CustomEvent("harini:project-close-request"));
         return;
       }
 
-      if (canHover.matches && isOpen) {
+      if (isMobileTapMode()) {
+        event.preventDefault();
+      }
+
+      if (canUseHoverNav() && isOpen) {
         return;
       }
 
@@ -1957,18 +2007,22 @@
     });
 
     nav.addEventListener("pointerenter", function () {
-      if (canHover.matches && !isProjectMode) {
+      if (canUseHoverNav() && !isProjectMode) {
         setOpen(true);
       }
     });
 
     nav.addEventListener("pointerleave", function () {
-      if (canHover.matches && !nav.contains(document.activeElement)) {
+      if (canUseHoverNav() && !nav.contains(document.activeElement)) {
         setOpen(false);
       }
     });
 
     nav.addEventListener("focusout", function () {
+      if (isMobileTapMode()) {
+        return;
+      }
+
       window.clearTimeout(closeOnBlurTimer);
       closeOnBlurTimer = window.setTimeout(function () {
         if (isOpen && !nav.contains(document.activeElement)) {
@@ -1979,12 +2033,16 @@
 
     items.forEach(function (item) {
       item.addEventListener("pointerenter", function () {
-        if (!isTravelling) {
+        if (canUseHoverNav() && !isTravelling) {
           setState(STATES.NAVI_HOVERED);
         }
       });
 
-      item.addEventListener("click", function () {
+      item.addEventListener("click", function (event) {
+        if (isMobileTapMode()) {
+          event.preventDefault();
+        }
+
         chooseDestination(item);
       });
     });
@@ -2012,7 +2070,7 @@
       updateCurrentSection(detectCurrentSection(), true);
 
       if (isOpen) {
-        updateSpokeGeometry();
+        queueNavGeometryUpdate();
       }
     }, { passive: true });
 
