@@ -1,11 +1,128 @@
 (function () {
+  // Paste your secure form endpoint here.
+  // Example: Formspree/Basin/Getform endpoint.
+  // Do not put Gmail passwords, SMTP credentials, or private API keys in frontend code.
+  var CONTACT_FORM_ENDPOINT = "REPLACE_WITH_YOUR_FORM_ENDPOINT";
+  var CONTACT_FORM_RECIPIENT = "harinispersonalwebsite@gmail.com";
+  var CONTACT_FORM_ENDPOINT_PLACEHOLDER = "REPLACE_WITH_YOUR_FORM_ENDPOINT";
+
   function initContactForm() {
     var form = document.querySelector("[data-contact-form]");
     var response = document.querySelector("[data-form-response]");
+    var submitButton = form ? form.querySelector('[type="submit"]') : null;
+    var fields = form ? {
+      name: form.querySelector('[name="name"]'),
+      email: form.querySelector('[name="email"]'),
+      message: form.querySelector('[name="message"]')
+    } : null;
     var expandingTextareas = Array.prototype.slice.call(document.querySelectorAll("[data-auto-expand]"));
 
-    if (!form || !response) {
+    if (!form || !response || !submitButton || !fields || !fields.name || !fields.email || !fields.message) {
       return;
+    }
+
+    function showResponse(message) {
+      response.textContent = message;
+      response.classList.toggle("is-visible", Boolean(message));
+    }
+
+    function clearInvalidState() {
+      Object.keys(fields).forEach(function (key) {
+        fields[key].removeAttribute("aria-invalid");
+      });
+    }
+
+    function markInvalid(fieldNames) {
+      fieldNames.forEach(function (fieldName) {
+        fields[fieldName].setAttribute("aria-invalid", "true");
+      });
+    }
+
+    function emailIsValid(email) {
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    }
+
+    function isEndpointConfigured() {
+      return CONTACT_FORM_ENDPOINT && CONTACT_FORM_ENDPOINT !== CONTACT_FORM_ENDPOINT_PLACEHOLDER;
+    }
+
+    function getTrimmedValues() {
+      return {
+        name: fields.name.value.trim(),
+        email: fields.email.value.trim(),
+        message: fields.message.value.trim()
+      };
+    }
+
+    function validate(values) {
+      var missing = [];
+
+      if (!values.name) {
+        missing.push("name");
+      }
+
+      if (!values.email) {
+        missing.push("email");
+      }
+
+      if (!values.message) {
+        missing.push("message");
+      }
+
+      if (missing.length > 1) {
+        return {
+          message: "please complete all fields before sending.",
+          fields: missing
+        };
+      }
+
+      if (missing.length === 1) {
+        if (missing[0] === "name") {
+          return {
+            message: "please fill your name.",
+            fields: missing
+          };
+        }
+
+        if (missing[0] === "email") {
+          return {
+            message: "please fill your email.",
+            fields: missing
+          };
+        }
+
+        return {
+          message: "please write a message.",
+          fields: missing
+        };
+      }
+
+      if (!emailIsValid(values.email)) {
+        return {
+          message: "please enter a valid email address.",
+          fields: ["email"]
+        };
+      }
+
+      return null;
+    }
+
+    function createContactFormData(values) {
+      var subject = values.name + " has contacted you through your personal website";
+      var body = "Name: " + values.name + "\nEmail: " + values.email + "\n\nMessage:\n" + values.message;
+      var formData = new FormData();
+
+      formData.append("name", values.name);
+      formData.append("email", values.email);
+      formData.append("message", values.message);
+      formData.append("body", body);
+      formData.append("_subject", subject);
+      formData.append("subject", subject);
+      formData.append("reply_to", values.email);
+      formData.append("replyTo", values.email);
+      formData.append("to", CONTACT_FORM_RECIPIENT);
+
+      return formData;
     }
 
     function expandTextarea(textarea) {
@@ -20,12 +137,64 @@
       });
     });
 
+    Object.keys(fields).forEach(function (key) {
+      fields[key].addEventListener("input", function () {
+        fields[key].removeAttribute("aria-invalid");
+      });
+    });
+
     form.addEventListener("submit", function (event) {
+      var values;
+      var validation;
+
       event.preventDefault();
-      response.textContent = "message noted — form backend coming soon.";
-      form.reset();
-      expandingTextareas.forEach(function (textarea) {
-        expandTextarea(textarea);
+      clearInvalidState();
+
+      values = getTrimmedValues();
+      validation = validate(values);
+
+      if (validation) {
+        markInvalid(validation.fields);
+        showResponse(validation.message);
+        fields[validation.fields[0]].focus();
+        return;
+      }
+
+      fields.name.value = values.name;
+      fields.email.value = values.email;
+      fields.message.value = values.message;
+
+      if (!isEndpointConfigured()) {
+        console.warn("Contact form endpoint is missing. Add your secure form endpoint to CONTACT_FORM_ENDPOINT.");
+        showResponse("form backend not connected yet.");
+        return;
+      }
+
+      submitButton.disabled = true;
+      submitButton.textContent = "sending";
+      showResponse("");
+
+      fetch(CONTACT_FORM_ENDPOINT, {
+        method: "POST",
+        body: createContactFormData(values),
+        headers: {
+          Accept: "application/json"
+        }
+      }).then(function (submitResponse) {
+        if (!submitResponse.ok) {
+          throw new Error("contact form submission failed");
+        }
+
+        form.reset();
+        expandingTextareas.forEach(function (textarea) {
+          expandTextarea(textarea);
+        });
+        showResponse("sent. i'll get back to you soon.");
+      }).catch(function () {
+        showResponse("something went wrong. please try again.");
+      }).finally(function () {
+        submitButton.disabled = false;
+        submitButton.textContent = "go";
       });
     });
   }

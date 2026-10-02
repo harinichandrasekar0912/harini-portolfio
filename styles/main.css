@@ -518,7 +518,7 @@ body.is-project-open .viewport-edge-blur {
 
 .archive-bars {
   display: grid;
-  gap: clamp(1.15rem, 2.4vw, 2rem);
+  gap: clamp(1rem, 2vh, 1.6rem);
   justify-items: end;
   width: 100%;
   padding: 0;
@@ -533,11 +533,11 @@ body.is-project-open .viewport-edge-blur {
 }
 
 .archive-bar {
-  --bar-width: min(58vw, 780px);
+  --bar-width: clamp(440px, 58vw, 860px);
   position: relative;
   display: block;
   width: var(--bar-width);
-  height: clamp(4.6rem, 8vw, 7rem);
+  height: clamp(96px, 13vh, 160px);
   padding: 0;
   margin: 0;
   border: var(--line-thin) solid var(--color-line);
@@ -550,19 +550,19 @@ body.is-project-open .viewport-edge-blur {
 }
 
 .archive-bar-long {
-  --bar-width: min(62vw, 840px);
+  --bar-width: clamp(500px, 66vw, 1080px);
 }
 
 .archive-bar-medium {
-  --bar-width: min(50vw, 680px);
+  --bar-width: clamp(440px, 56vw, 920px);
 }
 
 .archive-bar-midshort {
-  --bar-width: min(44vw, 600px);
+  --bar-width: clamp(390px, 50vw, 820px);
 }
 
 .archive-bar-short {
-  --bar-width: min(36vw, 500px);
+  --bar-width: clamp(340px, 42vw, 690px);
 }
 
 .archive-bar img {
@@ -735,6 +735,22 @@ body.is-project-open .viewport-edge-blur {
   color: var(--color-ink-soft);
   font-size: var(--text-xs);
   text-align: center;
+  opacity: 0;
+  transition: opacity 360ms var(--ease-standard);
+}
+
+.form-response.is-visible {
+  opacity: 1;
+}
+
+.contact-form input[aria-invalid="true"],
+.contact-form textarea[aria-invalid="true"] {
+  color: var(--color-ink);
+}
+
+.contact-form label:has(input[aria-invalid="true"])::before,
+.contact-form label:has(textarea[aria-invalid="true"])::before {
+  background: rgba(21, 20, 18, 0.28);
 }
 
 .contact-links {
