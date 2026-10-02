@@ -7,735 +7,420 @@
     return;
   }
 
-  const VIEWBOX = { width: 1920, height: 620 };
-  const DURATION = 30000;
   const NS = "http://www.w3.org/2000/svg";
-  const STAGE_WIDTH = VIEWBOX.width;
-  const GROUND_Y = 480;
-  const GIRL_CENTER_X = STAGE_WIDTH / 2;
-  const GIRL_OFFSCREEN_RIGHT = STAGE_WIDTH + 180;
-  const GIRL_OFFSCREEN_LEFT = -180;
-  const GIRL_PEEK_X = STAGE_WIDTH - 70;
-  const THOUGHT_CX = GIRL_CENTER_X;
-  const THOUGHT_CY = 305;
-  const INTERRUPT_DURATION = 3400;
-  const INTERRUPT_RUN_START = 900;
-  const INTERRUPT_RUN_END = 2700;
+  const STAGE = { width: 1920, height: 620 };
+  const STAGE_WIDTH = STAGE.width;
+  const STAGE_HEIGHT = STAGE.height;
+  const DURATION = 30000;
+  const GROUND_Y = 500;
+  const CENTRE_X = STAGE_WIDTH / 2;
+  const OFFSCREEN_RIGHT = STAGE_WIDTH + 180;
+  const OFFSCREEN_LEFT = -220;
+  const PEEK_RIGHT = STAGE_WIDTH + 160;
+  const PEEK_X = STAGE_WIDTH - 95;
+  const THOUGHT_CX = CENTRE_X + 12;
+  const THOUGHT_CY = 292;
+  const INTERRUPT_DURATION = 3600;
+  const INTERRUPT_RUN_START = 760;
+  const INTERRUPT_RUN_END = 2850;
 
-  const TIMING = {
-    emptyEnd: 1200,
+  const TIME = {
     walkInStart: 1200,
-    walkInEnd: 5800,
-    settleStart: 5800,
-    settleEnd: 7000,
-    threadStart: 7000,
-    threadEnd: 8700,
-    loopsStart: 8700,
-    loopsEnd: 10500,
-    designStart: 10500,
-    designEnd: 14000,
-    hobbyStart: 13200,
-    hobbyEnd: 15500,
+    walkInEnd: 6000,
+    turnStart: 6000,
+    turnEnd: 7100,
+    threadStart: 7100,
+    threadEnd: 8600,
+    orbitStart: 8600,
+    orbitEnd: 10800,
+    buildStart: 10800,
+    buildEnd: 15500,
     vortexStart: 15500,
-    vortexEnd: 19500,
-    ballStart: 19500,
+    vortexEnd: 19200,
+    ballStart: 19200,
     impact: 20000,
     collapseStart: 20000,
-    collapseEnd: 22400,
-    recoverStart: 21900,
+    collapseEnd: 22800,
     recoverEnd: 24000,
+    turnOutStart: 24000,
+    turnOutEnd: 24700,
     walkOutStart: 24700,
     walkOutEnd: 27000,
-    emptyAfterExitStart: 27000,
     peekInStart: 27700,
     peekInEnd: 28600,
-    peekOutEnd: 29200,
-    resetEnd: 30000
+    peekOutEnd: 29200
   };
 
-  const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const isPhone = window.matchMedia("(max-width: 767px)").matches;
-  const isTablet = window.matchMedia("(min-width: 768px) and (max-width: 1180px)").matches;
-
-  const config = {
-    width: VIEWBOX.width,
-    height: VIEWBOX.height,
-    duration: DURATION,
-    density: isPhone ? 0.52 : isTablet ? 0.78 : 1
-  };
-
-  const state = createSceneState(config);
+  const config = createConfig();
+  const state = createState(config);
   const scene = createScene(root, config, state);
-  const landingSection = document.getElementById("landing") || root.closest("section");
-  const plusDistraction = {
-    active: false,
-    startTime: 0,
-    duration: 1200
-  };
-  const interruptState = {
-    active: false,
-    startTime: 0,
-    frozenElapsed: 0,
-    startX: GIRL_CENTER_X,
-    promise: null,
-    resolve: null,
-    completed: false
-  };
 
-  let startTime = performance.now();
-  let frameId = 0;
-  let currentElapsed = 0;
-  let isLandingVisible = measureLandingVisible();
+  exposeController(scene, state, config);
+  setupLandingVisibilityObserver(scene, state, config);
 
-  window.landingGirlAnimation = {
-    isLandingActive: isLandingActive,
-    isPlaying: isPlaying,
-    restart: restart,
-    pause: pause,
-    resume: resume,
-    handlePlusDistraction: handlePlusDistraction,
-    interruptForNavigation: interruptForNavigation
-  };
-
-  window.addEventListener("landing-nav-plus-opened", handlePlusDistraction);
-  window.addEventListener("landing-nav-circle-selected", function () {
-    interruptForNavigation();
-  });
-
-  setupVisibilityObserver();
-
-  if (prefersReducedMotion) {
+  if (config.prefersReducedMotion) {
     renderStaticScene(scene, state, config);
-  } else if (isLandingVisible) {
-    restart();
+  } else if (state.landingVisible) {
+    restart(scene, state, config);
   } else {
-    renderFrame(scene, state, 0, config, performance.now());
+    renderFrame(scene, state, 0, config);
   }
 
-  function tick(now) {
-    if (!isLandingVisible && !interruptState.active) {
-      frameId = 0;
-      return;
-    }
-
-    if (interruptState.active) {
-      const interruptElapsed = now - interruptState.startTime;
-      renderInterruptFrame(scene, state, interruptElapsed, config, now);
-
-      if (interruptElapsed >= INTERRUPT_DURATION) {
-        completeInterrupt();
-        return;
-      }
-
-      frameId = requestAnimationFrame(tick);
-      return;
-    }
-
-    currentElapsed = (now - startTime) % config.duration;
-    renderFrame(scene, state, currentElapsed, config, now);
-    frameId = requestAnimationFrame(tick);
-  }
-
-  window.addEventListener("pagehide", function () {
-    pause();
-  });
-
-  function setupVisibilityObserver() {
-    if (!landingSection || !("IntersectionObserver" in window)) {
-      return;
-    }
-
-    const observer = new IntersectionObserver(function (entries) {
-      entries.forEach(function (entry) {
-        const visible = entry.isIntersecting && entry.intersectionRatio >= 0.35;
-
-        if (visible === isLandingVisible) {
-          return;
-        }
-
-        isLandingVisible = visible;
-
-        if (visible) {
-          restart();
-          return;
-        }
-
-        if (interruptState.active) {
-          completeInterrupt();
-        }
-
-        pause();
-        resetRuntimeState(false);
-      });
-    }, {
-      threshold: [0, 0.35, 0.5]
-    });
-
-    observer.observe(landingSection);
-  }
-
-  function measureLandingVisible() {
-    if (!landingSection) {
-      return true;
-    }
-
-    const rect = landingSection.getBoundingClientRect();
-    const visibleHeight = Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0);
-    const ratio = rect.height > 0 ? visibleHeight / rect.height : 0;
-
-    return visibleHeight > 0 && ratio >= 0.35;
-  }
-
-  function isLandingActive() {
-    return isLandingVisible && !interruptState.completed;
-  }
-
-  function isPlaying() {
-    return Boolean(frameId) && isLandingVisible && !prefersReducedMotion;
-  }
-
-  function startLoop() {
-    if (prefersReducedMotion || frameId) {
-      return;
-    }
-
-    frameId = requestAnimationFrame(tick);
-  }
-
-  function pause() {
-    if (frameId) {
-      cancelAnimationFrame(frameId);
-      frameId = 0;
-    }
-  }
-
-  function resume() {
-    if (!isLandingVisible || prefersReducedMotion) {
-      return;
-    }
-
-    startLoop();
-  }
-
-  function restart() {
-    pause();
-    resetRuntimeState(true);
-    startTime = performance.now();
-    currentElapsed = 0;
-
-    if (prefersReducedMotion) {
-      renderStaticScene(scene, state, config);
-      return;
-    }
-
-    renderFrame(scene, state, 0, config, startTime);
-
-    if (isLandingVisible) {
-      startLoop();
-    }
-  }
-
-  function resetRuntimeState(resolvePending) {
-    plusDistraction.active = false;
-    plusDistraction.startTime = 0;
-    resetInterruptState(resolvePending);
-  }
-
-  function resetInterruptState(resolvePending) {
-    if (resolvePending && interruptState.resolve) {
-      interruptState.resolve();
-    }
-
-    interruptState.active = false;
-    interruptState.startTime = 0;
-    interruptState.frozenElapsed = 0;
-    interruptState.startX = GIRL_CENTER_X;
-    interruptState.promise = null;
-    interruptState.resolve = null;
-    interruptState.completed = false;
-  }
-
-  function handlePlusDistraction() {
-    if (!isLandingActive() || interruptState.active || prefersReducedMotion) {
-      return;
-    }
-
-    plusDistraction.active = true;
-    plusDistraction.startTime = performance.now();
-  }
-
-  function interruptForNavigation() {
-    if (!isLandingActive()) {
-      return Promise.resolve();
-    }
-
-    if (prefersReducedMotion) {
-      pause();
-      interruptState.completed = true;
-
-      return new Promise(function (resolve) {
-        window.setTimeout(resolve, 360);
-      });
-    }
-
-    if (interruptState.active && interruptState.promise) {
-      return interruptState.promise;
-    }
-
-    const now = performance.now();
-    const frozenGirlState = getGirlState(currentElapsed);
-
-    plusDistraction.active = false;
-    interruptState.active = true;
-    interruptState.completed = false;
-    interruptState.startTime = now;
-    interruptState.frozenElapsed = currentElapsed;
-    interruptState.startX = Number.isFinite(frozenGirlState.x) ? frozenGirlState.x : GIRL_CENTER_X;
-    interruptState.promise = new Promise(function (resolve) {
-      interruptState.resolve = resolve;
-    });
-
-    startLoop();
-    return interruptState.promise;
-  }
-
-  function completeInterrupt() {
-    renderInterruptFrame(scene, state, INTERRUPT_DURATION, config, performance.now());
-    pause();
-    interruptState.active = false;
-    interruptState.completed = true;
-
-    if (interruptState.resolve) {
-      interruptState.resolve();
-    }
-
-    interruptState.resolve = null;
-    interruptState.promise = null;
-  }
-
-  function createSceneState(sceneConfig) {
-    const rng = createSeededRandom(42);
-    const threadPaths = [
-      {
-        id: "first-thread",
-        layer: "behind",
-        start: TIMING.threadStart,
-        draw: 1450,
-        opacity: 0.76,
-        soft: false,
-        width: 1.25,
-        d: "M972 294 C1040 248 1128 264 1178 210 C1250 132 1412 154 1532 226"
-      },
-      {
-        id: "waist-ribbon-front",
-        layer: "front",
-        start: TIMING.loopsStart,
-        draw: 1850,
-        opacity: 0.64,
-        soft: true,
-        width: 2.35,
-        d: "M332 446 C536 348 760 332 1014 374 C1226 410 1398 364 1608 258"
-      },
-      {
-        id: "main-fluid-left",
-        layer: "behind",
-        start: TIMING.loopsStart + 220,
-        draw: 1700,
-        opacity: 0.5,
-        soft: true,
-        width: 1.45,
-        d: "M410 398 C580 214 924 166 1248 250 C1490 314 1512 452 1252 500 C968 553 610 510 410 398"
-      },
-      {
-        id: "high-orbit-right",
-        layer: "front",
-        start: TIMING.loopsStart + 520,
-        draw: 1750,
-        opacity: 0.34,
-        soft: true,
-        width: 1,
-        d: "M642 226 C820 102 1152 132 1398 302 C1542 402 1452 518 1190 494"
-      },
-      {
-        id: "low-dream-return",
-        layer: "behind",
-        start: TIMING.loopsStart + 820,
-        draw: 1600,
-        opacity: 0.28,
-        soft: true,
-        width: 0.86,
-        d: "M1568 444 C1320 380 1102 398 828 484 C650 540 450 518 302 440"
-      },
-      {
-        id: "wide-process-sweep",
-        layer: "behind",
-        start: TIMING.designStart + 120,
-        draw: 1700,
-        opacity: 0.42,
-        soft: true,
-        width: 1.65,
-        d: "M278 412 C512 260 760 188 1044 198 C1290 206 1498 250 1680 358"
-      },
-      {
-        id: "dotted-orbit-a",
-        layer: "front",
-        start: TIMING.designStart + 680,
-        draw: 1550,
-        opacity: 0.42,
-        soft: true,
-        dotted: true,
-        width: 1.15,
-        d: "M478 270 C690 382 990 402 1306 246 C1438 182 1538 218 1612 292"
-      },
-      {
-        id: "dotted-orbit-b",
-        layer: "behind",
-        start: TIMING.hobbyStart - 650,
-        draw: 1500,
-        opacity: 0.32,
-        soft: true,
-        dotted: true,
-        width: 0.95,
-        d: "M1568 184 C1322 132 1138 206 914 338 C734 444 560 460 390 388"
-      },
-      {
-        id: "pencil-tail-sweep",
-        layer: "front",
-        start: TIMING.hobbyStart + 250,
-        draw: 1550,
-        opacity: 0.24,
-        soft: true,
-        width: 0.78,
-        d: "M214 314 C454 230 660 260 834 368 C1012 482 1262 486 1734 306"
-      }
-    ];
-
-    for (let i = 0; i < 14; i += 1) {
-      threadPaths.push({
-        id: "vortex-" + i,
-        layer: i % 3 === 0 ? "front" : "behind",
-        start: TIMING.vortexStart + i * 105,
-        draw: 1800,
-        opacity: i % 3 === 0 ? 0.24 : 0.34,
-        soft: i % 4 === 0,
-        dotted: i === 4 || i === 11,
-        width: seededRange(i + 4, 0.7, 2.6),
-        d: spiralPath(i),
-        spin: seededRange(i + 8, -0.38, 0.54),
-        scatterX: seededRange(i + 21, -340, 360),
-        scatterY: seededRange(i + 34, -90, 190)
-      });
-    }
-
-    const designIcons = [
-      iconSpec("sketchbook", -360, -126, 0.8, TIMING.designStart, 144, 54, 0.48, rng),
-      iconSpec("floor-plan", -518, 64, 1.04, TIMING.designStart + 330, 150, 52, -0.42, rng),
-      iconSpec("perspective", 360, -108, 0.82, TIMING.designStart + 650, 148, 54, 0.46, rng),
-      iconSpec("laptop", 486, 18, 0.74, TIMING.designStart + 960, 170, 60, -0.32, rng),
-      iconSpec("tablet", 178, 96, 0.68, TIMING.designStart + 1240, 136, 50, 0.38, rng),
-      iconSpec("pencil", 554, 92, 0.68, TIMING.designStart + 1480, 168, 60, -0.36, rng),
-      iconSpec("iteration", 12, -172, 0.74, TIMING.designStart + 1720, 128, 42, 0.54, rng),
-      iconSpec("panels", -126, 154, 0.78, TIMING.designStart + 2020, 150, 58, -0.5, rng),
-      iconSpec("sketch-panel", -602, -76, 0.76, TIMING.designStart + 2300, 170, 56, 0.34, rng),
-      iconSpec("cube", 288, 154, 0.66, TIMING.designStart + 2560, 132, 48, 0.4, rng),
-      iconSpec("model", -296, 138, 0.68, TIMING.designStart + 2840, 142, 50, -0.48, rng),
-      iconSpec("massing", 420, -164, 0.66, TIMING.designStart + 3120, 150, 54, 0.42, rng),
-      iconSpec("grid-fragment", -650, 150, 0.72, TIMING.designStart + 3440, 178, 66, -0.34, rng),
-      iconSpec("loose-page", 628, -86, 0.58, TIMING.designStart + 3700, 178, 58, 0.32, rng)
-    ];
-
-    const hobbyIcons = [
-      iconSpec("chai", 560, -22, 0.52, TIMING.hobbyStart, 190, 68, 0.38, rng),
-      iconSpec("book", -604, -12, 0.54, TIMING.hobbyStart + 520, 186, 62, -0.34, rng),
-      iconSpec("book", -454, 92, 0.44, TIMING.hobbyStart + 880, 176, 58, -0.26, rng),
-      iconSpec("tennis", 540, 146, 0.48, TIMING.hobbyStart + 1160, 200, 74, 0.45, rng),
-      iconSpec("tennis-ball", 684, 78, 0.42, TIMING.hobbyStart + 1460, 202, 74, 0.44, rng),
-      iconSpec("reading", -524, 146, 0.44, TIMING.hobbyStart + 1780, 176, 64, -0.46, rng),
-      iconSpec("chai", 392, 180, 0.42, TIMING.hobbyStart + 2100, 170, 60, 0.31, rng),
-      iconSpec("loose-page", -690, -170, 0.46, TIMING.hobbyStart + 2360, 212, 70, -0.27, rng)
-    ];
-
-    const thoughtOrigins = iconParticleOrigins(designIcons.concat(hobbyIcons), threadPaths);
-    const particleCount = Math.round(150 * sceneConfig.density);
-    const particles = [];
-
-    for (let i = 0; i < particleCount; i += 1) {
-      const origin = thoughtOrigins[i % thoughtOrigins.length];
-      const angle = rng() * Math.PI * 2;
-      const shape = rng() > 0.38 ? "square" : "dot";
-
-      particles.push({
-        originX: origin.x + lerp(-34, 34, rng()),
-        originY: origin.y + lerp(-26, 26, rng()),
-        scatterX: Math.cos(angle) * lerp(120, 420, rng()),
-        scatterY: Math.sin(angle) * lerp(30, 190, rng()) - lerp(0, 78, rng()),
-        gravity: lerp(520, 840, rng()),
-        size: lerp(1.5, 8, rng()),
-        shape: shape,
-        angle: angle,
-        orbit: lerp(8, 42, rng()),
-        speed: lerp(-0.52, 0.56, rng()) || 0.18,
-        rotation: lerp(-160, 160, rng()),
-        rotationSpeed: lerp(-260, 260, rng()),
-        opacity: lerp(0.28, 0.72, rng()),
-        delay: lerp(0, 0.22, rng())
-      });
-    }
+  function createConfig() {
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const isPhone = window.matchMedia("(max-width: 700px)").matches;
+    const isTablet = window.matchMedia("(min-width: 701px) and (max-width: 1120px)").matches;
+    const density = isPhone ? 0.55 : isTablet ? 0.78 : 1;
 
     return {
-      rng: rng,
-      threadPaths: threadPaths,
-      designIcons: designIcons,
-      hobbyIcons: hobbyIcons,
-      particles: particles
+      stage: STAGE,
+      duration: DURATION,
+      groundY: GROUND_Y,
+      centreX: CENTRE_X,
+      prefersReducedMotion: prefersReducedMotion,
+      isPhone: isPhone,
+      isTablet: isTablet,
+      density: density,
+      particleCount: Math.round((isPhone ? 92 : isTablet ? 132 : 176) * density),
+      landingThreshold: 0.42
     };
   }
 
-  function createScene(container, sceneConfig, sceneState) {
-    container.textContent = "";
+  function createState(config) {
+    const rng = createSeededRandom(912);
+    const thoughtLines = createThoughtLineSpecs();
+    const thoughtIcons = createThoughtIconSpecs(rng);
+    const particleOrigins = createParticleOrigins(thoughtIcons, thoughtLines);
+
+    return {
+      rng: rng,
+      startTime: 0,
+      elapsed: 0,
+      rafId: 0,
+      landingSection: document.getElementById("landing") || root.closest("section"),
+      landingVisible: measureLandingVisible(config),
+      plusDistractionStart: 0,
+      thoughtLines: thoughtLines,
+      thoughtIcons: thoughtIcons,
+      backgroundDust: createBackgroundDust(rng),
+      particles: createParticleSpecs(rng, particleOrigins, config.particleCount),
+      manualDisintegrationMode: "",
+      interrupt: {
+        active: false,
+        completed: false,
+        startTime: 0,
+        startX: CENTRE_X,
+        promise: null,
+        resolve: null
+      }
+    };
+  }
+
+  function createScene(root, config, state) {
+    root.textContent = "";
 
     const svg = svgEl("svg", {
       class: "landing-girl-svg",
-      viewBox: "0 0 " + sceneConfig.width + " " + sceneConfig.height,
-      preserveAspectRatio: "xMidYMid meet",
+      viewBox: "0 0 " + config.stage.width + " " + config.stage.height,
+      preserveAspectRatio: "xMidYMid slice",
       focusable: "false",
       "aria-hidden": "true"
-    }, container);
+    }, root);
 
     const layers = {
-      behind: svgEl("g", { class: "thoughts-behind" }, svg),
+      backgroundDust: svgEl("g", { class: "background-dust-layer" }, svg),
+      thoughtsBehind: svgEl("g", { class: "thoughts-behind-layer" }, svg),
+      shadow: svgEl("g", { class: "shadow-layer" }, svg),
       girl: svgEl("g", { class: "girl-layer" }, svg),
-      front: svgEl("g", { class: "thoughts-front" }, svg),
-      particles: svgEl("g", { class: "particle-layer" }, svg),
-      impact: svgEl("g", { class: "impact-layer" }, svg)
+      thoughtsFront: svgEl("g", { class: "thoughts-front-layer" }, svg),
+      thoughtIcons: svgEl("g", { class: "thought-icons-layer" }, svg),
+      ball: svgEl("g", { class: "ball-layer" }, svg),
+      impact: svgEl("g", { class: "impact-layer" }, svg),
+      particles: svgEl("g", { class: "particles-layer" }, svg)
     };
 
     const scene = {
       svg: svg,
-      layers: layers
+      layers: layers,
+      shadow: svgEl("ellipse", {
+        class: "girl-shadow",
+        cx: "0",
+        cy: GROUND_Y + 8,
+        rx: "44",
+        ry: "5"
+      }, layers.shadow)
     };
 
-    scene.thoughtPaths = createThoughtPaths(scene, sceneState);
-    scene.threadDot = svgEl("circle", { class: "thought-dot", r: "4.2" }, layers.front);
-    scene.girl = createGirl(scene);
-    scene.designIcons = createDesignIcons(scene, sceneState);
-    scene.hobbyIcons = createHobbyIcons(scene, sceneState);
-    scene.particles = createParticles(scene, sceneState);
+    scene.backgroundDust = createBackgroundDustElements(scene, state);
+    scene.profileGirl = createProfileGirl(scene);
+    scene.frontGirl = createFrontGirl(scene);
+    scene.thoughtLines = createThoughtLines(scene, state);
+    scene.thoughtIcons = createThoughtIcons(scene, state);
+    scene.particles = createParticlePool(scene, state);
     scene.ball = createBall(scene);
 
     return scene;
   }
 
-  function createGirl(scene) {
-    const shadow = svgEl("ellipse", {
-      class: "girl-shadow",
-      cx: "0",
-      cy: "0",
-      rx: "40",
-      ry: "5"
-    }, scene.layers.girl);
-    const group = svgEl("g", { class: "landing-girl" }, scene.layers.girl);
-    const profile = svgEl("g", { class: "girl-profile" }, group);
-    const profileLegs = svgEl("g", { class: "girl-legs profile-legs" }, profile);
-    const profileBody = svgEl("g", { class: "girl-body profile-body" }, profile);
-    const profileHead = svgEl("g", { class: "girl-head profile-head" }, profileBody);
-    const front = svgEl("g", { class: "girl-front" }, group);
-    const frontLegs = svgEl("g", { class: "girl-legs front-legs" }, front);
-    const frontBody = svgEl("g", { class: "girl-body front-body" }, front);
-    const frontHead = svgEl("g", { class: "girl-head front-head" }, frontBody);
+  function createProfileGirl(scene) {
+    const group = svgEl("g", { class: "girl-profile" }, scene.layers.girl);
+    const pose = svgEl("g", { class: "girl-profile-pose" }, group);
+    const legs = svgEl("g", { class: "profile-legs" }, pose);
+    const body = svgEl("g", { class: "profile-body" }, pose);
+    const head = svgEl("g", { class: "profile-head" }, body);
+    const hairStrands = [];
 
-    const profileLegBack = svgEl("path", {
-      class: "girl-limb profile-leg-back",
-      d: "M-10 -76 C-22 -54 -27 -29 -27 -9 C-22 -4 -12 -5 -8 -12 C-8 -32 -2 -52 10 -72 C6 -78 -4 -80 -10 -76 Z"
-    }, profileLegs);
-    const profileLegFront = svgEl("path", {
-      class: "girl-limb profile-leg-front",
-      d: "M16 -75 C32 -54 40 -31 39 -9 C45 -4 56 -5 61 -13 C58 -38 45 -61 27 -79 C22 -81 16 -80 16 -75 Z"
-    }, profileLegs);
-    const profileFootBack = svgEl("ellipse", {
-      class: "girl-foot profile-foot-back",
-      cx: "-25",
-      cy: "-3",
-      rx: "21",
-      ry: "5.4"
-    }, profileLegs);
-    const profileFootFront = svgEl("ellipse", {
-      class: "girl-foot profile-foot-front",
-      cx: "59",
-      cy: "-3",
-      rx: "24",
-      ry: "5.6"
-    }, profileLegs);
-    const profileArmBack = svgEl("path", {
-      class: "girl-limb profile-arm-back",
-      d: "M-14 -144 C-30 -124 -38 -98 -37 -78 C-32 -72 -22 -74 -20 -83 C-19 -102 -10 -122 6 -138 C3 -146 -8 -149 -14 -144 Z"
-    }, profileBody);
-    const profileArmFront = svgEl("path", {
-      class: "girl-limb profile-arm-front",
-      d: "M22 -142 C39 -124 48 -101 47 -81 C52 -74 62 -75 66 -84 C64 -106 51 -132 33 -149 C28 -150 22 -148 22 -142 Z"
-    }, profileBody);
+    const backLeg = svgEl("g", { class: "profile-leg profile-leg-back" }, legs);
+    svgEl("path", {
+      class: "girl-limb",
+      d: "M-10 -78 C-28 -58 -35 -30 -30 -8 C-24 -2 -12 -3 -8 -11 C-8 -33 -1 -55 14 -74 C8 -82 -3 -84 -10 -78 Z"
+    }, backLeg);
+    svgEl("ellipse", { class: "girl-foot", cx: "-26", cy: "-3", rx: "22", ry: "5.5" }, backLeg);
+
+    const frontLeg = svgEl("g", { class: "profile-leg profile-leg-front" }, legs);
+    svgEl("path", {
+      class: "girl-limb",
+      d: "M15 -77 C32 -56 40 -32 39 -9 C45 -3 58 -5 63 -14 C59 -39 47 -62 27 -80 C22 -83 16 -82 15 -77 Z"
+    }, frontLeg);
+    svgEl("ellipse", { class: "girl-foot", cx: "60", cy: "-3", rx: "24", ry: "5.5" }, frontLeg);
+
+    const backArm = svgEl("g", { class: "profile-arm profile-arm-back" }, body);
+    svgEl("path", {
+      class: "girl-limb",
+      d: "M-17 -148 C-32 -129 -40 -104 -38 -82 C-33 -75 -22 -77 -20 -86 C-20 -104 -10 -126 7 -140 C4 -149 -10 -153 -17 -148 Z"
+    }, backArm);
+
+    const frontArm = svgEl("g", { class: "profile-arm profile-arm-front" }, body);
+    svgEl("path", {
+      class: "girl-limb",
+      d: "M22 -146 C39 -128 48 -104 47 -84 C53 -76 64 -78 67 -88 C64 -111 51 -134 33 -151 C28 -153 22 -151 22 -146 Z"
+    }, frontArm);
 
     svgEl("path", {
       class: "girl-fill profile-dress",
-      d: "M-20 -156 C-36 -134 -45 -102 -51 -64 C-28 -48 8 -44 48 -61 C42 -104 30 -139 10 -158 C0 -164 -12 -163 -20 -156 Z"
-    }, profileBody);
+      d: "M-20 -158 C-35 -137 -45 -103 -52 -64 C-29 -48 7 -43 49 -60 C43 -105 31 -140 10 -160 C0 -166 -13 -165 -20 -158 Z"
+    }, body);
+    svgEl("path", { class: "girl-fill profile-neck", d: "M-8 -178 L13 -177 L14 -151 L-8 -149 Z" }, body);
     svgEl("path", {
-      class: "girl-fill profile-neck",
-      d: "M-9 -176 L12 -175 L13 -150 L-8 -148 Z"
-    }, profileBody);
-    svgEl("path", {
-      class: "girl-fill profile-hair",
-      d: "M-26 -204 C-20 -234 16 -241 42 -218 C54 -202 48 -176 25 -163 C2 -151 -27 -170 -31 -193 C-32 -197 -30 -201 -26 -204 Z"
-    }, profileHead);
-    const profilePonytail = svgEl("path", {
+      class: "girl-fill profile-head-hair",
+      d: "M-25 -205 C-20 -236 17 -243 43 -219 C55 -202 48 -177 26 -164 C2 -151 -27 -170 -31 -193 C-32 -198 -30 -202 -25 -205 Z"
+    }, head);
+    const ponytail = svgEl("path", {
       class: "girl-fill profile-ponytail",
-      d: "M34 -206 C78 -226 122 -203 112 -176 C104 -152 75 -141 43 -160 C28 -169 31 -187 40 -196 C43 -200 40 -204 34 -206 Z"
-    }, profileHead);
+      d: "M34 -207 C78 -231 126 -205 115 -176 C105 -151 75 -139 42 -160 C28 -169 31 -190 41 -198 C44 -202 41 -206 34 -207 Z"
+    }, head);
     svgEl("path", {
       class: "girl-fill profile-head-shape",
-      d: "M-20 -218 C11 -231 39 -211 40 -184 C40 -161 15 -151 -7 -160 C-19 -165 -26 -174 -31 -186 C-42 -187 -45 -194 -34 -198 C-32 -207 -28 -214 -20 -218 Z"
-    }, profileHead);
-    const profileStrands = [
-      svgEl("path", { class: "girl-strand", d: "M-28 -218 C-42 -205 -39 -190 -49 -178" }, profileHead),
-      svgEl("path", { class: "girl-strand", d: "M-9 -228 C-20 -210 -15 -191 -26 -174" }, profileHead),
-      svgEl("path", { class: "girl-strand", d: "M31 -210 C45 -198 38 -180 50 -166" }, profileHead),
-      svgEl("path", { class: "girl-strand", d: "M76 -207 C104 -196 98 -166 72 -148" }, profileHead),
-      svgEl("path", { class: "girl-strand", d: "M92 -196 C128 -180 112 -148 84 -137" }, profileHead)
-    ];
+      d: "M-20 -219 C10 -232 38 -212 41 -185 C42 -162 16 -151 -7 -160 C-19 -165 -27 -175 -31 -187 C-43 -187 -46 -194 -34 -198 C-32 -208 -28 -215 -20 -219 Z"
+    }, head);
 
-    const frontLegLeft = svgEl("path", {
-      class: "girl-limb front-leg-left",
-      d: "M-28 -74 C-36 -50 -39 -26 -37 -8 C-31 -3 -20 -4 -16 -11 C-17 -32 -12 -54 -4 -72 C-11 -78 -22 -79 -28 -74 Z"
-    }, frontLegs);
-    const frontLegRight = svgEl("path", {
-      class: "girl-limb front-leg-right",
-      d: "M6 -72 C16 -51 20 -29 18 -9 C23 -4 34 -4 40 -10 C42 -31 36 -56 25 -76 C18 -80 9 -78 6 -72 Z"
-    }, frontLegs);
-    svgEl("ellipse", { class: "girl-foot front-foot-left", cx: "-39", cy: "-3", rx: "21", ry: "5.2" }, frontLegs);
-    svgEl("ellipse", { class: "girl-foot front-foot-right", cx: "41", cy: "-3", rx: "21", ry: "5.2" }, frontLegs);
-    const frontArmLeft = svgEl("path", {
-      class: "girl-limb front-arm-left",
-      d: "M-44 -146 C-58 -124 -66 -98 -66 -76 C-61 -69 -50 -70 -47 -80 C-45 -101 -36 -123 -24 -140 C-28 -148 -38 -151 -44 -146 Z"
-    }, frontBody);
-    const frontArmRight = svgEl("path", {
-      class: "girl-limb front-arm-right",
-      d: "M28 -140 C42 -122 51 -99 52 -79 C56 -70 67 -70 72 -78 C70 -101 60 -126 44 -146 C38 -151 30 -148 28 -140 Z"
-    }, frontBody);
-    svgEl("path", {
-      class: "girl-fill front-dress",
-      d: "M-34 -158 C-51 -132 -60 -100 -69 -58 C-44 -44 -12 -41 10 -44 C38 -46 62 -52 77 -62 C66 -104 54 -136 34 -158 C14 -168 -16 -168 -34 -158 Z"
-    }, frontBody);
-    svgEl("rect", { class: "girl-fill front-neck", x: "-11", y: "-177", width: "22", height: "28", rx: "7" }, frontBody);
-    svgEl("path", {
-      class: "girl-fill front-hair",
-      d: "M-38 -204 C-34 -235 4 -244 34 -224 C55 -209 50 -174 25 -159 C2 -146 -34 -154 -44 -178 C-48 -188 -46 -198 -38 -204 Z"
-    }, frontHead);
-    const frontPonytail = svgEl("path", {
-      class: "girl-fill front-ponytail",
-      d: "M28 -211 C73 -226 94 -192 73 -166 C52 -140 15 -164 24 -194 C26 -202 28 -207 28 -211 Z"
-    }, frontHead);
-    svgEl("path", {
-      class: "girl-fill front-head-shape",
-      d: "M-26 -217 C-4 -235 31 -226 39 -197 C47 -168 24 -150 -3 -154 C-31 -158 -45 -185 -35 -204 C-32 -210 -30 -214 -26 -217 Z"
-    }, frontHead);
-    const frontStrands = [
-      svgEl("path", { class: "girl-strand", d: "M-34 -216 C-50 -198 -38 -181 -50 -164" }, frontHead),
-      svgEl("path", { class: "girl-strand", d: "M-10 -229 C-22 -204 -12 -184 -24 -164" }, frontHead),
-      svgEl("path", { class: "girl-strand", d: "M20 -222 C8 -202 24 -181 8 -160" }, frontHead),
-      svgEl("path", { class: "girl-strand", d: "M38 -204 C62 -190 52 -166 34 -150" }, frontHead),
-      svgEl("path", { class: "girl-strand", d: "M59 -198 C90 -178 74 -146 46 -138" }, frontHead)
-    ];
+    [
+      "M-28 -219 C-42 -207 -39 -191 -49 -179",
+      "M-9 -229 C-20 -211 -15 -192 -27 -174",
+      "M31 -211 C47 -198 39 -180 51 -166",
+      "M76 -209 C105 -198 99 -166 72 -148",
+      "M95 -197 C130 -179 112 -145 83 -137",
+      "M44 -218 C59 -216 64 -204 60 -190"
+    ].forEach(function (d) {
+      hairStrands.push(svgEl("path", { class: "girl-strand", d: d }, head));
+    });
 
     return {
-      shadow: shadow,
       group: group,
-      profile: profile,
-      profileLegs: profileLegs,
-      profileBody: profileBody,
-      profileHead: profileHead,
-      profilePonytail: profilePonytail,
-      profileStrands: profileStrands,
-      profileLegBack: profileLegBack,
-      profileLegFront: profileLegFront,
-      profileFootBack: profileFootBack,
-      profileFootFront: profileFootFront,
-      profileArmBack: profileArmBack,
-      profileArmFront: profileArmFront,
-      front: front,
-      frontLegs: frontLegs,
-      frontBody: frontBody,
-      frontHead: frontHead,
-      frontPonytail: frontPonytail,
-      frontStrands: frontStrands,
-      frontLegLeft: frontLegLeft,
-      frontLegRight: frontLegRight,
-      frontArmLeft: frontArmLeft,
-      frontArmRight: frontArmRight
+      pose: pose,
+      head: head,
+      ponytail: ponytail,
+      hairStrands: hairStrands,
+      backLeg: backLeg,
+      frontLeg: frontLeg,
+      backArm: backArm,
+      frontArm: frontArm
     };
   }
 
-  function createThoughtPaths(scene, sceneState) {
-    return sceneState.threadPaths.map(function (spec, index) {
-      const parent = spec.layer === "front" ? scene.layers.front : scene.layers.behind;
+  function createFrontGirl(scene) {
+    const group = svgEl("g", { class: "girl-front" }, scene.layers.girl);
+    const pose = svgEl("g", { class: "girl-front-pose" }, group);
+    const legs = svgEl("g", { class: "front-legs" }, pose);
+    const body = svgEl("g", { class: "front-body" }, pose);
+    const head = svgEl("g", { class: "front-head" }, body);
+    const hairStrands = [];
+
+    svgEl("path", {
+      class: "girl-limb front-leg-left",
+      d: "M-28 -75 C-37 -51 -40 -27 -37 -8 C-31 -3 -20 -4 -16 -12 C-17 -34 -12 -55 -4 -73 C-11 -80 -23 -80 -28 -75 Z"
+    }, legs);
+    svgEl("path", {
+      class: "girl-limb front-leg-right",
+      d: "M7 -73 C16 -52 20 -29 18 -9 C24 -3 36 -5 39 -13 C38 -35 31 -56 22 -75 C17 -81 9 -80 7 -73 Z"
+    }, legs);
+    svgEl("ellipse", { class: "girl-foot", cx: "-25", cy: "-3", rx: "21", ry: "5.2" }, legs);
+    svgEl("ellipse", { class: "girl-foot", cx: "38", cy: "-3", rx: "21", ry: "5.2" }, legs);
+
+    const leftArm = svgEl("g", { class: "front-arm-left" }, body);
+    svgEl("path", {
+      class: "girl-limb",
+      d: "M-36 -145 C-48 -124 -53 -101 -49 -82 C-43 -76 -34 -78 -32 -87 C-34 -106 -29 -125 -18 -141 C-22 -149 -31 -151 -36 -145 Z"
+    }, leftArm);
+
+    const rightArmRelaxed = svgEl("g", { class: "front-arm-right-relaxed" }, body);
+    svgEl("path", {
+      class: "girl-limb",
+      d: "M35 -145 C48 -124 54 -101 50 -82 C44 -75 34 -78 32 -87 C34 -106 29 -126 18 -142 C22 -149 31 -151 35 -145 Z"
+    }, rightArmRelaxed);
+
+    const rightArmScratch = svgEl("g", { class: "front-arm-right-scratch" }, body);
+    svgEl("path", {
+      class: "girl-limb",
+      d: "M33 -145 C58 -154 59 -182 40 -197 C33 -198 27 -191 30 -185 C40 -178 39 -165 25 -156 C24 -149 28 -145 33 -145 Z"
+    }, rightArmScratch);
+    svgEl("circle", { class: "girl-fill", cx: "39", cy: "-197", r: "5.2" }, rightArmScratch);
+
+    svgEl("path", {
+      class: "girl-fill front-dress",
+      d: "M-27 -160 C-44 -132 -54 -96 -58 -61 C-26 -44 18 -43 58 -62 C52 -101 42 -135 25 -160 C12 -171 -14 -170 -27 -160 Z"
+    }, body);
+    svgEl("path", { class: "girl-fill front-neck", d: "M-11 -180 L14 -180 L16 -154 L-13 -154 Z" }, body);
+    svgEl("path", {
+      class: "girl-fill front-hair",
+      d: "M-38 -212 C-28 -244 19 -252 45 -225 C63 -206 55 -171 25 -158 C-6 -145 -42 -164 -47 -194 C-48 -201 -45 -208 -38 -212 Z"
+    }, head);
+    const ponytail = svgEl("path", {
+      class: "girl-fill front-ponytail",
+      d: "M39 -212 C80 -232 114 -205 104 -177 C96 -154 69 -143 42 -158 C30 -166 29 -187 40 -198 Z"
+    }, head);
+    svgEl("path", {
+      class: "girl-fill front-head-shape",
+      d: "M-30 -217 C-8 -237 31 -231 44 -204 C55 -180 34 -156 5 -156 C-22 -156 -45 -173 -45 -194 C-45 -203 -39 -212 -30 -217 Z"
+    }, head);
+
+    [
+      "M-31 -230 C-47 -216 -41 -198 -53 -184",
+      "M-12 -239 C-27 -219 -18 -197 -31 -178",
+      "M34 -224 C51 -211 45 -188 58 -173",
+      "M71 -212 C97 -196 90 -166 65 -150",
+      "M93 -198 C119 -179 104 -150 80 -138",
+      "M17 -240 C26 -226 18 -209 27 -193"
+    ].forEach(function (d) {
+      hairStrands.push(svgEl("path", { class: "girl-strand", d: d }, head));
+    });
+
+    return {
+      group: group,
+      pose: pose,
+      head: head,
+      ponytail: ponytail,
+      hairStrands: hairStrands,
+      leftArm: leftArm,
+      rightArmRelaxed: rightArmRelaxed,
+      rightArmScratch: rightArmScratch
+    };
+  }
+
+  function createThoughtLines(scene, state) {
+    return state.thoughtLines.map(function (spec, index) {
+      const parent = spec.layer === "front" ? scene.layers.thoughtsFront : scene.layers.thoughtsBehind;
+      const className = [
+        "thought-line",
+        spec.dotted ? "is-dotted" : "",
+        spec.ribbon ? "is-ribbon" : ""
+      ].filter(Boolean).join(" ");
       const element = svgEl("path", {
-        class: "thought-line" + (spec.soft ? " is-soft" : "") + (spec.dotted ? " is-dotted" : ""),
+        class: className,
         d: spec.d,
         pathLength: "1"
       }, parent);
 
-      element.style.setProperty("--line-width", (spec.width || 1.15) + "px");
-      element.style.strokeDasharray = spec.dotted ? "0.018 0.055" : "1";
+      element.style.setProperty("--line-width", spec.width + "px");
+      element.style.setProperty("--line-color", spec.color);
+      element.style.strokeDasharray = spec.dotted ? "0.012 0.038" : "1";
       element.style.strokeDashoffset = "1";
+      element.style.opacity = "0";
 
-      return {
-        element: element,
-        index: index,
-        start: spec.start,
-        draw: spec.draw,
-        opacity: spec.opacity,
-        dotted: Boolean(spec.dotted),
-        spin: spec.spin || seededRange(index + 4, -0.4, 0.55),
-        scatterX: spec.scatterX || seededRange(index + 10, -110, 120),
-        scatterY: spec.scatterY || seededRange(index + 20, -36, 120)
-      };
+      return Object.assign({ element: element, index: index }, spec);
     });
   }
 
-  function createDesignIcons(scene, sceneState) {
-    return sceneState.designIcons.map(function (spec, index) {
-      const group = svgEl("g", { class: "thought-icon design-icon design-icon-" + spec.type }, spec.layer === "front" ? scene.layers.front : scene.layers.behind);
+  function createThoughtIcons(scene, state) {
+    return state.thoughtIcons.map(function (spec, index) {
+      const group = svgEl("g", {
+        class: "thought-icon thought-icon-" + spec.type
+      }, scene.layers.thoughtIcons);
+
       buildIcon(spec.type, group);
-      return Object.assign({ element: group, index: index, category: "design" }, spec);
+      group.style.opacity = "0";
+
+      return Object.assign({ element: group, index: index }, spec);
     });
   }
 
-  function createHobbyIcons(scene, sceneState) {
-    return sceneState.hobbyIcons.map(function (spec, index) {
-      const group = svgEl("g", { class: "thought-icon hobby-icon hobby-icon-" + spec.type }, spec.layer === "front" ? scene.layers.front : scene.layers.behind);
-      buildIcon(spec.type, group);
-      return Object.assign({ element: group, index: index, category: "hobby" }, spec);
-    });
-  }
+  function createParticlePool(scene, state) {
+    return state.particles.map(function (spec) {
+      let element;
 
-  function createParticles(scene, sceneState) {
-    return sceneState.particles.map(function (spec) {
-      const element = spec.shape === "square"
-        ? svgEl("rect", { class: "particle", width: spec.size, height: spec.size, rx: spec.size > 4.8 ? "1" : "0" }, scene.layers.particles)
-        : svgEl("circle", { class: "particle", r: spec.size * 0.46 }, scene.layers.particles);
+      if (spec.shape === "dot") {
+        element = svgEl("circle", {
+          class: "particle particle-dot",
+          r: spec.size / 2,
+          cx: "0",
+          cy: "0"
+        }, scene.layers.particles);
+      } else if (spec.shape === "cube") {
+        element = svgEl("g", { class: "particle particle-cube" }, scene.layers.particles);
+        svgEl("rect", {
+          class: "particle-face-main",
+          x: -spec.size / 2,
+          y: -spec.size / 2,
+          width: spec.size,
+          height: spec.size
+        }, element);
+        svgEl("path", {
+          class: "particle-face-side",
+          d: "M" + (spec.size / 2) + " " + (-spec.size / 2) + " L" + (spec.size * 0.92) + " " + (-spec.size * 0.78) + " L" + (spec.size * 0.92) + " " + (spec.size * 0.22) + " L" + (spec.size / 2) + " " + (spec.size / 2) + " Z"
+        }, element);
+        svgEl("path", {
+          class: "particle-face-top",
+          d: "M" + (-spec.size / 2) + " " + (-spec.size / 2) + " L0 " + (-spec.size * 0.78) + " L" + (spec.size * 0.92) + " " + (-spec.size * 0.78) + " L" + (spec.size / 2) + " " + (-spec.size / 2) + " Z"
+        }, element);
+      } else {
+        element = svgEl("rect", {
+          class: "particle particle-square",
+          x: -spec.size / 2,
+          y: -spec.size / 2,
+          width: spec.size,
+          height: spec.size
+        }, scene.layers.particles);
+      }
+
+      element.style.opacity = "0";
 
       return Object.assign({ element: element }, spec);
     });
   }
 
   function createBall(scene) {
-    const group = svgEl("g", { class: "reset-ball-group" }, scene.layers.impact);
-    const ball = svgEl("circle", { class: "reset-ball", cx: "0", cy: "0", r: "9" }, group);
-    const impact = svgEl("g", { class: "impact-mark" }, scene.layers.impact);
+    const group = svgEl("g", { class: "bonk-ball-group" }, scene.layers.ball);
+    const ball = svgEl("circle", { class: "bonk-ball", r: "10", cx: "0", cy: "0" }, group);
+    const impact = svgEl("g", { class: "impact-burst" }, scene.layers.impact);
 
-    svgEl("line", { class: "impact-line", x1: "0", y1: "-18", x2: "0", y2: "-38" }, impact);
-    svgEl("line", { class: "impact-line", x1: "12", y1: "-11", x2: "30", y2: "-26" }, impact);
-    svgEl("line", { class: "impact-line", x1: "-10", y1: "-10", x2: "-26", y2: "-24" }, impact);
-    svgEl("path", { class: "impact-line", d: "M-7 -30 L0 -21 L8 -31" }, impact);
+    [
+      [-18, -14, -34, -26],
+      [-7, -21, -10, -41],
+      [10, -18, 22, -35],
+      [19, -6, 38, -10],
+      [-22, 2, -42, 6]
+    ].forEach(function (coords) {
+      svgEl("line", {
+        class: "impact-line",
+        x1: coords[0],
+        y1: coords[1],
+        x2: coords[2],
+        y2: coords[3]
+      }, impact);
+    });
+
+    group.style.opacity = "0";
+    impact.style.opacity = "0";
 
     return {
       group: group,
@@ -744,322 +429,151 @@
     };
   }
 
-  function getGirlState(elapsed) {
-    const state = {
-      x: GIRL_OFFSCREEN_RIGHT,
-      y: GROUND_Y,
-      opacity: 0,
-      mode: "hidden",
-      facing: "left",
-      turnProgress: 0,
-      walkPhase: elapsed * 0.0078,
-      bodyBob: 0,
-      headTilt: 0,
-      impactAmount: 0,
-      breathingAmount: 0,
-      profileOpacity: 0,
-      frontOpacity: 0,
-      scratchProgress: 0,
-      shakeProgress: 0,
-      lean: 0,
-      peekLean: 0,
-      distractionAmount: 0
-    };
+  function getTimelineState(elapsed, config) {
+    const t = elapsed % config.duration;
+    const turnIn = phase(t, TIME.turnStart, TIME.turnEnd);
+    const turnOut = phase(t, TIME.turnOutStart, TIME.turnOutEnd);
+    const walkIn = phase(t, TIME.walkInStart, TIME.walkInEnd);
+    const walkOut = phase(t, TIME.walkOutStart, TIME.walkOutEnd);
+    const peekIn = phase(t, TIME.peekInStart, TIME.peekInEnd);
+    const peekOut = phase(t, TIME.peekInEnd, TIME.peekOutEnd);
+    const collapseProgress = phase(t, TIME.collapseStart, TIME.collapseEnd);
+    const thoughtCollapseFade = phase(t, TIME.collapseStart, TIME.collapseStart + 760);
 
-    if (elapsed < TIMING.walkInStart) {
-      return state;
+    let profileX = OFFSCREEN_RIGHT;
+    let profileOpacity = 0;
+    let profileMode = "walk";
+    let frontOpacity = 0;
+
+    if (t >= TIME.walkInStart && t < TIME.turnEnd) {
+      profileX = lerp(OFFSCREEN_RIGHT, CENTRE_X, easeInOutCubic(walkIn));
+      profileOpacity = t < TIME.turnStart ? 1 : 1 - easeInOutCubic(turnIn);
+    } else if (t >= TIME.turnOutStart && t < TIME.walkOutEnd) {
+      profileX = t < TIME.walkOutStart ? CENTRE_X : lerp(CENTRE_X, OFFSCREEN_LEFT, easeInOutCubic(walkOut));
+      profileOpacity = t < TIME.walkOutStart ? easeInOutCubic(turnOut) : 1;
+    } else if (t >= TIME.peekInStart && t < TIME.peekOutEnd) {
+      profileMode = "peek";
+      profileX = t < TIME.peekInEnd
+        ? lerp(PEEK_RIGHT, PEEK_X, easeOutCubic(peekIn))
+        : lerp(PEEK_X, PEEK_RIGHT, easeInCubic(peekOut));
+      profileOpacity = 1;
     }
 
-    if (elapsed < TIMING.walkInEnd) {
-      const p = easeInOutCubic(phase(elapsed, TIMING.walkInStart, TIMING.walkInEnd));
-      state.x = lerp(GIRL_OFFSCREEN_RIGHT, GIRL_CENTER_X, p);
-      state.opacity = phase(elapsed, TIMING.walkInStart, TIMING.walkInStart + 420);
-      state.profileOpacity = state.opacity;
-      state.mode = "walkProfile";
-      state.bodyBob = Math.abs(Math.sin(state.walkPhase)) * 1.9;
-      return state;
+    if (t >= TIME.turnStart && t < TIME.turnOutEnd) {
+      frontOpacity = t < TIME.turnEnd ? easeInOutCubic(turnIn) : 1 - easeInOutCubic(turnOut);
     }
-
-    if (elapsed < TIMING.settleEnd) {
-      const settle = phase(elapsed, TIMING.settleStart, TIMING.settleEnd);
-      state.x = GIRL_CENTER_X;
-      state.opacity = 1;
-      state.mode = "settle";
-      state.facing = "front";
-      state.turnProgress = smoothstep(settle);
-      state.walkPhase = elapsed * 0.0078;
-      state.bodyBob = Math.sin(settle * Math.PI) * 2;
-      state.profileOpacity = 1 - state.turnProgress;
-      state.frontOpacity = state.turnProgress;
-      return state;
-    }
-
-    if (elapsed < TIMING.impact) {
-      state.x = GIRL_CENTER_X;
-      state.opacity = 1;
-      state.mode = "frontThinking";
-      state.facing = "front";
-      state.turnProgress = 1;
-      state.frontOpacity = 1;
-      state.walkPhase = Math.PI * 0.5;
-      state.breathingAmount = Math.sin(elapsed * 0.0016) * 1.4;
-      return state;
-    }
-
-    if (elapsed < TIMING.recoverEnd) {
-      const scratch = phase(elapsed, TIMING.impact, TIMING.impact + 1300);
-      const shake = phase(elapsed, TIMING.impact + 900, TIMING.recoverEnd);
-      const hitIn = Math.sin(phase(elapsed, TIMING.impact, TIMING.impact + 220) * Math.PI);
-      const hitOut = 1 - phase(elapsed, TIMING.impact + 220, TIMING.recoverEnd);
-      const hit = Math.max(hitIn, hitOut * 0.68);
-      state.x = GIRL_CENTER_X;
-      state.opacity = 1;
-      state.mode = "owReaction";
-      state.facing = "front";
-      state.turnProgress = 1;
-      state.frontOpacity = 1;
-      state.walkPhase = Math.PI * 0.5;
-      state.impactAmount = hit;
-      state.scratchProgress = scratch;
-      state.shakeProgress = shake;
-      state.headTilt = -5.2 * hit + Math.sin(shake * Math.PI * 6) * 3.5 * (1 - shake);
-      state.bodyBob = 3.2 * hit;
-      state.lean = -2.6 * hit;
-      return state;
-    }
-
-    if (elapsed < TIMING.walkOutStart) {
-      const turn = phase(elapsed, TIMING.recoverEnd, TIMING.walkOutStart);
-      state.x = GIRL_CENTER_X;
-      state.opacity = 1;
-      state.mode = "recover";
-      state.facing = "front";
-      state.turnProgress = 1 - smoothstep(turn);
-      state.frontOpacity = state.turnProgress;
-      state.profileOpacity = 1 - state.turnProgress;
-      state.walkPhase = Math.PI * 0.5;
-      state.bodyBob = Math.sin(turn * Math.PI) * 1.1;
-      return state;
-    }
-
-    if (elapsed < TIMING.walkOutEnd) {
-      const p = easeInOutCubic(phase(elapsed, TIMING.walkOutStart, TIMING.walkOutEnd));
-      state.x = lerp(GIRL_CENTER_X, GIRL_OFFSCREEN_LEFT, p);
-      state.opacity = 1 - phase(elapsed, TIMING.walkOutEnd - 360, TIMING.walkOutEnd) * 0.65;
-      state.profileOpacity = state.opacity;
-      state.mode = "walkOutProfile";
-      state.facing = "left";
-      state.walkPhase = elapsed * 0.0078;
-      state.bodyBob = Math.abs(Math.sin(state.walkPhase)) * 1.9;
-      return state;
-    }
-
-    if (elapsed < TIMING.peekInStart) {
-      return state;
-    }
-
-    if (elapsed < TIMING.peekInEnd) {
-      const p = easeOutCubic(phase(elapsed, TIMING.peekInStart, TIMING.peekInEnd));
-      state.x = lerp(GIRL_OFFSCREEN_RIGHT, GIRL_PEEK_X, p);
-      state.opacity = phase(elapsed, TIMING.peekInStart, TIMING.peekInStart + 220);
-      state.profileOpacity = state.opacity;
-      state.mode = "peekProfile";
-      state.walkPhase = Math.PI * 0.2;
-      state.peekLean = -6 * p;
-      return state;
-    }
-
-    if (elapsed < TIMING.peekOutEnd) {
-      const p = easeInOutCubic(phase(elapsed, TIMING.peekInEnd, TIMING.peekOutEnd));
-      state.x = lerp(GIRL_PEEK_X, GIRL_OFFSCREEN_RIGHT, p);
-      state.opacity = 1 - phase(elapsed, TIMING.peekOutEnd - 180, TIMING.peekOutEnd);
-      state.profileOpacity = state.opacity;
-      state.mode = "peekProfile";
-      state.walkPhase = Math.PI * 0.2;
-      state.peekLean = -6 * (1 - p);
-      return state;
-    }
-
-    return state;
-  }
-
-  function getInterruptGirlState(elapsed) {
-    const snap = phase(elapsed, 0, 260);
-    const turn = smoothstep(phase(elapsed, 220, INTERRUPT_RUN_START));
-    const run = easeInCubic(phase(elapsed, INTERRUPT_RUN_START, INTERRUPT_RUN_END));
-    const fade = 1 - phase(elapsed, INTERRUPT_RUN_END - 260, INTERRUPT_RUN_END);
-    const runActive = elapsed >= INTERRUPT_RUN_START;
-    const x = runActive
-      ? lerp(interruptState.startX, GIRL_OFFSCREEN_LEFT - 70, run)
-      : interruptState.startX;
-    const opacity = clamp(fade, 0, 1);
 
     return {
-      x: x,
-      y: GROUND_Y,
-      opacity: opacity,
-      mode: runActive ? "interruptRunProfile" : "owReaction",
-      facing: "left",
-      turnProgress: turn,
-      walkPhase: elapsed * 0.021,
-      bodyBob: runActive ? Math.abs(Math.sin(elapsed * 0.021)) * 2.8 : Math.sin(snap * Math.PI) * 2.2,
-      headTilt: runActive ? -2 : -6 * Math.sin(snap * Math.PI),
-      impactAmount: runActive ? 0 : Math.sin(snap * Math.PI) * 0.38,
-      breathingAmount: 0,
-      profileOpacity: runActive ? opacity : opacity * turn,
-      frontOpacity: runActive ? 0 : opacity * (1 - turn),
-      scratchProgress: 0,
-      shakeProgress: 0,
-      lean: runActive ? -7 : -2.2 * Math.sin(snap * Math.PI),
-      peekLean: 0,
-      distractionAmount: 0
+      elapsed: t,
+      profileX: profileX,
+      profileOpacity: clamp(profileOpacity, 0, 1),
+      profileMode: profileMode,
+      profileSpeed: profileMode === "peek" ? 0 : 1,
+      profileRun: false,
+      frontOpacity: clamp(frontOpacity, 0, 1),
+      thoughtIntensity: clamp(phase(t, TIME.threadStart, TIME.vortexEnd), 0, 1),
+      threadProgress: phase(t, TIME.threadStart, TIME.threadEnd),
+      orbitProgress: phase(t, TIME.orbitStart, TIME.vortexEnd),
+      buildProgress: phase(t, TIME.buildStart, TIME.buildEnd),
+      vortexProgress: phase(t, TIME.vortexStart, TIME.vortexEnd),
+      collapseProgress: collapseProgress,
+      thoughtCollapseFade: thoughtCollapseFade,
+      particleProgress: collapseProgress,
+      impactProgress: phase(t, TIME.impact - 80, TIME.impact + 250),
+      scratchProgress: getScratchProgress(t),
+      headShakeProgress: phase(t, TIME.collapseEnd, TIME.recoverEnd),
+      ballApproachProgress: phase(t, TIME.ballStart, TIME.impact),
+      ballReboundProgress: phase(t, TIME.impact, TIME.impact + 840),
+      shadowAllowed: true,
+      interrupt: false
     };
   }
 
-  function applyPlusDistraction(girlState, now) {
-    if (!plusDistraction.active) {
-      return girlState;
+  function renderProfileGirl(scene, timeline, elapsed, config) {
+    const girl = scene.profileGirl;
+    const opacity = timeline.profileOpacity;
+
+    girl.group.style.opacity = opacity.toFixed(3);
+
+    if (opacity <= 0.002) {
+      return;
     }
 
-    const t = phase(now, plusDistraction.startTime, plusDistraction.startTime + plusDistraction.duration);
+    const run = timeline.profileRun;
+    const peek = timeline.profileMode === "peek";
+    const cycle = elapsed * (run ? 0.020 : 0.0078);
+    const step = Math.sin(cycle);
+    const counterStep = Math.sin(cycle + Math.PI);
+    const bob = peek ? 0 : Math.abs(Math.sin(cycle)) * (run ? 8 : 4);
+    const lean = run ? -11 : peek ? -7 : 0;
+    const scale = run ? 0.98 : 0.95;
+    const plus = plusDistractionAmount(state);
+    const headTilt = plus * 7 + (run ? -4 : 0);
+    const ponyLag = run ? 18 : 8;
 
-    if (t >= 1) {
-      plusDistraction.active = false;
-      girlState.distractionAmount = 0;
-      return girlState;
-    }
+    setTransform(girl.group, "translate(" + timeline.profileX.toFixed(2) + " " + (config.groundY + bob).toFixed(2) + ")");
+    setTransform(girl.pose, "rotate(" + lean.toFixed(2) + ") scale(" + scale.toFixed(3) + ")");
+    setTransform(girl.frontLeg, "rotate(" + (step * (run ? 38 : 21)).toFixed(2) + " 16 -76)");
+    setTransform(girl.backLeg, "rotate(" + (counterStep * (run ? 34 : 19)).toFixed(2) + " -8 -76)");
+    setTransform(girl.frontArm, "rotate(" + (counterStep * (run ? 24 : 13)).toFixed(2) + " 22 -145)");
+    setTransform(girl.backArm, "rotate(" + (step * (run ? 26 : 12)).toFixed(2) + " -15 -145)");
+    setTransform(girl.head, "rotate(" + headTilt.toFixed(2) + " 0 -190)");
+    setTransform(girl.ponytail, "translate(" + (Math.abs(step) * ponyLag).toFixed(2) + " " + (run ? -2 : 0) + ") rotate(" + (-step * 4 - (run ? 7 : 0)).toFixed(2) + " 40 -190)");
 
-    const baseAmount = Math.sin(t * Math.PI);
-    const thinkingMode = girlState.mode === "frontThinking" || girlState.mode === "settle" || girlState.mode === "recover";
-    girlState.distractionAmount = baseAmount * (thinkingMode ? 1 : 0.35);
-    return girlState;
-  }
-
-  function renderGirl(scene, girlState) {
-    const walk = girlState.mode === "walkProfile" || girlState.mode === "walkOutProfile" ? 1 : 0;
-    const run = girlState.mode === "interruptRunProfile" ? 1 : 0;
-    const peek = girlState.mode === "peekProfile" ? 1 : 0;
-    const distraction = girlState.distractionAmount || 0;
-    const breathing = girlState.breathingAmount;
-    const y = girlState.y + girlState.bodyBob + breathing + distraction * 1.5;
-    const swing = Math.sin(girlState.walkPhase) * (12 * walk + 21 * run);
-    const footLift = Math.abs(Math.sin(girlState.walkPhase)) * (walk + run * 1.35);
-    const scratchRaise = smoothstep(clamp(girlState.scratchProgress / 0.32, 0, 1)) * (1 - smoothstep(clamp((girlState.scratchProgress - 0.78) / 0.22, 0, 1)));
-    const scratchRub = Math.sin(girlState.scratchProgress * Math.PI * 8) * scratchRaise;
-    const frontArmEase = girlState.mode === "frontThinking" ? 2.4 : 0;
-    const shadowOpacity = girlState.opacity * (girlState.mode === "hidden" ? 0 : 0.17);
-    const shadowRx = 36 + footLift * 7 + peek * 2 + run * 4;
-
-    scene.girl.group.style.opacity = girlState.opacity.toFixed(3);
-    setTransform(
-      scene.girl.group,
-      "translate(" + girlState.x.toFixed(2) + " " + y.toFixed(2) + ") rotate(" + (girlState.lean + girlState.peekLean + distraction * 1.6).toFixed(2) + " 0 -96)"
-    );
-
-    scene.girl.profile.style.opacity = String(clamp(girlState.profileOpacity, 0, 1).toFixed(3));
-    scene.girl.front.style.opacity = String(clamp(girlState.frontOpacity, 0, 1).toFixed(3));
-    setAttrs(scene.girl.shadow, {
-      cx: girlState.x.toFixed(2),
-      cy: String(GROUND_Y + 3),
-      rx: shadowRx.toFixed(2),
-      ry: (4.5 + footLift * 1.8).toFixed(2)
-    });
-    scene.girl.shadow.style.opacity = shadowOpacity.toFixed(3);
-
-    setTransform(scene.girl.profileArmBack, "rotate(" + (swing * 0.38).toFixed(2) + " -7 -132)");
-    setTransform(scene.girl.profileArmFront, "rotate(" + (-swing * 0.58).toFixed(2) + " 26 -132)");
-    setTransform(scene.girl.profileLegBack, "rotate(" + (-swing * 0.85).toFixed(2) + " -6 -64)");
-    setTransform(scene.girl.profileLegFront, "rotate(" + (swing * 0.9).toFixed(2) + " 14 -64)");
-    setTransform(
-      scene.girl.profileFootBack,
-      "translate(" + (-Math.sin(girlState.walkPhase) * (5 * walk + 11 * run)).toFixed(2) + " " + (Math.max(0, Math.cos(girlState.walkPhase)) * (-2.4 * walk - 5.6 * run)).toFixed(2) + ")"
-    );
-    setTransform(
-      scene.girl.profileFootFront,
-      "translate(" + (Math.sin(girlState.walkPhase) * (5 * walk + 11 * run)).toFixed(2) + " " + (Math.max(0, -Math.cos(girlState.walkPhase)) * (-2.4 * walk - 5.6 * run)).toFixed(2) + ")"
-    );
-    setTransform(
-      scene.girl.profileHead,
-      "translate(0 " + (girlState.impactAmount * 2 + distraction * 2).toFixed(2) + ") rotate(" + (girlState.headTilt + distraction * 8 + Math.sin(girlState.walkPhase) * 0.8 * (walk + run)).toFixed(2) + " 0 -164)"
-    );
-    setTransform(
-      scene.girl.profilePonytail,
-      "rotate(" + (Math.sin(girlState.walkPhase + 1.1) * (6 * walk + 11 * run) + girlState.impactAmount * 12 + girlState.peekLean * -0.4).toFixed(2) + " 26 -186)"
-    );
-
-    setTransform(scene.girl.frontLegLeft, "rotate(" + (-1.8 + girlState.impactAmount * 1.2).toFixed(2) + " -16 -64)");
-    setTransform(scene.girl.frontLegRight, "rotate(" + (1.8 - girlState.impactAmount * 1.2).toFixed(2) + " 16 -64)");
-    setTransform(scene.girl.frontArmLeft, "rotate(" + (-frontArmEase - girlState.impactAmount * 2).toFixed(2) + " -30 -132)");
-    setTransform(
-      scene.girl.frontArmRight,
-      "rotate(" + (-112 * scratchRaise + frontArmEase + scratchRub * 5).toFixed(2) + " 31 -132) translate(" + (scratchRub * 1.2).toFixed(2) + " " + (-scratchRaise * 10).toFixed(2) + ")"
-    );
-    setTransform(
-      scene.girl.frontHead,
-      "translate(0 " + (girlState.impactAmount * 3 + distraction * 2).toFixed(2) + ") rotate(" + (girlState.headTilt + distraction * 8).toFixed(2) + " 0 -164)"
-    );
-    setTransform(
-      scene.girl.frontPonytail,
-      "rotate(" + (girlState.impactAmount * 16 + Math.sin(girlState.scratchProgress * Math.PI * 4) * scratchRaise * 4).toFixed(2) + " 23 -188)"
-    );
-  }
-
-  function renderThoughts(scene, state, elapsed, sceneConfig, options) {
-    const renderOptions = options || {};
-    const vortexProgress = renderOptions.vortexProgress != null
-      ? renderOptions.vortexProgress
-      : phase(elapsed, TIMING.vortexStart, TIMING.vortexEnd);
-    const disintegrateProgress = renderOptions.disintegrateProgress != null
-      ? renderOptions.disintegrateProgress
-      : phase(elapsed, TIMING.collapseStart, TIMING.collapseEnd);
-    const resetProgress = renderOptions.resetProgress != null
-      ? renderOptions.resetProgress
-      : phase(elapsed, TIMING.collapseEnd, TIMING.recoverEnd);
-
-    renderThreadDot(scene, elapsed, disintegrateProgress);
-    renderPathItems(scene.thoughtPaths, elapsed, vortexProgress, disintegrateProgress, resetProgress);
-    renderIconItems(scene.designIcons, elapsed, vortexProgress, disintegrateProgress, resetProgress);
-    renderIconItems(scene.hobbyIcons, elapsed, vortexProgress, disintegrateProgress, resetProgress);
-  }
-
-  function renderThreadDot(scene, elapsed, disintegrateProgress) {
-    const threadProgress = easeOutCubic(phase(elapsed, TIMING.threadStart, TIMING.threadEnd));
-    const fade = 1 - phase(elapsed, TIMING.hobbyStart, TIMING.vortexStart);
-    const dis = easeOutCubic(disintegrateProgress);
-    const orbitProgress = phase(elapsed, TIMING.threadEnd, TIMING.vortexEnd);
-    let point = cubicPoint(
-      { x: GIRL_CENTER_X + 12, y: 300 },
-      { x: GIRL_CENTER_X + 96, y: 250 },
-      { x: GIRL_CENTER_X + 176, y: 292 },
-      { x: GIRL_CENTER_X + 252, y: 220 },
-      threadProgress
-    );
-
-    if (orbitProgress > 0) {
-      const angle = elapsed * 0.001 + 0.7;
-      point = {
-        x: lerp(point.x, THOUGHT_CX + Math.cos(angle) * 360, orbitProgress * 0.72),
-        y: lerp(point.y, THOUGHT_CY + Math.sin(angle) * 132, orbitProgress * 0.72)
-      };
-    }
-
-    scene.threadDot.style.opacity = (threadProgress * fade * (1 - dis)).toFixed(3);
-    setAttrs(scene.threadDot, {
-      cx: point.x.toFixed(2),
-      cy: point.y.toFixed(2)
+    girl.hairStrands.forEach(function (strand, index) {
+      const strandLag = Math.sin(cycle + index * 0.72) * (run ? 6 : 3);
+      setTransform(strand, "translate(" + strandLag.toFixed(2) + " 0)");
     });
   }
 
-  function renderPathItems(items, elapsed, vortexProgress, disintegrateProgress, resetProgress) {
-    items.forEach(function (item) {
+  function renderFrontGirl(scene, timeline, elapsed, config) {
+    const girl = scene.frontGirl;
+    const opacity = timeline.frontOpacity;
+
+    girl.group.style.opacity = opacity.toFixed(3);
+
+    if (opacity <= 0.002) {
+      return;
+    }
+
+    const settle = Math.sin(elapsed * 0.004) * 1.1 * (1 - timeline.collapseProgress);
+    const plus = plusDistractionAmount(state);
+    const impact = Math.sin(timeline.impactProgress * Math.PI) * 7;
+    const scratch = easeInOutCubic(timeline.scratchProgress);
+    const shakeRaw = timeline.headShakeProgress > 0 && timeline.headShakeProgress < 1
+      ? Math.sin(elapsed * 0.052) * (1 - timeline.headShakeProgress) * 5
+      : 0;
+    const headTilt = plus * 5 - impact + scratch * 3 + shakeRaw;
+
+    setTransform(girl.group, "translate(" + config.centreX + " " + (config.groundY + settle).toFixed(2) + ") scale(0.96)");
+    setTransform(girl.pose, "translate(0 0)");
+    setTransform(girl.head, "rotate(" + headTilt.toFixed(2) + " 0 -192)");
+    setTransform(girl.ponytail, "translate(" + (scratch * 5 + shakeRaw * 0.7).toFixed(2) + " 0) rotate(" + (scratch * 4 + shakeRaw).toFixed(2) + " 40 -196)");
+    girl.rightArmRelaxed.style.opacity = (1 - scratch).toFixed(3);
+    girl.rightArmScratch.style.opacity = scratch.toFixed(3);
+    setTransform(girl.leftArm, "rotate(" + (impact * 0.3).toFixed(2) + " -30 -140)");
+    setTransform(girl.rightArmScratch, "rotate(" + (shakeRaw * 0.35).toFixed(2) + " 31 -146)");
+
+    girl.hairStrands.forEach(function (strand, index) {
+      const sway = Math.sin(elapsed * 0.004 + index * 0.85) * (1.2 + scratch * 3);
+      setTransform(strand, "translate(" + sway.toFixed(2) + " 0)");
+    });
+  }
+
+  function renderThoughts(scene, timeline, elapsed, config) {
+    const disintegrating = timeline.collapseProgress > 0 || timeline.interrupt;
+    const collapseFade = disintegrating ? 1 - easeOutCubic(clamp(timeline.thoughtCollapseFade * 1.25, 0, 1)) : 1;
+    const resetFade = timeline.elapsed > TIME.collapseEnd ? 1 - phase(timeline.elapsed, TIME.collapseEnd, TIME.recoverEnd) : 1;
+    const thoughtVisibility = collapseFade * resetFade;
+
+    scene.thoughtLines.forEach(function (item) {
       const draw = easeOutCubic(phase(elapsed, item.start, item.start + item.draw));
-      const dis = easeOutCubic(clamp((disintegrateProgress - item.index * 0.004) / 0.48, 0, 1));
-      const opacity = item.opacity * draw * (0.72 + vortexProgress * 0.38) * (1 - dis) * (1 - resetProgress * 0.85);
-      const wobbleX = Math.sin(elapsed * 0.0012 + item.index * 0.7) * (1.1 + vortexProgress * 3.6);
-      const wobbleY = Math.cos(elapsed * 0.001 + item.index * 1.1) * (0.9 + vortexProgress * 2.8);
-      const spin = vortexProgress * item.spin * 18;
-      const scatterX = item.scatterX * dis;
-      const scatterY = (item.scatterY + 78 * dis) * dis;
+      const mature = phase(elapsed, item.start + item.draw * 0.35, TIME.vortexEnd);
+      const vortex = Math.max(timeline.vortexProgress, timeline.interrupt ? 0.78 : 0);
+      const driftX = Math.sin(elapsed * 0.00072 + item.index * 0.8) * item.driftX * (0.2 + mature);
+      const driftY = Math.cos(elapsed * 0.00058 + item.index * 1.1) * item.driftY * (0.2 + mature);
+      const spin = vortex * item.spin + Math.sin(elapsed * 0.0004 + item.index) * 2.4 * mature;
+      const opacity = item.opacity * draw * (0.35 + timeline.thoughtIntensity * 0.65) * thoughtVisibility;
 
       if (opacity <= 0.002 || draw <= 0) {
         item.element.style.opacity = "0";
@@ -1067,29 +581,25 @@
       }
 
       item.element.style.opacity = opacity.toFixed(3);
-      item.element.style.strokeDashoffset = clamp(1 - draw + dis * 0.78, 0, 1).toFixed(3);
+      item.element.style.strokeDashoffset = item.dotted ? "0" : (1 - draw).toFixed(3);
       setTransform(
         item.element,
-        "translate(" + (wobbleX + scatterX).toFixed(2) + " " + (wobbleY + scatterY).toFixed(2) + ") rotate(" + spin.toFixed(2) + " " + THOUGHT_CX + " " + THOUGHT_CY + ")"
+        "translate(" + driftX.toFixed(2) + " " + driftY.toFixed(2) + ") rotate(" + spin.toFixed(2) + " " + THOUGHT_CX + " " + THOUGHT_CY + ")"
       );
     });
-  }
 
-  function renderIconItems(items, elapsed, vortexProgress, disintegrateProgress, resetProgress) {
-    items.forEach(function (item) {
-      const intro = easeOutBackSmall(phase(elapsed, item.start, item.start + 980));
-      const orbitBuild = phase(elapsed, item.start + 320, TIMING.vortexEnd);
-      const dis = easeOutCubic(clamp((disintegrateProgress - item.index * 0.014) / 0.5, 0, 1));
-      const angle = item.baseAngle + elapsed * 0.00042 * item.speed + vortexProgress * item.speed * 1.35;
-      const orbitScale = 0.2 + orbitBuild * 0.52 + vortexProgress * 0.42;
-      const x = THOUGHT_CX + item.x + Math.cos(angle) * item.radiusX * orbitScale + item.scatterX * dis;
-      const y = THOUGHT_CY + item.y + Math.sin(angle * 1.12) * item.radiusY * orbitScale + (item.scatterY + 98 * dis) * dis;
-      const rotation = item.rotation + Math.sin(angle * 0.9) * 4 + vortexProgress * item.speed * 32 + item.scatterRotation * dis;
-      const scale = item.scale * (0.84 + intro * 0.16) * (1 + vortexProgress * 0.04) * (1 - dis * 0.28);
-      const hierarchy = item.category === "design" ? 0.78 : 0.52;
-      const opacity = hierarchy * intro * (1 - dis) * (1 - resetProgress);
+    scene.thoughtIcons.forEach(function (item) {
+      const intro = easeOutBackSmall(phase(elapsed, item.start, item.start + 1050));
+      const orbit = phase(elapsed, item.start + 400, TIME.vortexEnd);
+      const vortex = Math.max(timeline.vortexProgress, timeline.interrupt ? 0.8 : 0);
+      const angle = item.baseAngle + elapsed * 0.00034 * item.speed + vortex * item.speed * 0.9;
+      const x = item.x + Math.cos(angle) * item.orbitX * (0.2 + orbit * 0.55);
+      const y = item.y + Math.sin(angle * 1.18) * item.orbitY * (0.15 + orbit * 0.5);
+      const rotation = item.rotation + Math.sin(angle) * 5 + vortex * item.speed * 22;
+      const scale = item.scale * (0.82 + intro * 0.18);
+      const opacity = item.opacity * intro * thoughtVisibility;
 
-      if (opacity <= 0.002) {
+      if (opacity <= 0.002 || intro <= 0) {
         item.element.style.opacity = "0";
         return;
       }
@@ -1100,205 +610,793 @@
         "translate(" + x.toFixed(2) + " " + y.toFixed(2) + ") rotate(" + rotation.toFixed(2) + ") scale(" + scale.toFixed(3) + ")"
       );
     });
+
+    renderThreadDot(scene, timeline, elapsed, thoughtVisibility);
   }
 
-  function renderBall(scene, state, elapsed) {
-    const approach = phase(elapsed, TIMING.ballStart, TIMING.impact);
-    const rebound = phase(elapsed, TIMING.impact, TIMING.impact + 760);
-    const impactPoint = {
-      x: GIRL_CENTER_X + 28,
-      y: GROUND_Y - 222
-    };
-    let point = { x: STAGE_WIDTH + 80, y: 108 };
+  function renderBall(scene, timeline, elapsed, config) {
+    if (timeline.interrupt) {
+      scene.ball.group.style.opacity = "0";
+      scene.ball.impact.style.opacity = "0";
+      return;
+    }
+
+    const approach = timeline.ballApproachProgress;
+    const rebound = timeline.ballReboundProgress;
+    const impactPoint = { x: CENTRE_X + 35, y: GROUND_Y - 218 };
+    let point = { x: STAGE_WIDTH + 88, y: 112 };
     let opacity = 0;
 
     if (approach > 0 && approach < 1) {
       point = cubicPoint(
-        { x: STAGE_WIDTH + 80, y: 108 },
-        { x: 1706, y: 70 },
-        { x: 1260, y: 118 },
+        { x: STAGE_WIDTH + 88, y: 112 },
+        { x: 1710, y: 48 },
+        { x: 1274, y: 122 },
         impactPoint,
         easeInOutCubic(approach)
       );
-      opacity = phase(elapsed, TIMING.ballStart, TIMING.ballStart + 160);
-    } else if (elapsed >= TIMING.impact && elapsed < TIMING.impact + 900) {
+      opacity = phase(elapsed, TIME.ballStart, TIME.ballStart + 180);
+    } else if (elapsed >= TIME.impact && elapsed < TIME.impact + 900) {
       point = quadraticPoint(
         impactPoint,
-        { x: impactPoint.x + 126, y: impactPoint.y - 78 },
-        { x: impactPoint.x + 282, y: impactPoint.y + 28 },
+        { x: impactPoint.x + 128, y: impactPoint.y - 86 },
+        { x: impactPoint.x + 286, y: impactPoint.y + 24 },
         easeOutCubic(rebound)
       );
-      opacity = 1 - phase(elapsed, TIMING.impact + 620, TIMING.impact + 900);
+      opacity = 1 - phase(elapsed, TIME.impact + 650, TIME.impact + 900);
     }
 
     scene.ball.group.style.opacity = opacity.toFixed(3);
     setTransform(scene.ball.group, "translate(" + point.x.toFixed(2) + " " + point.y.toFixed(2) + ")");
 
-    const mark = phase(elapsed, TIMING.impact - 70, TIMING.impact + 90) * (1 - phase(elapsed, TIMING.impact + 190, TIMING.impact + 650));
-    scene.ball.impact.style.opacity = mark.toFixed(3);
-    setTransform(scene.ball.impact, "translate(" + impactPoint.x + " " + impactPoint.y + ")");
+    const burst = Math.sin(clamp(timeline.impactProgress, 0, 1) * Math.PI) * (1 - phase(elapsed, TIME.impact + 180, TIME.impact + 620));
+    scene.ball.impact.style.opacity = clamp(burst, 0, 1).toFixed(3);
+    setTransform(scene.ball.impact, "translate(" + impactPoint.x + " " + impactPoint.y + ") scale(" + (0.8 + burst * 0.28).toFixed(3) + ")");
   }
 
-  function renderDisintegration(scene, state, elapsed, sceneConfig, options) {
-    const renderOptions = options || {};
-    const forceDisintegration = Boolean(renderOptions.forceDisintegration);
-    const disintegrateProgress = renderOptions.disintegrateProgress != null
-      ? renderOptions.disintegrateProgress
-      : phase(elapsed, TIMING.collapseStart, TIMING.collapseEnd);
-    const settleFade = renderOptions.settleFade != null
-      ? renderOptions.settleFade
-      : phase(elapsed, TIMING.collapseEnd, TIMING.recoverEnd);
+  function renderParticles(scene, timeline, elapsed, config) {
+    const progress = clamp(timeline.particleProgress || 0, 0, 1);
 
-    scene.particles.forEach(function (item) {
-      if (!forceDisintegration && elapsed < TIMING.collapseStart) {
-        item.element.style.opacity = "0";
+    scene.particles.forEach(function (particle) {
+      if (progress <= 0.002) {
+        particle.element.style.opacity = "0";
         return;
       }
 
-      const rawD = clamp((disintegrateProgress - item.delay) / (1 - item.delay), 0, 1);
-      const d = easeOutCubic(rawD);
-      const fade = 1 - smoothstep(clamp(rawD * 0.82 + settleFade * 0.7, 0, 1));
-      const outward = easeOutCubic(clamp(rawD / 0.42, 0, 1));
-      const falling = smoothstep(clamp((rawD - 0.22) / 0.78, 0, 1));
-      const x = item.originX + item.scatterX * outward;
-      const y = item.originY + item.scatterY * outward + item.gravity * falling * falling + 160 * rawD * rawD;
-      const opacity = item.opacity * 1.08 * fade;
-      const rotation = item.rotation + item.rotationSpeed * d;
-      const scale = 0.92 - d * 0.22;
+      const raw = clamp((progress - particle.delay) / (1 - particle.delay), 0, 1);
+      const scatter = easeOutCubic(clamp(raw / 0.34, 0, 1));
+      const falling = smoothstep(clamp((raw - 0.14) / 0.86, 0, 1));
+      const x = particle.originX + particle.scatterX * scatter + Math.sin(raw * Math.PI * 2 + particle.angle) * particle.orbit;
+      const y = particle.originY + particle.scatterY * scatter + particle.gravity * falling * falling + 210 * raw * raw;
+      const rotation = particle.rotation + particle.rotationSpeed * raw;
+      const scale = 1 - raw * 0.18;
+      const opacity = particle.opacity * (1 - smoothstep(clamp((raw - 0.64) / 0.36, 0, 1)));
 
-      placeParticle(item, x, y, rotation, scale, opacity);
+      particle.element.style.opacity = clamp(opacity, 0, 1).toFixed(3);
+      if (particle.shape === "dot") {
+        setAttrs(particle.element, {
+          cx: x.toFixed(2),
+          cy: y.toFixed(2)
+        });
+      } else {
+        setTransform(
+          particle.element,
+          "translate(" + x.toFixed(2) + " " + y.toFixed(2) + ") rotate(" + rotation.toFixed(2) + ") scale(" + scale.toFixed(3) + ")"
+        );
+      }
     });
   }
 
-  function renderFrame(scene, state, elapsed, sceneConfig) {
-    const now = arguments.length > 4 ? arguments[4] : performance.now();
-    const girlState = applyPlusDistraction(getGirlState(elapsed, sceneConfig), now);
+  function renderFrame(scene, state, elapsed, config) {
+    const timeline = state.interrupt.active
+      ? getInterruptTimelineState(performance.now() - state.interrupt.startTime, config, state)
+      : getTimelineState(elapsed, config);
 
-    renderThoughts(scene, state, elapsed, sceneConfig);
-    renderGirl(scene, girlState, elapsed);
-    renderBall(scene, state, elapsed, sceneConfig);
-    renderDisintegration(scene, state, elapsed, sceneConfig);
+    renderBackgroundDust(scene, timeline, elapsed);
+    renderThoughts(scene, timeline, timeline.interrupt ? Math.max(state.elapsed, TIME.vortexStart + 1800) : timeline.elapsed, config);
+    renderProfileGirl(scene, timeline, timeline.interrupt ? performance.now() - state.interrupt.startTime : timeline.elapsed, config);
+    renderFrontGirl(scene, timeline, timeline.interrupt ? performance.now() - state.interrupt.startTime : timeline.elapsed, config);
+    renderShadow(scene, timeline, config);
+    renderBall(scene, timeline, timeline.elapsed, config);
+    renderParticles(scene, timeline, timeline.elapsed, config);
   }
 
-  function renderInterruptFrame(scene, state, elapsed, sceneConfig) {
-    const thoughtElapsed = Math.max(interruptState.frozenElapsed, TIMING.threadStart + 900);
-    const vortexProgress = Math.max(phase(interruptState.frozenElapsed, TIMING.vortexStart, TIMING.vortexEnd), 0.38);
-    const thoughtDisintegration = phase(elapsed, 0, 760);
-    const particleDisintegration = phase(elapsed, 0, 2600);
-    const settleFade = phase(elapsed, 2500, INTERRUPT_DURATION);
-    const resetProgress = phase(elapsed, 900, 1900);
+  function triggerDisintegration(scene, state, config, mode) {
+    state.manualDisintegrationMode = mode || "normal";
+  }
 
+  function triggerNavigationInterrupt(scene, state, config) {
+    if (!isLandingActive(state) || config.prefersReducedMotion) {
+      return config.prefersReducedMotion
+        ? new Promise(function (resolve) { window.setTimeout(resolve, 260); })
+        : Promise.resolve();
+    }
+
+    if (state.interrupt.active && state.interrupt.promise) {
+      return state.interrupt.promise;
+    }
+
+    const timeline = getTimelineState(state.elapsed, config);
+    state.plusDistractionStart = 0;
+    state.interrupt.active = true;
+    state.interrupt.completed = false;
+    state.interrupt.startTime = performance.now();
+    state.interrupt.startX = timeline.profileOpacity > timeline.frontOpacity ? timeline.profileX : CENTRE_X;
+    state.interrupt.promise = new Promise(function (resolve) {
+      state.interrupt.resolve = resolve;
+    });
+
+    triggerDisintegration(scene, state, config, "navigation");
+    startLoop(scene, state, config);
+
+    return state.interrupt.promise;
+  }
+
+  function exposeController(scene, state, config) {
+    window.landingGirlAnimation = {
+      isLandingActive: function () {
+        return isLandingActive(state);
+      },
+      isPlaying: function () {
+        return Boolean(state.rafId) && state.landingVisible && !config.prefersReducedMotion;
+      },
+      restart: function () {
+        restart(scene, state, config);
+      },
+      pause: function () {
+        pause(state);
+      },
+      resume: function () {
+        if (state.landingVisible) {
+          startLoop(scene, state, config);
+        }
+      },
+      handlePlusDistraction: function () {
+        handlePlusDistraction(scene, state, config);
+      },
+      interruptForNavigation: function () {
+        return triggerNavigationInterrupt(scene, state, config);
+      }
+    };
+
+    window.addEventListener("landing-nav-plus-opened", function () {
+      handlePlusDistraction(scene, state, config);
+    });
+
+    window.addEventListener("landing-nav-circle-selected", function () {
+      triggerNavigationInterrupt(scene, state, config);
+    });
+
+    window.addEventListener("pagehide", function () {
+      pause(state);
+    });
+  }
+
+  function setupLandingVisibilityObserver(scene, state, config) {
+    if (!state.landingSection || !("IntersectionObserver" in window)) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        const visible = entry.isIntersecting && entry.intersectionRatio >= config.landingThreshold;
+
+        if (visible === state.landingVisible) {
+          return;
+        }
+
+        state.landingVisible = visible;
+
+        if (visible) {
+          restart(scene, state, config);
+          return;
+        }
+
+        if (state.interrupt.active) {
+          completeInterrupt(scene, state, config);
+        }
+
+        pause(state);
+        resetRuntimeState(state, true);
+        renderFrame(scene, state, 0, config);
+      });
+    }, {
+      threshold: [0, 0.35, config.landingThreshold, 0.6]
+    });
+
+    observer.observe(state.landingSection);
+  }
+
+  function restart(scene, state, config) {
+    stopLoop(state);
+    resetRuntimeState(state, false);
+    state.startTime = performance.now();
+    state.elapsed = 0;
+    renderFrame(scene, state, 0, config);
+
+    if (!config.prefersReducedMotion && state.landingVisible) {
+      startLoop(scene, state, config);
+    }
+  }
+
+  function pause(state) {
+    stopLoop(state);
+  }
+
+  function startLoop(scene, state, config) {
+    if (config.prefersReducedMotion || state.rafId) {
+      return;
+    }
+
+    state.rafId = requestAnimationFrame(function tick(now) {
+      if (!state.landingVisible && !state.interrupt.active) {
+        state.rafId = 0;
+        return;
+      }
+
+      if (state.interrupt.active) {
+        renderFrame(scene, state, state.elapsed, config);
+
+        if (now - state.interrupt.startTime >= INTERRUPT_DURATION) {
+          completeInterrupt(scene, state, config);
+          return;
+        }
+
+        state.rafId = requestAnimationFrame(tick);
+        return;
+      }
+
+      state.elapsed = (now - state.startTime) % config.duration;
+      renderFrame(scene, state, state.elapsed, config);
+      state.rafId = requestAnimationFrame(tick);
+    });
+  }
+
+  function stopLoop(state) {
+    if (state.rafId) {
+      cancelAnimationFrame(state.rafId);
+      state.rafId = 0;
+    }
+  }
+
+  function renderStaticScene(scene, state, config) {
+    state.elapsed = 11200;
+    renderFrame(scene, state, state.elapsed, config);
     scene.ball.group.style.opacity = "0";
     scene.ball.impact.style.opacity = "0";
-    renderThoughts(scene, state, thoughtElapsed, sceneConfig, {
-      vortexProgress: vortexProgress,
-      disintegrateProgress: thoughtDisintegration,
-      resetProgress: resetProgress
-    });
-    renderGirl(scene, getInterruptGirlState(elapsed), elapsed);
-    renderDisintegration(scene, state, thoughtElapsed, sceneConfig, {
-      forceDisintegration: true,
-      disintegrateProgress: particleDisintegration,
-      settleFade: settleFade
+    scene.particles.forEach(function (particle) {
+      particle.element.style.opacity = "0";
     });
   }
 
-  function renderStaticScene(scene, state, sceneConfig) {
-    scene.svg.classList.add("is-static");
-    renderFrame(scene, state, 11200, sceneConfig);
-    scene.ball.group.style.opacity = "0";
-    scene.ball.impact.style.opacity = "0";
-    scene.particles.forEach(function (item) {
-      item.element.style.opacity = "0";
-    });
+  function getInterruptTimelineState(elapsed, config, state) {
+    const frontToRun = phase(elapsed, INTERRUPT_RUN_START - 260, INTERRUPT_RUN_START + 120);
+    const runProgress = phase(elapsed, INTERRUPT_RUN_START, INTERRUPT_RUN_END);
+    const x = lerp(state.interrupt.startX, OFFSCREEN_LEFT, easeInCubic(runProgress));
+
+    return {
+      elapsed: elapsed,
+      profileX: x,
+      profileOpacity: easeInOutCubic(frontToRun),
+      profileMode: "run",
+      profileSpeed: 1.8,
+      profileRun: true,
+      frontOpacity: 1 - easeInOutCubic(frontToRun),
+      thoughtIntensity: 1,
+      threadProgress: 1,
+      orbitProgress: 1,
+      buildProgress: 1,
+      vortexProgress: 1,
+      collapseProgress: phase(elapsed, 0, 2500),
+      thoughtCollapseFade: phase(elapsed, 0, 780),
+      particleProgress: phase(elapsed, 0, 2900),
+      impactProgress: 0,
+      scratchProgress: 0.3 * (1 - frontToRun),
+      headShakeProgress: phase(elapsed, 160, 900),
+      ballApproachProgress: 0,
+      ballReboundProgress: 0,
+      shadowAllowed: true,
+      interrupt: true
+    };
   }
 
-  function placeParticle(item, x, y, rotation, scale, opacity) {
-    item.element.style.opacity = clamp(opacity, 0, 1).toFixed(3);
+  function completeInterrupt(scene, state, config) {
+    renderFrame(scene, state, state.elapsed, config);
+    stopLoop(state);
+    state.interrupt.active = false;
+    state.interrupt.completed = true;
 
-    if (item.shape === "square") {
-      setTransform(
-        item.element,
-        "translate(" + x.toFixed(2) + " " + y.toFixed(2) + ") rotate(" + rotation.toFixed(2) + ") scale(" + scale.toFixed(3) + ")"
-      );
-    } else {
+    if (state.interrupt.resolve) {
+      state.interrupt.resolve();
+    }
+
+    state.interrupt.promise = null;
+    state.interrupt.resolve = null;
+  }
+
+  function resetRuntimeState(state, keepCompleted) {
+    state.plusDistractionStart = 0;
+    state.manualDisintegrationMode = "";
+    state.interrupt.active = false;
+    state.interrupt.startTime = 0;
+    state.interrupt.startX = CENTRE_X;
+    state.interrupt.promise = null;
+    state.interrupt.resolve = null;
+    state.interrupt.completed = keepCompleted ? state.interrupt.completed : false;
+  }
+
+  function isLandingActive(state) {
+    return state.landingVisible && !state.interrupt.completed;
+  }
+
+  function handlePlusDistraction(scene, state, config) {
+    if (!isLandingActive(state) || state.interrupt.active || config.prefersReducedMotion) {
+      return;
+    }
+
+    state.plusDistractionStart = performance.now();
+  }
+
+  function plusDistractionAmount(state) {
+    if (!state.plusDistractionStart) {
+      return 0;
+    }
+
+    const age = performance.now() - state.plusDistractionStart;
+
+    if (age > 1300) {
+      state.plusDistractionStart = 0;
+      return 0;
+    }
+
+    return Math.sin(clamp(age / 1300, 0, 1) * Math.PI);
+  }
+
+  function measureLandingVisible(config) {
+    const section = document.getElementById("landing") || root.closest("section");
+
+    if (!section) {
+      return true;
+    }
+
+    const rect = section.getBoundingClientRect();
+    const visibleHeight = Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0);
+    const ratio = rect.height > 0 ? visibleHeight / rect.height : 0;
+    const threshold = config && config.landingThreshold ? config.landingThreshold : 0.35;
+
+    return visibleHeight > 0 && ratio >= threshold;
+  }
+
+  function renderBackgroundDust(scene, timeline, elapsed) {
+    const visibility = timeline.thoughtIntensity * (1 - timeline.thoughtCollapseFade);
+
+    scene.backgroundDust.forEach(function (item) {
+      const intro = phase(elapsed, item.start, item.start + 900);
+      const x = item.x + Math.sin(elapsed * 0.0005 + item.index) * item.drift;
+      const y = item.y + Math.cos(elapsed * 0.0004 + item.index) * item.drift * 0.32;
+      const opacity = item.opacity * intro * visibility;
+
+      item.element.style.opacity = opacity.toFixed(3);
       setAttrs(item.element, {
         cx: x.toFixed(2),
         cy: y.toFixed(2)
       });
+    });
+  }
+
+  function renderShadow(scene, timeline, config) {
+    const opacity = Math.max(timeline.profileOpacity, timeline.frontOpacity);
+
+    if (!timeline.shadowAllowed || opacity <= 0.002) {
+      scene.shadow.style.opacity = "0";
+      return;
     }
+
+    const x = timeline.profileOpacity > timeline.frontOpacity ? timeline.profileX : config.centreX;
+    const run = timeline.profileRun ? 1 : 0;
+    const rx = 38 + timeline.profileOpacity * (timeline.profileRun ? 15 : 8) + timeline.frontOpacity * 10;
+    const ry = run ? 4.6 : 5.2;
+    const shadowOpacity = (0.12 + opacity * 0.08 + run * 0.04).toFixed(3);
+
+    setAttrs(scene.shadow, {
+      cx: x.toFixed(2),
+      cy: GROUND_Y + 8,
+      rx: rx.toFixed(2),
+      ry: ry.toFixed(2)
+    });
+    scene.shadow.style.opacity = shadowOpacity;
   }
 
-  function iconSpec(type, x, y, scale, start, radiusX, radiusY, speed, rng) {
-    return {
-      type: type,
-      layer: rng() > 0.36 ? "behind" : "front",
-      x: x,
-      y: y,
-      scale: scale,
-      start: start,
-      radiusX: radiusX,
-      radiusY: radiusY,
-      speed: speed,
-      baseAngle: rng() * Math.PI * 2,
-      rotation: lerp(-9, 9, rng()),
-      scatterX: lerp(-190, 190, rng()),
-      scatterY: lerp(-48, 145, rng()),
-      scatterRotation: lerp(-120, 120, rng())
-    };
-  }
+  function renderThreadDot(scene, timeline, elapsed, visibility) {
+    const dot = scene.threadDot || (scene.threadDot = svgEl("circle", { class: "thought-dot", r: "4.2" }, scene.layers.thoughtsFront));
+    const p = easeOutCubic(timeline.threadProgress);
+    const orbit = timeline.orbitProgress;
+    let point = cubicPoint(
+      { x: CENTRE_X + 10, y: 286 },
+      { x: CENTRE_X + 96, y: 242 },
+      { x: CENTRE_X + 176, y: 286 },
+      { x: CENTRE_X + 260, y: 218 },
+      p
+    );
 
-  function iconParticleOrigins(icons, paths) {
-    const origins = icons.map(function (icon) {
-      return {
-        x: THOUGHT_CX + icon.x,
-        y: THOUGHT_CY + icon.y
+    if (orbit > 0) {
+      const angle = elapsed * 0.001 + 0.8;
+      point = {
+        x: lerp(point.x, THOUGHT_CX + Math.cos(angle) * 356, orbit * 0.72),
+        y: lerp(point.y, THOUGHT_CY + Math.sin(angle) * 128, orbit * 0.72)
       };
+    }
+
+    dot.style.opacity = (p * visibility).toFixed(3);
+    setAttrs(dot, {
+      cx: point.x.toFixed(2),
+      cy: point.y.toFixed(2)
+    });
+  }
+
+  function createThoughtLineSpecs() {
+    const lines = [
+      {
+        id: "first-thread",
+        layer: "front",
+        start: TIME.threadStart,
+        draw: 1400,
+        opacity: 0.72,
+        width: 1.2,
+        color: "#111",
+        driftX: 3,
+        driftY: 2,
+        spin: 0,
+        d: "M972 286 C1034 244 1116 265 1178 210 C1260 136 1418 154 1536 226"
+      },
+      {
+        id: "quiet-orbit-left",
+        layer: "behind",
+        start: TIME.orbitStart,
+        draw: 1700,
+        opacity: 0.38,
+        width: 1.15,
+        color: "#333",
+        driftX: 6,
+        driftY: 4,
+        spin: -4,
+        d: "M468 390 C622 240 874 176 1128 226 C1376 274 1468 438 1234 500 C960 566 642 506 468 390"
+      },
+      {
+        id: "front-ribbon",
+        layer: "front",
+        start: TIME.orbitStart + 260,
+        draw: 1800,
+        opacity: 0.28,
+        width: 6,
+        color: "#999",
+        ribbon: true,
+        driftX: 7,
+        driftY: 3,
+        spin: 2,
+        d: "M306 434 C540 330 774 332 1012 380 C1238 426 1404 368 1616 256"
+      },
+      {
+        id: "upper-sweep",
+        layer: "front",
+        start: TIME.orbitStart + 620,
+        draw: 1600,
+        opacity: 0.34,
+        width: 1.1,
+        color: "#555",
+        driftX: 5,
+        driftY: 6,
+        spin: 5,
+        d: "M598 226 C802 98 1128 132 1388 302 C1534 398 1458 512 1194 494"
+      },
+      {
+        id: "dotted-path-a",
+        layer: "behind",
+        start: TIME.buildStart,
+        draw: 1500,
+        opacity: 0.46,
+        width: 1.1,
+        color: "#222",
+        dotted: true,
+        driftX: 6,
+        driftY: 4,
+        spin: -3,
+        d: "M462 268 C690 382 1000 402 1310 246 C1440 182 1542 218 1618 292"
+      },
+      {
+        id: "process-sweep",
+        layer: "behind",
+        start: TIME.buildStart + 440,
+        draw: 1700,
+        opacity: 0.42,
+        width: 1.5,
+        color: "#444",
+        driftX: 8,
+        driftY: 5,
+        spin: 6,
+        d: "M270 414 C510 258 760 186 1044 198 C1302 206 1510 254 1686 358"
+      },
+      {
+        id: "low-return",
+        layer: "behind",
+        start: TIME.buildStart + 900,
+        draw: 1600,
+        opacity: 0.3,
+        width: 0.9,
+        color: "#777",
+        driftX: 7,
+        driftY: 3,
+        spin: -5,
+        d: "M1572 444 C1320 380 1100 400 828 484 C650 540 450 518 302 440"
+      },
+      {
+        id: "dotted-path-b",
+        layer: "front",
+        start: TIME.buildStart + 1320,
+        draw: 1500,
+        opacity: 0.32,
+        width: 0.95,
+        color: "#555",
+        dotted: true,
+        driftX: 4,
+        driftY: 5,
+        spin: 4,
+        d: "M1570 184 C1324 132 1138 206 914 338 C734 444 560 460 390 388"
+      },
+      {
+        id: "wide-tail",
+        layer: "front",
+        start: TIME.buildStart + 1760,
+        draw: 1500,
+        opacity: 0.25,
+        width: 0.8,
+        color: "#777",
+        driftX: 9,
+        driftY: 5,
+        spin: 3,
+        d: "M214 314 C454 230 660 260 834 368 C1012 482 1262 486 1734 306"
+      }
+    ];
+
+    for (let i = 0; i < 11; i += 1) {
+      lines.push({
+        id: "peak-vortex-" + i,
+        layer: i % 3 === 0 ? "front" : "behind",
+        start: TIME.vortexStart + i * 115,
+        draw: 1600 + (i % 4) * 120,
+        opacity: i % 4 === 0 ? 0.22 : 0.34,
+        width: i % 5 === 0 ? 2.2 : seededRange(i + 80, 0.7, 1.6),
+        color: i % 4 === 0 ? "#777" : i % 2 === 0 ? "#222" : "#555",
+        dotted: i === 4 || i === 8,
+        ribbon: i === 2,
+        driftX: seededRange(i + 10, 4, 12),
+        driftY: seededRange(i + 20, 2, 8),
+        spin: seededRange(i + 30, -12, 12),
+        d: vortexPath(i)
+      });
+    }
+
+    return lines;
+  }
+
+  function createThoughtIconSpecs(rng) {
+    return [
+      iconSpec("book", 444, 164, 0.86, TIME.buildStart + 400, 46, 22, -0.45, 0.78, rng),
+      iconSpec("floor-plan", 552, 398, 1.0, TIME.buildStart + 680, 34, 18, 0.4, 0.45, rng),
+      iconSpec("sketch-panel", 738, 196, 0.72, TIME.buildStart + 920, 52, 24, 0.38, 0.56, rng),
+      iconSpec("iteration", 1015, 158, 0.74, TIME.buildStart + 1160, 44, 24, 0.5, 0.54, rng),
+      iconSpec("tablet", 1132, 180, 0.66, TIME.buildStart + 1340, 50, 26, -0.32, 0.58, rng),
+      iconSpec("perspective", 1298, 276, 0.78, TIME.buildStart + 1540, 60, 30, 0.42, 0.48, rng),
+      iconSpec("laptop", 1434, 366, 0.72, TIME.buildStart + 1780, 70, 36, -0.38, 0.54, rng),
+      iconSpec("pencil", 1518, 226, 0.62, TIME.buildStart + 1960, 62, 28, 0.34, 0.44, rng),
+      iconSpec("massing", 1280, 430, 0.66, TIME.buildStart + 2200, 58, 30, 0.38, 0.62, rng),
+      iconSpec("model", 730, 426, 0.64, TIME.buildStart + 2460, 52, 26, -0.4, 0.5, rng),
+      iconSpec("chai", 1378, 178, 0.52, TIME.buildStart + 2740, 58, 26, 0.3, 0.48, rng),
+      iconSpec("loose-page", 626, 250, 0.56, TIME.buildStart + 2980, 48, 25, -0.42, 0.42, rng),
+      iconSpec("tennis", 386, 418, 0.88, TIME.buildStart + 3200, 56, 24, 0.36, 0.72, rng),
+      iconSpec("tennis-ball", 520, 324, 0.62, TIME.buildStart + 3460, 46, 22, -0.44, 0.68, rng),
+      iconSpec("cube", 1510, 414, 0.72, TIME.buildStart + 3660, 68, 32, 0.44, 0.68, rng),
+      iconSpec("cube", 1186, 414, 0.56, TIME.buildStart + 3860, 62, 30, -0.38, 0.52, rng),
+      iconSpec("grid-fragment", 1320, 326, 0.78, TIME.vortexStart + 420, 76, 34, 0.36, 0.38, rng),
+      iconSpec("panels", 1580, 282, 0.7, TIME.vortexStart + 720, 70, 38, -0.34, 0.46, rng),
+      iconSpec("reading", 612, 140, 0.56, TIME.vortexStart + 980, 62, 28, 0.42, 0.5, rng)
+    ];
+  }
+
+  function createParticleSpecs(rng, origins, count) {
+    const particles = [];
+
+    for (let i = 0; i < count; i += 1) {
+      const origin = origins[i % origins.length];
+      const angle = rng() * Math.PI * 2;
+      const shapeRoll = rng();
+      const shape = shapeRoll > 0.68 ? "dot" : shapeRoll > 0.36 ? "cube" : "square";
+
+      particles.push({
+        originX: origin.x + lerp(-32, 32, rng()),
+        originY: origin.y + lerp(-22, 22, rng()),
+        scatterX: Math.cos(angle) * lerp(110, 430, rng()),
+        scatterY: Math.sin(angle) * lerp(36, 190, rng()) - lerp(0, 84, rng()),
+        gravity: lerp(520, 860, rng()),
+        size: shape === "dot" ? lerp(2, 6, rng()) : lerp(3, 10, rng()),
+        shape: shape,
+        angle: angle,
+        orbit: lerp(8, 40, rng()),
+        rotation: lerp(-180, 180, rng()),
+        rotationSpeed: lerp(-320, 320, rng()),
+        opacity: lerp(0.34, 0.78, rng()),
+        delay: lerp(0, 0.18, rng())
+      });
+    }
+
+    return particles;
+  }
+
+  function createBackgroundDust(rng) {
+    const dust = [];
+
+    for (let i = 0; i < 58; i += 1) {
+      dust.push({
+        x: lerp(230, 1700, rng()),
+        y: lerp(122, 460, rng()),
+        r: lerp(1, 3.2, rng()),
+        opacity: lerp(0.08, 0.3, rng()),
+        drift: lerp(2, 9, rng()),
+        start: TIME.buildStart + lerp(0, 5600, rng()),
+        index: i
+      });
+    }
+
+    return dust;
+  }
+
+  function createBackgroundDustElements(scene, state) {
+    return state.backgroundDust.map(function (spec) {
+      const element = svgEl("circle", {
+        class: "background-dust",
+        cx: spec.x,
+        cy: spec.y,
+        r: spec.r
+      }, scene.layers.backgroundDust);
+
+      element.style.opacity = "0";
+      return Object.assign({ element: element }, spec);
+    });
+  }
+
+  function createParticleOrigins(icons, lines) {
+    const origins = icons.map(function (icon) {
+      return { x: icon.x, y: icon.y };
     });
 
-    paths.forEach(function (pathSpec, index) {
-      const angle = index * 0.72;
-      const radiusX = index < 7 ? 180 + index * 34 : 260 + (index % 5) * 58;
-      const radiusY = index < 7 ? 76 + index * 7 : 96 + (index % 4) * 16;
-
+    lines.forEach(function (line, index) {
+      const angle = index * 0.68;
       origins.push({
-        x: THOUGHT_CX + Math.cos(angle) * radiusX,
-        y: THOUGHT_CY + Math.sin(angle) * radiusY
+        x: THOUGHT_CX + Math.cos(angle) * (170 + (index % 7) * 54),
+        y: THOUGHT_CY + Math.sin(angle) * (68 + (index % 5) * 24)
       });
     });
+
+    origins.push(
+      { x: CENTRE_X + 40, y: GROUND_Y - 224 },
+      { x: CENTRE_X - 120, y: GROUND_Y - 150 },
+      { x: CENTRE_X + 150, y: GROUND_Y - 140 }
+    );
 
     return origins;
   }
 
+  function iconSpec(type, x, y, scale, start, orbitX, orbitY, speed, opacity, rng) {
+    return {
+      type: type,
+      x: x,
+      y: y,
+      scale: scale,
+      start: start,
+      orbitX: orbitX,
+      orbitY: orbitY,
+      speed: speed,
+      opacity: opacity,
+      rotation: lerp(-9, 9, rng()),
+      baseAngle: rng() * Math.PI * 2
+    };
+  }
+
   function buildIcon(type, group) {
-    if (type === "sketchbook") {
-      rect(group, -34, -24, 30, 48);
-      rect(group, 4, -24, 30, 48);
-      line(group, 0, -25, 0, 26);
-      line(group, -26, -11, -10, -7);
-      line(group, -27, 2, -9, 5);
-      line(group, 10, -13, 26, -9);
-      line(group, 11, 5, 28, 1);
+    if (type === "book") {
+      path(group, "M-43 -24 C-22 -31 -8 -23 0 -12 C10 -24 27 -31 43 -23 L42 30 C24 22 11 25 0 38 C-10 25 -25 22 -43 30 Z");
+      line(group, 0, -12, 0, 37);
+      line(group, -31, -5, -10, 1);
+      line(group, 12, -4, 34, -10);
+      line(group, -31, 9, -11, 14);
+      line(group, 12, 13, 33, 7);
       return;
     }
 
     if (type === "floor-plan") {
-      rect(group, -37, -27, 74, 54);
-      line(group, -15, -27, -15, 27);
-      line(group, 8, -27, 8, 27);
-      line(group, 25, -27, 25, 11);
-      line(group, -37, -8, 37, -8);
-      line(group, -37, 10, 37, 10);
-      line(group, -37, 27, 37, -27);
+      rect(group, -42, -30, 84, 60);
+      line(group, -17, -30, -17, 30);
+      line(group, 9, -30, 9, 30);
+      line(group, 28, -30, 28, 12);
+      line(group, -42, -9, 42, -9);
+      line(group, -42, 11, 42, 11);
+      line(group, -42, 30, 42, -30);
       return;
     }
 
-    if (type === "grid-fragment") {
-      for (let i = -3; i <= 3; i += 1) {
-        line(group, i * 12, -34, i * 12 + 18, 34);
-        line(group, -44, i * 9, 48, i * 9 - 10);
-      }
-      path(group, "M-46 -35 C-18 -24 22 -31 48 -18");
+    if (type === "sketch-panel") {
+      rect(group, -48, -28, 96, 56);
+      path(group, "M-36 12 C-14 -20 12 -20 36 9");
+      path(group, "M-38 -9 C-15 -2 12 -5 38 -15");
+      line(group, -26, 20, 26, 20);
+      return;
+    }
+
+    if (type === "iteration") {
+      path(group, "M-34 2 C-28 -25 24 -30 33 -2");
+      path(group, "M33 -2 L22 -8 M33 -2 L27 -14");
+      rect(group, -15, -5, 30, 21);
+      path(group, "M24 22 C8 39 -29 32 -35 6");
+      path(group, "M-35 6 L-25 15 M-35 6 L-28 18");
+      return;
+    }
+
+    if (type === "tablet") {
+      rect(group, -31, -40, 62, 80);
+      line(group, -18, -23, 18, -23);
+      line(group, -18, -6, 12, -6);
+      line(group, -18, 12, 21, 12);
+      circle(group, 0, 30, 2.2);
+      return;
+    }
+
+    if (type === "perspective") {
+      rect(group, -42, -24, 84, 48);
+      circle(group, 0, 1, 2.1);
+      line(group, -42, -24, 0, 1);
+      line(group, 42, -24, 0, 1);
+      line(group, -42, 24, 0, 1);
+      line(group, 42, 24, 0, 1);
+      return;
+    }
+
+    if (type === "laptop") {
+      rect(group, -44, -28, 88, 50);
+      path(group, "M-58 31 L58 31 L42 22 L-42 22 Z");
+      line(group, -30, -13, 28, -13);
+      line(group, -24, 2, 18, 2);
+      circle(group, 0, 27, 1.8);
+      return;
+    }
+
+    if (type === "pencil") {
+      line(group, -40, 22, 30, -30);
+      path(group, "M30 -30 L42 -39 L36 -23 Z");
+      line(group, -22, 9, -8, 22);
+      return;
+    }
+
+    if (type === "massing") {
+      path(group, "M-42 18 L-12 0 L17 15 L-13 35 Z");
+      path(group, "M-12 0 L-12 -31 L17 -12 L17 15");
+      path(group, "M18 14 L43 0 L43 24 L17 39 Z");
+      path(group, "M18 14 L18 -8 L43 0");
+      return;
+    }
+
+    if (type === "model") {
+      path(group, "M-39 16 L-4 -6 L37 14 L2 36 Z");
+      path(group, "M-4 -6 L-4 -35 L37 -14 L37 14");
+      path(group, "M-4 -35 L-39 -12 L-39 16");
+      return;
+    }
+
+    if (type === "chai") {
+      path(group, "M-27 -6 L19 -6 L13 19 C4 26 -12 26 -21 19 Z");
+      path(group, "M18 -2 C39 -2 38 18 19 17");
+      path(group, "M-33 27 C-10 34 14 34 35 27");
+      path(group, "M-12 -17 C-22 -28 -5 -29 -14 -41");
+      path(group, "M5 -17 C-3 -29 14 -30 5 -42");
       return;
     }
 
@@ -1310,47 +1408,36 @@
       return;
     }
 
-    if (type === "perspective") {
-      rect(group, -39, -23, 78, 46);
-      circle(group, 0, 1, 2.2);
-      line(group, -39, -23, 0, 1);
-      line(group, 39, -23, 0, 1);
-      line(group, -39, 23, 0, 1);
-      line(group, 39, 23, 0, 1);
+    if (type === "tennis") {
+      ellipse(group, -8, -14, 23, 32);
+      line(group, -4, 19, 24, 45);
+      line(group, -20, -14, 4, -14);
+      line(group, -24, -1, 7, -1);
+      line(group, -19, 13, 4, 13);
+      line(group, -8, -43, -8, 16);
+      line(group, 5, -35, 5, 9);
       return;
     }
 
-    if (type === "pencil") {
-      line(group, -38, 21, 28, -28);
-      path(group, "M28 -28 L39 -36 L34 -22 Z");
-      line(group, -22, 9, -9, 21);
+    if (type === "tennis-ball") {
+      circle(group, 0, 0, 14);
+      path(group, "M-10 -9 C-1 -2 -1 2 -10 9");
+      path(group, "M10 -9 C1 -2 1 2 10 9");
       return;
     }
 
-    if (type === "laptop") {
-      rect(group, -42, -28, 84, 48);
-      path(group, "M-56 29 L56 29 L42 20 L-42 20 Z");
-      line(group, -30, -14, 26, -14);
-      line(group, -24, 0, 16, 0);
-      circle(group, 0, 25, 1.8);
+    if (type === "cube") {
+      path(group, "M0 -33 L29 -16 L29 18 L0 35 L-29 18 L-29 -16 Z");
+      path(group, "M0 -33 L0 1 L29 -16 M0 1 L-29 -16 M0 1 L0 35");
       return;
     }
 
-    if (type === "tablet") {
-      rect(group, -30, -40, 60, 80);
-      line(group, -18, -24, 18, -24);
-      line(group, -18, -8, 12, -8);
-      line(group, -18, 10, 20, 10);
-      circle(group, 0, 30, 2.2);
-      return;
-    }
-
-    if (type === "iteration") {
-      path(group, "M-32 2 C-26 -24 23 -28 31 -2");
-      path(group, "M31 -2 L21 -7 M31 -2 L26 -13");
-      rect(group, -14, -5, 28, 20);
-      path(group, "M24 21 C8 38 -28 31 -33 6");
-      path(group, "M-33 6 L-24 14 M-33 6 L-27 18");
+    if (type === "grid-fragment") {
+      for (let i = -3; i <= 3; i += 1) {
+        line(group, i * 12, -34, i * 12 + 18, 34);
+        line(group, -44, i * 9, 48, i * 9 - 10);
+      }
+      path(group, "M-46 -35 C-18 -24 22 -31 48 -18");
       return;
     }
 
@@ -1364,74 +1451,6 @@
       return;
     }
 
-    if (type === "sketch-panel") {
-      rect(group, -46, -29, 92, 58);
-      path(group, "M-34 12 C-12 -18 10 -19 34 9");
-      path(group, "M-38 -9 C-15 -2 11 -5 37 -15");
-      line(group, -26, 20, 26, 20);
-      return;
-    }
-
-    if (type === "cube") {
-      path(group, "M0 -33 L29 -16 L29 18 L0 35 L-29 18 L-29 -16 Z");
-      path(group, "M0 -33 L0 1 L29 -16 M0 1 L-29 -16 M0 1 L0 35");
-      return;
-    }
-
-    if (type === "model") {
-      path(group, "M-38 16 L-4 -5 L36 14 L2 35 Z");
-      path(group, "M-4 -5 L-4 -34 L36 -14 L36 14");
-      path(group, "M-4 -34 L-38 -12 L-38 16");
-      return;
-    }
-
-    if (type === "massing") {
-      path(group, "M-42 18 L-12 0 L16 15 L-13 34 Z");
-      path(group, "M-12 0 L-12 -30 L17 -12 L16 15");
-      path(group, "M18 14 L42 0 L42 24 L17 39 Z");
-      path(group, "M18 14 L18 -8 L42 0");
-      line(group, -33, 17, -6, 32);
-      return;
-    }
-
-    if (type === "chai") {
-      path(group, "M-26 -6 L18 -6 L13 18 C4 25 -12 25 -20 18 Z");
-      path(group, "M17 -2 C38 -2 37 17 18 16");
-      path(group, "M-32 26 C-10 33 13 33 34 26");
-      path(group, "M-12 -16 C-21 -27 -5 -28 -14 -39");
-      path(group, "M5 -16 C-2 -28 13 -29 5 -40");
-      return;
-    }
-
-    if (type === "book") {
-      path(group, "M-38 -22 C-21 -27 -9 -22 0 -12 C10 -23 24 -28 39 -21 L39 27 C22 20 11 24 0 35 C-10 24 -23 21 -39 27 Z");
-      line(group, 0, -12, 0, 34);
-      line(group, -28, -3, -10, 1);
-      line(group, 11, -2, 30, -7);
-      line(group, -29, 9, -11, 13);
-      line(group, 10, 12, 29, 7);
-      return;
-    }
-
-    if (type === "tennis") {
-      ellipse(group, -8, -14, 23, 32);
-      line(group, -4, 19, 24, 45);
-      line(group, -20, -14, 4, -14);
-      line(group, -24, -1, 7, -1);
-      line(group, -19, 13, 4, 13);
-      line(group, -8, -43, -8, 16);
-      line(group, 5, -35, 5, 9);
-      circle(group, 34, -28, 5);
-      return;
-    }
-
-    if (type === "tennis-ball") {
-      circle(group, 0, 0, 14);
-      path(group, "M-10 -9 C-1 -2 -1 2 -10 9");
-      path(group, "M10 -9 C1 -2 1 2 10 9");
-      return;
-    }
-
     if (type === "reading") {
       rect(group, -32, -26, 64, 42);
       path(group, "M-23 -15 C-8 -21 7 -20 23 -15");
@@ -1440,43 +1459,34 @@
     }
   }
 
-  function spiralPath(index) {
+  function vortexPath(index) {
     const points = [];
-    const turnOffset = -1.25 + index * 0.38;
+    const turnOffset = -1.25 + index * 0.39;
     const turns = 0.72 + (index % 5) * 0.13;
-    const startRadius = 110 + index * 16;
-    const endRadius = 380 + (index % 7) * 46;
-    const pointCount = 42;
-    const centerX = THOUGHT_CX + 40;
-    const centerY = THOUGHT_CY + 36;
+    const startRadius = 96 + index * 14;
+    const endRadius = 390 + (index % 7) * 42;
+    const count = 42;
 
-    for (let i = 0; i < pointCount; i += 1) {
-      const t = i / (pointCount - 1);
+    for (let i = 0; i < count; i += 1) {
+      const t = i / (count - 1);
       const angle = turnOffset + t * Math.PI * 2 * turns;
       const radius = lerp(startRadius, endRadius, t);
+      const sweep = (t - 0.5) * (95 + index * 5);
       const wobble = Math.sin(t * Math.PI * 3 + index * 0.7) * 10;
-      const sweep = (t - 0.5) * (90 + index * 5);
       points.push([
-        centerX + sweep + Math.cos(angle) * (radius * 1.24 + wobble),
-        centerY + Math.sin(angle) * (radius * 0.46 + wobble * 0.24)
+        THOUGHT_CX + 42 + sweep + Math.cos(angle) * (radius * 1.2 + wobble),
+        THOUGHT_CY + 38 + Math.sin(angle) * (radius * 0.46 + wobble * 0.25)
       ]);
     }
 
     return smoothPath(points);
   }
 
-  function smoothPath(points) {
-    let d = "M" + points[0][0].toFixed(1) + " " + points[0][1].toFixed(1);
+  function getScratchProgress(t) {
+    const lift = phase(t, TIME.impact, TIME.impact + 760);
+    const hold = 1 - phase(t, TIME.impact + 1200, TIME.collapseEnd + 650);
 
-    for (let i = 1; i < points.length - 1; i += 1) {
-      const current = points[i];
-      const next = points[i + 1];
-      const cx = (current[0] + next[0]) / 2;
-      const cy = (current[1] + next[1]) / 2;
-      d += " Q" + current[0].toFixed(1) + " " + current[1].toFixed(1) + " " + cx.toFixed(1) + " " + cy.toFixed(1);
-    }
-
-    return d;
+    return clamp(easeOutCubic(lift) * hold, 0, 1);
   }
 
   function rect(parent, x, y, width, height) {
@@ -1526,50 +1536,58 @@
     }, parent);
   }
 
-  function svgEl(tag, attrs = {}, parent) {
-    const el = document.createElementNS(NS, tag);
-    setAttrs(el, attrs);
+  function svgEl(tag, attrs, parent) {
+    const element = document.createElementNS(NS, tag);
+
+    setAttrs(element, attrs || {});
 
     if (parent) {
-      parent.appendChild(el);
+      parent.appendChild(element);
     }
 
-    return el;
+    return element;
   }
 
-  function setAttrs(el, attrs) {
-    Object.entries(attrs).forEach(function ([key, value]) {
-      el.setAttribute(key, value);
+  function setAttrs(element, attrs) {
+    Object.keys(attrs).forEach(function (key) {
+      element.setAttribute(key, attrs[key]);
     });
   }
 
-  function setTransform(el, transform) {
-    el.setAttribute("transform", transform);
+  function setTransform(element, value) {
+    element.setAttribute("transform", value);
+  }
+
+  function smoothPath(points) {
+    let d = "M" + points[0][0].toFixed(1) + " " + points[0][1].toFixed(1);
+
+    for (let i = 1; i < points.length - 1; i += 1) {
+      const current = points[i];
+      const next = points[i + 1];
+      const cx = (current[0] + next[0]) / 2;
+      const cy = (current[1] + next[1]) / 2;
+      d += " Q" + current[0].toFixed(1) + " " + current[1].toFixed(1) + " " + cx.toFixed(1) + " " + cy.toFixed(1);
+    }
+
+    return d;
   }
 
   function cubicPoint(p0, p1, p2, p3, t) {
-    const oneMinusT = 1 - t;
+    const u = 1 - t;
 
     return {
-      x: oneMinusT * oneMinusT * oneMinusT * p0.x + 3 * oneMinusT * oneMinusT * t * p1.x + 3 * oneMinusT * t * t * p2.x + t * t * t * p3.x,
-      y: oneMinusT * oneMinusT * oneMinusT * p0.y + 3 * oneMinusT * oneMinusT * t * p1.y + 3 * oneMinusT * t * t * p2.y + t * t * t * p3.y
+      x: u * u * u * p0.x + 3 * u * u * t * p1.x + 3 * u * t * t * p2.x + t * t * t * p3.x,
+      y: u * u * u * p0.y + 3 * u * u * t * p1.y + 3 * u * t * t * p2.y + t * t * t * p3.y
     };
   }
 
   function quadraticPoint(p0, p1, p2, t) {
-    const oneMinusT = 1 - t;
+    const u = 1 - t;
 
     return {
-      x: oneMinusT * oneMinusT * p0.x + 2 * oneMinusT * t * p1.x + t * t * p2.x,
-      y: oneMinusT * oneMinusT * p0.y + 2 * oneMinusT * t * p1.y + t * t * p2.y
+      x: u * u * p0.x + 2 * u * t * p1.x + t * t * p2.x,
+      y: u * u * p0.y + 2 * u * t * p1.y + t * t * p2.y
     };
-  }
-
-  function seededRange(seed, min, max) {
-    const value = Math.sin(seed * 12.9898) * 43758.5453;
-    const fraction = value - Math.floor(value);
-
-    return min + (max - min) * fraction;
   }
 
   function clamp(value, min, max) {
@@ -1580,12 +1598,8 @@
     return a + (b - a) * t;
   }
 
-  function invLerp(a, b, value) {
-    return clamp((value - a) / (b - a), 0, 1);
-  }
-
-  function phase(elapsed, start, end) {
-    return invLerp(start, end, elapsed);
+  function phase(value, start, end) {
+    return clamp((value - start) / (end - start), 0, 1);
   }
 
   function easeInOutCubic(t) {
@@ -1601,7 +1615,7 @@
   }
 
   function easeOutBackSmall(t) {
-    const c1 = 1.12;
+    const c1 = 1.18;
     const c3 = c1 + 1;
 
     return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
@@ -1611,6 +1625,13 @@
     const x = clamp(t, 0, 1);
 
     return x * x * (3 - 2 * x);
+  }
+
+  function seededRange(seed, min, max) {
+    const value = Math.sin(seed * 12.9898) * 43758.5453;
+    const fraction = value - Math.floor(value);
+
+    return min + (max - min) * fraction;
   }
 
   function createSeededRandom(seed) {

@@ -20,7 +20,7 @@
   left: 50%;
   top: 50%;
   width: 100vw;
-  height: 100%;
+  height: clamp(280px, 42vh, 470px);
   margin-left: calc(50% - 50vw);
   transform: translate(-50%, -50%);
   z-index: 1;
@@ -34,7 +34,7 @@
   height: 100%;
   max-width: none;
   color: var(--color-ink);
-  overflow: hidden;
+  overflow: visible;
 }
 
 .landing-girl-animation .thought-line,
@@ -49,11 +49,12 @@
 }
 
 .landing-girl-animation .thought-line {
+  stroke: var(--line-color, currentColor);
   stroke-width: var(--line-width, 1.15px);
 }
 
-.landing-girl-animation .thought-line.is-soft {
-  stroke-width: 1;
+.landing-girl-animation .thought-line.is-ribbon {
+  mix-blend-mode: multiply;
 }
 
 .landing-girl-animation .thought-line.is-dotted {
@@ -70,8 +71,8 @@
 
 .landing-girl-animation .girl-profile,
 .landing-girl-animation .girl-front {
-  transform-box: fill-box;
-  transform-origin: center;
+  transform-box: view-box;
+  transform-origin: 0 0;
 }
 
 .landing-girl-animation .girl-shadow {
@@ -85,9 +86,12 @@
 
 .landing-girl-animation .girl-fill,
 .landing-girl-animation .girl-limb,
-.landing-girl-animation .reset-ball,
+.landing-girl-animation .bonk-ball,
 .landing-girl-animation .thought-dot,
-.landing-girl-animation .particle {
+.landing-girl-animation .background-dust,
+.landing-girl-animation .particle-square,
+.landing-girl-animation .particle-dot,
+.landing-girl-animation .particle-face-main {
   fill: currentColor;
 }
 
@@ -95,14 +99,37 @@
   fill: currentColor;
 }
 
-.landing-girl-animation .particle {
+.landing-girl-animation .thought-icon,
+.landing-girl-animation .particle,
+.landing-girl-animation .particle-cube {
   transform-box: fill-box;
   transform-origin: center;
+}
+
+.landing-girl-animation .particle-face-side {
+  fill: rgba(0, 0, 0, 0.55);
+}
+
+.landing-girl-animation .particle-face-top {
+  fill: rgba(0, 0, 0, 0.78);
+}
+
+.landing-girl-animation .bonk-ball-group,
+.landing-girl-animation .impact-burst {
+  pointer-events: none;
+}
+
+.landing-girl-animation .background-dust {
+  fill: currentColor;
 }
 
 @media (max-width: 760px) {
   .landing-media {
     width: 100vw;
+    height: clamp(260px, 38vh, 390px);
+  }
+
+  .landing-girl-animation {
     height: clamp(260px, 38vh, 390px);
   }
 }
@@ -111,10 +138,18 @@
   .landing-media {
     height: clamp(240px, 36vh, 340px);
   }
+
+  .landing-girl-animation {
+    height: clamp(240px, 36vh, 340px);
+  }
 }
 
 @media (max-height: 620px) {
   .landing-media {
+    height: clamp(240px, 48vh, 330px);
+  }
+
+  .landing-girl-animation {
     height: clamp(240px, 48vh, 330px);
   }
 }
