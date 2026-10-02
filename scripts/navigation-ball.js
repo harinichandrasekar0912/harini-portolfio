@@ -1453,19 +1453,23 @@
     }
 
     function landingApproachHeight() {
-      return clamp(window.innerHeight * 0.12, 95, 180);
+      return clamp(window.innerHeight * 0.14, 110, 200);
     }
 
     function upwardOvershootZ() {
-      return clamp(window.innerHeight * 0.1, 80, 155);
+      return clamp(window.innerHeight * 0.14, 110, 210);
+    }
+
+    function upwardShootHeight() {
+      return clamp(window.innerHeight * 0.22, 170, 300);
     }
 
     function downwardLaunchLift() {
-      return clamp(window.innerHeight * 0.055, 44, 92);
+      return clamp(window.innerHeight * 0.085, 70, 135);
     }
 
     function finalApproachControlX(start, landing) {
-      return landing.x - clamp((landing.x - start.x) * 0.04, -24, 24);
+      return landing.x;
     }
 
     function enforceLandingVelocity(path, bounds) {
@@ -1499,8 +1503,8 @@
       var path = {
         start: start,
         controlA: fitControlPointInsideBounds({
-          x: start.x + dx * 0.28,
-          y: Math.min(start.y - 80, apexY)
+          x: start.x + dx * 0.08,
+          y: Math.min(start.y - upwardShootHeight(), apexY)
         }, bounds),
         controlB: fitControlPointInsideBounds({
           x: finalApproachControlX(start, landing),
@@ -1516,14 +1520,13 @@
     function createUpwardFlightPath(start, landing, config) {
       var bounds = config.bounds;
       var dx = landing.x - start.x;
-      var distanceX = Math.abs(dx);
       var minVisibleY = Math.max(bounds.minY, ballRadius() + 32, 36);
       var apexY = clamp(Math.max(minVisibleY, landing.y - upwardOvershootZ()), bounds.minY, bounds.maxY);
       var path = {
         start: start,
         controlA: fitControlPointInsideBounds({
-          x: start.x + dx * clamp(distanceX / Math.max(window.innerWidth, 1), 0.18, 0.34),
-          y: Math.min(start.y - 80, apexY)
+          x: start.x + dx * 0.08,
+          y: Math.min(start.y - upwardShootHeight(), apexY)
         }, bounds),
         controlB: fitControlPointInsideBounds({
           x: finalApproachControlX(start, landing),
@@ -1563,7 +1566,7 @@
       path = {
         start: start,
         controlA: fitControlPointInsideBounds({
-          x: start.x + dx * 0.18,
+          x: start.x + dx * 0.22,
           y: start.y - launchLift
         }, bounds),
         controlB: fitControlPointInsideBounds({
@@ -1892,22 +1895,22 @@
       var impactVelocity = flightVelocityAt(1, config);
       var impactVelocityY = Math.max(0, impactVelocity.y);
       var ballSize = ballRadius() * 2;
-      var firstPrepHeight = clamp(ballSize * 0.45, 16, 26);
-      var secondPrepHeight = clamp(ballSize * 0.85, 30, 44);
-      var thirdPrepHeight = clamp(ballSize * 1.3, 48, 68);
-      var baseFirstPrepDuration = 238;
-      var baseSecondPrepDuration = 272;
-      var baseThirdPrepDuration = 318;
+      var firstPrepHeight = clamp(ballSize * 0.55, 20, 32);
+      var secondPrepHeight = clamp(ballSize * 1, 36, 54);
+      var thirdPrepHeight = clamp(ballSize * 1.55, 58, 82);
+      var baseFirstPrepDuration = 320;
+      var baseSecondPrepDuration = 380;
+      var baseThirdPrepDuration = 460;
       var firstPrepDuration = scaleMotionDuration(baseFirstPrepDuration);
       var secondPrepDuration = scaleMotionDuration(baseSecondPrepDuration);
       var thirdPrepDuration = scaleMotionDuration(baseThirdPrepDuration);
-      var flightDuration = scaleMotionDuration(clamp(config.duration * (config.upward ? 0.82 : 0.9), 1050, 2300));
-      var firstLandingHeight = clamp(Math.max(ballSize * 1.25, impactVelocityY * 0.12), 46, 72);
-      var secondLandingHeight = clamp(ballSize * 0.62, 24, 40);
-      var thirdLandingHeight = clamp(ballSize * 0.24, 9, 18);
-      var firstLandingDuration = scaleMotionDuration(370);
-      var secondLandingDuration = scaleMotionDuration(260);
-      var thirdLandingDuration = scaleMotionDuration(180);
+      var flightDuration = scaleMotionDuration(clamp(config.duration * 1.02, 1350, 2800));
+      var firstLandingHeight = clamp(Math.max(ballSize * 1.45, impactVelocityY * 0.12), 56, 86);
+      var secondLandingHeight = clamp(ballSize * 0.72, 28, 46);
+      var thirdLandingHeight = clamp(ballSize * 0.3, 12, 22);
+      var firstLandingDuration = scaleMotionDuration(440);
+      var secondLandingDuration = scaleMotionDuration(340);
+      var thirdLandingDuration = scaleMotionDuration(240);
       var rollDuration = scaleMotionDuration(2180);
       var prep1End = firstPrepDuration;
       var prep2End = prep1End + secondPrepDuration;
@@ -1964,6 +1967,7 @@
           impactVelocityY: round(impactVelocityY),
           upwardArcLiftNew: config.upward ? round(config.path.start.y - config.path.apex.y) : 0,
           upwardOvershootZ: config.upward ? round(upwardOvershootZ()) : 0,
+          upwardShootHeight: config.upward ? round(upwardShootHeight()) : 0,
           downwardLaunchLift: config.downward ? round(downwardLaunchLift()) : 0,
           usesEaseOutNearLanding: false,
           morphDurationNew: BALL_MORPH_DURATION

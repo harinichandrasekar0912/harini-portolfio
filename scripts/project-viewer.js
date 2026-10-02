@@ -3,6 +3,10 @@
     return Math.min(Math.max(value, min), max);
   }
 
+  function easeInOutCubic(t) {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  }
+
   function escapeHtml(value) {
     return String(value)
       .replace(/&/g, "&amp;")
@@ -44,6 +48,7 @@
     var shiftFrame = 0;
     var openToken = 0;
     var activeClone = null;
+    var isClosingProject = false;
 
     function notifyProjectState(name) {
       document.dispatchEvent(new CustomEvent(name));
@@ -253,6 +258,8 @@
       window.clearTimeout(closeTimer);
       window.clearTimeout(readyTimer);
       window.clearTimeout(contentReadyTimer);
+      closeButton.disabled = false;
+      isClosingProject = false;
 
       if (shiftFrame) {
         window.cancelAnimationFrame(shiftFrame);
@@ -329,6 +336,92 @@
         pendingShift = 0;
         shiftFrame = 0;
       });
+    }
+
+    function closeTransitionDuration() {
+      if (reducedMotion.matches) {
+        return 1;
+      }
+
+      return isTabletLandscapeTouchViewport() || isStackedMode() ? 1200 : 1160;
+    }
+
+    function animateScrollToTop(element) {
+      var startTop = element.scrollTop;
+      var duration = reducedMotion.matches ? 1 : clamp(Math.abs(startTop) * 0.45, 500, 1200);
+
+      if (startTop <= 1 || reducedMotion.matches) {
+        element.scrollTop = 0;
+        return Promise.resolve();
+      }
+
+      return new Promise(function (resolve) {
+        var startTime = performance.now();
+
+        function frame(now) {
+          var raw = clamp((now - startTime) / duration, 0, 1);
+          var eased = easeInOutCubic(raw);
+
+          element.scrollTop = startTop * (1 - eased);
+
+          if (raw < 1) {
+            window.requestAnimationFrame(frame);
+            return;
+          }
+
+          element.scrollTop = 0;
+          resolve();
+        }
+
+        window.requestAnimationFrame(frame);
+      });
+    }
+
+    function animateShiftToStart() {
+      var startShift = currentShift;
+      var duration = reducedMotion.matches ? 1 : clamp(Math.abs(startShift) * 0.45, 500, 1200);
+
+      if (startShift <= 1 || reducedMotion.matches) {
+        setShift(0, false);
+        return Promise.resolve();
+      }
+
+      return new Promise(function (resolve) {
+        var startTime = performance.now();
+        var previousTransition = track.style.transition;
+
+        track.style.transition = "none";
+
+        function frame(now) {
+          var raw = clamp((now - startTime) / duration, 0, 1);
+          var eased = easeInOutCubic(raw);
+
+          currentShift = startShift * (1 - eased);
+          viewer.style.setProperty("--project-shift", currentShift + "px");
+          setProgress();
+
+          if (raw < 1) {
+            window.requestAnimationFrame(frame);
+            return;
+          }
+
+          currentShift = 0;
+          viewer.style.setProperty("--project-shift", "0px");
+          setProgress();
+          track.style.transition = previousTransition;
+          resolve();
+        }
+
+        window.requestAnimationFrame(frame);
+      });
+    }
+
+    function animateProjectReturnToStart() {
+      if (isStackedMode()) {
+        return animateScrollToTop(story);
+      }
+
+      return animateShiftToStart();
     }
 
     function fillProject(project) {
@@ -464,6 +557,8 @@
       track.innerHTML = "";
       hero.removeAttribute("src");
       activeProject = null;
+      closeButton.disabled = false;
+      isClosingProject = false;
       removeActiveClone();
       notifyProjectState("harini:project-closed");
 
@@ -474,13 +569,15 @@
       activeTrigger = null;
     }
 
-    function closeProject() {
-      if (!viewer.classList.contains("is-active")) {
+    async function closeProject() {
+      if (!viewer.classList.contains("is-active") || isClosingProject) {
         return;
       }
 
+      isClosingProject = true;
       pendingShift = 0;
       openToken += 1;
+      var token = openToken;
       removeActiveClone();
       window.clearTimeout(readyTimer);
       window.clearTimeout(contentReadyTimer);
@@ -490,13 +587,21 @@
         shiftFrame = 0;
       }
 
-      viewer.classList.add("is-closing");
-      viewer.classList.remove("is-ready");
+      closeButton.disabled = true;
       document.body.classList.add("is-project-closing");
       notifyProjectState("harini:project-closing");
+      window.clearTimeout(closeTimer);
+
+      await animateProjectReturnToStart();
+
+      if (token !== openToken || !viewer.classList.contains("is-active")) {
+        return;
+      }
+
+      viewer.classList.add("is-closing");
+      viewer.classList.remove("is-ready");
       setShift(0, false);
       story.scrollTop = 0;
-      window.clearTimeout(closeTimer);
 
       if (activeTrigger) {
         setViewerVars(activeTrigger);
@@ -506,7 +611,11 @@
         viewer.classList.remove("is-expanded");
       });
 
-      closeTimer = window.setTimeout(finishClose, reducedMotion.matches ? 1 : isTabletLandscapeTouchViewport() ? 1380 : isStackedMode() ? 1380 : 1220);
+      closeTimer = window.setTimeout(function () {
+        if (token === openToken) {
+          finishClose();
+        }
+      }, closeTransitionDuration());
     }
 
     triggers.forEach(function (trigger) {
