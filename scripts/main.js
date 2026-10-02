@@ -2,7 +2,7 @@
   // Paste your secure form endpoint here.
   // Example: Formspree/Basin/Getform endpoint.
   // Do not put Gmail passwords, SMTP credentials, or private API keys in frontend code.
-  const CONTACT_FORM_ENDPOINT = "https://formspree.io/f/mwlpdepp";
+  const CONTACT_FORM_ENDPOINT = "PASTE_YOUR_FORMSPREE_ENDPOINT_HERE";
   var CONTACT_FORM_RECIPIENT = "harinispersonalwebsite@gmail.com";
   var CONTACT_FORM_ENDPOINT_PLACEHOLDER = "REPLACE_WITH_YOUR_FORM_ENDPOINT";
 
