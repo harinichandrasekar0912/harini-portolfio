@@ -1413,26 +1413,67 @@
       updatePathApex(path);
     }
 
-    function createUpwardFlightPath(start, landing, config) {
-      var bounds = config.bounds;
-      var dx = landing.x - start.x;
-      var direction = dx < 0 ? -1 : 1;
-      var minVisibleY = Math.max(bounds.minY, 36);
+    function hasFinitePoint(point) {
+      return Boolean(point) && Number.isFinite(point.x) && Number.isFinite(point.y);
+    }
+
+    function hasFinitePath(path) {
+      return Boolean(path) &&
+        hasFinitePoint(path.start) &&
+        hasFinitePoint(path.controlA) &&
+        hasFinitePoint(path.controlB) &&
+        hasFinitePoint(path.end);
+    }
+
+    function fallbackUpwardFlightPath(start, landing, bounds) {
+      var minVisibleY = Math.max(bounds.minY, ballRadius() + 32, 36);
       var apexY = clamp(landing.y - upwardOvershootZ(), minVisibleY, bounds.maxY);
       var path = {
         start: start,
         controlA: fitControlPointInsideBounds({
-          x: start.x + direction * Math.min(distanceX * 0.01, 5),
-          y: apexY
+          x: start.x,
+          y: Math.min(start.y - 80, apexY)
         }, bounds),
         controlB: fitControlPointInsideBounds({
           x: landing.x,
-          y: Math.max(minVisibleY, landing.y - landingApproachHeight())
+          y: Math.min(landing.y - 100, apexY + 80)
         }, bounds),
         end: landing
       };
 
       enforceLandingVelocity(path, bounds);
+      return path;
+    }
+
+    function createUpwardFlightPath(start, landing, config) {
+      var bounds = config.bounds;
+      var dx = landing.x - start.x;
+      var direction = dx < 0 ? -1 : 1;
+      var distanceX = Math.abs(dx);
+      var minVisibleY = Math.max(bounds.minY, ballRadius() + 32, 36);
+      var apexY = clamp(landing.y - upwardOvershootZ(), minVisibleY, bounds.maxY);
+      var path = {
+        start: start,
+        controlA: fitControlPointInsideBounds({
+          x: start.x + direction * Math.min(distanceX * 0.01, 5),
+          y: Math.min(start.y - 80, apexY)
+        }, bounds),
+        controlB: fitControlPointInsideBounds({
+          x: landing.x,
+          y: Math.min(landing.y - 100, apexY + 80)
+        }, bounds),
+        end: landing
+      };
+
+      if (!hasFinitePath(path)) {
+        return fallbackUpwardFlightPath(start, landing, bounds);
+      }
+
+      enforceLandingVelocity(path, bounds);
+      if (!hasFinitePath(path)) {
+        return fallbackUpwardFlightPath(start, landing, bounds);
+      }
+
       return path;
     }
 
@@ -1517,6 +1558,9 @@
       config.path = createSmoothFlightPath(startScreen, endScreen, config);
       adjustPathForObstacles(config);
       enforceLandingVelocity(config.path, bounds);
+      if (!hasFinitePath(config.path)) {
+        config.path = config.upward ? fallbackUpwardFlightPath(startScreen, endScreen, bounds) : createSmoothFlightPath(startScreen, endScreen, config);
+      }
       return config;
     }
 
