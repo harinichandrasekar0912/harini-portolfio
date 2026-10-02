@@ -2,9 +2,10 @@
   // Paste your secure form endpoint here.
   // Example: Formspree/Basin/Getform endpoint.
   // Do not put Gmail passwords, SMTP credentials, or private API keys in frontend code.
-  const CONTACT_FORM_ENDPOINT = "PASTE_YOUR_FORMSPREE_ENDPOINT_HERE";
+  const CONTACT_FORM_ENDPOINT = "https://formspree.io/f/mwlpdepp";
   var CONTACT_FORM_RECIPIENT = "harinispersonalwebsite@gmail.com";
   var CONTACT_FORM_ENDPOINT_PLACEHOLDER = "REPLACE_WITH_YOUR_FORM_ENDPOINT";
+  var CONTACT_FORM_ENDPOINT_ALT_PLACEHOLDER = "PASTE_YOUR_FORMSPREE_ENDPOINT_HERE";
 
   function initContactForm() {
     var form = document.querySelector("[data-contact-form]");
@@ -16,6 +17,7 @@
       message: form.querySelector('[name="message"]')
     } : null;
     var expandingTextareas = Array.prototype.slice.call(document.querySelectorAll("[data-auto-expand]"));
+    var isSubmittingContactForm = false;
 
     if (!form || !response || !submitButton || !fields || !fields.name || !fields.email || !fields.message) {
       return;
@@ -43,7 +45,9 @@
     }
 
     function isEndpointConfigured() {
-      return CONTACT_FORM_ENDPOINT && CONTACT_FORM_ENDPOINT !== CONTACT_FORM_ENDPOINT_PLACEHOLDER;
+      return CONTACT_FORM_ENDPOINT &&
+        CONTACT_FORM_ENDPOINT !== CONTACT_FORM_ENDPOINT_PLACEHOLDER &&
+        CONTACT_FORM_ENDPOINT !== CONTACT_FORM_ENDPOINT_ALT_PLACEHOLDER;
     }
 
     function getTrimmedValues() {
@@ -119,10 +123,88 @@
       formData.append("_subject", subject);
       formData.append("subject", subject);
       formData.append("reply_to", values.email);
+      formData.append("_replyto", values.email);
       formData.append("replyTo", values.email);
       formData.append("to", CONTACT_FORM_RECIPIENT);
 
       return formData;
+    }
+
+    function formspreeErrorMessage(result) {
+      if (!result) {
+        return "";
+      }
+
+      if (result.errors && result.errors.length) {
+        return result.errors.map(function (error) {
+          return error.message;
+        }).join(" ");
+      }
+
+      return result.error || result.message || "";
+    }
+
+    function userMessageForSubmitError(error) {
+      var status = error && error.status;
+
+      if (status === 429) {
+        return "too many attempts. please wait and try again.";
+      }
+
+      if (status === 400 || status === 422) {
+        return "please check the form details and try again.";
+      }
+
+      if (status === 403) {
+        return "form access is blocked. please check the form setup.";
+      }
+
+      if (status === 404) {
+        return "form endpoint is incorrect.";
+      }
+
+      if (status >= 500) {
+        return "form service is temporarily unavailable. please try again later.";
+      }
+
+      return "something went wrong. please try again.";
+    }
+
+    function submitContactForm(values) {
+      var formData = createContactFormData(values);
+
+      return fetch(CONTACT_FORM_ENDPOINT, {
+        method: "POST",
+        body: formData,
+        headers: {
+          Accept: "application/json"
+        }
+      }).then(function (submitResponse) {
+        return submitResponse.json().catch(function () {
+          return null;
+        }).then(function (result) {
+          var error;
+          var message;
+
+          if (!submitResponse.ok) {
+            console.error("Contact form submission failed", {
+              status: submitResponse.status,
+              statusText: submitResponse.statusText,
+              result: result
+            });
+
+            message = formspreeErrorMessage(result);
+            error = new Error(message || "Form submission failed with status " + submitResponse.status);
+            error.status = submitResponse.status;
+            error.statusText = submitResponse.statusText;
+            error.result = result;
+            throw error;
+          }
+
+          console.log("Contact form submission succeeded", result);
+          return result;
+        });
+      });
     }
 
     function expandTextarea(textarea) {
@@ -148,6 +230,11 @@
       var validation;
 
       event.preventDefault();
+
+      if (isSubmittingContactForm) {
+        return;
+      }
+
       clearInvalidState();
 
       values = getTrimmedValues();
@@ -170,29 +257,25 @@
         return;
       }
 
+      isSubmittingContactForm = true;
       submitButton.disabled = true;
       submitButton.textContent = "sending";
       showResponse("");
 
-      fetch(CONTACT_FORM_ENDPOINT, {
-        method: "POST",
-        body: createContactFormData(values),
-        headers: {
-          Accept: "application/json"
-        }
-      }).then(function (submitResponse) {
-        if (!submitResponse.ok) {
-          throw new Error("contact form submission failed");
-        }
-
+      submitContactForm(values).then(function () {
         form.reset();
         expandingTextareas.forEach(function (textarea) {
           expandTextarea(textarea);
         });
         showResponse("sent. i'll get back to you soon.");
-      }).catch(function () {
-        showResponse("something went wrong. please try again.");
+      }).catch(function (error) {
+        if (!error || !error.status) {
+          console.error("Contact form submission failed", error);
+        }
+
+        showResponse(userMessageForSubmitError(error));
       }).finally(function () {
+        isSubmittingContactForm = false;
         submitButton.disabled = false;
         submitButton.textContent = "go";
       });
