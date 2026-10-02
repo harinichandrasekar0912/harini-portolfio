@@ -427,7 +427,13 @@
           return;
         }
 
-        callback(now);
+        try {
+          callback(now);
+        } catch (error) {
+          console.error("Navigation ball animation failed", error);
+          resetBallState(STATES.PLUS_IDLE);
+          clearChoiceState(STATES.PLUS_IDLE);
+        }
       });
 
       ballFrames.push(frameId);
@@ -712,7 +718,7 @@
       var lift = clamp(window.innerHeight * (0.09 + attempt * 0.055), 72, 190);
       var controlBias = clamp(0.46 + attempt * 0.16, 0.46, 0.78);
       var topClear = collision ? collision.rect.top - lift : config.path.apex.y - lift;
-      var controlAX = config.upward ? config.path.start.x : mix(config.path.controlA.x, laneX, controlBias * 0.28);
+      var controlAX = config.upward ? config.path.controlA.x : mix(config.path.controlA.x, laneX, controlBias * 0.28);
       var controlBX = config.upward ? config.path.controlB.x : config.path.end.x;
 
       config.path.controlA = fitControlPointInsideBounds({
@@ -1427,16 +1433,17 @@
 
     function fallbackUpwardFlightPath(start, landing, bounds) {
       var minVisibleY = Math.max(bounds.minY, ballRadius() + 32, 36);
-      var apexY = clamp(landing.y - upwardOvershootZ(), minVisibleY, bounds.maxY);
+      var dx = landing.x - start.x;
+      var apexY = clamp(Math.max(minVisibleY, landing.y - upwardOvershootZ()), bounds.minY, bounds.maxY);
       var path = {
         start: start,
         controlA: fitControlPointInsideBounds({
-          x: start.x,
+          x: start.x + dx * 0.28,
           y: Math.min(start.y - 80, apexY)
         }, bounds),
         controlB: fitControlPointInsideBounds({
           x: landing.x,
-          y: Math.min(landing.y - 100, apexY + 80)
+          y: Math.max(minVisibleY, landing.y - landingApproachHeight())
         }, bounds),
         end: landing
       };
@@ -1448,19 +1455,18 @@
     function createUpwardFlightPath(start, landing, config) {
       var bounds = config.bounds;
       var dx = landing.x - start.x;
-      var direction = dx < 0 ? -1 : 1;
       var distanceX = Math.abs(dx);
       var minVisibleY = Math.max(bounds.minY, ballRadius() + 32, 36);
-      var apexY = clamp(landing.y - upwardOvershootZ(), minVisibleY, bounds.maxY);
+      var apexY = clamp(Math.max(minVisibleY, landing.y - upwardOvershootZ()), bounds.minY, bounds.maxY);
       var path = {
         start: start,
         controlA: fitControlPointInsideBounds({
-          x: start.x + direction * Math.min(distanceX * 0.01, 5),
+          x: start.x + dx * clamp(distanceX / Math.max(window.innerWidth, 1), 0.18, 0.34),
           y: Math.min(start.y - 80, apexY)
         }, bounds),
         controlB: fitControlPointInsideBounds({
           x: landing.x,
-          y: Math.min(landing.y - 100, apexY + 80)
+          y: Math.max(minVisibleY, landing.y - landingApproachHeight())
         }, bounds),
         end: landing
       };
@@ -1488,6 +1494,7 @@
       var distanceX = Math.abs(dx);
       var arcHeight = clamp(Math.max(window.innerHeight * 0.42, distanceX * 0.42, Math.abs(landing.y - start.y) * 0.48), 230, 520);
       var controlY = Math.max(bounds.minY + 12, Math.min(start.y, landing.y) - arcHeight);
+      var finalDrop = landingApproachHeight();
       var path;
 
       if (config.upward) {
@@ -1502,7 +1509,7 @@
         }, bounds),
         controlB: fitControlPointInsideBounds({
           x: landing.x,
-          y: Math.max(Math.max(bounds.minY, 36), landing.y - landingApproachHeight())
+          y: Math.max(Math.max(bounds.minY, 36), landing.y - finalDrop)
         }, bounds),
         end: landing
       };
@@ -1549,7 +1556,7 @@
         upward: upward,
         downward: downward,
         duration: duration,
-        scrollDelay: upward ? 0 : targetId === "contact" ? 0.04 : 0.08,
+        scrollDelay: 0,
         hasShadow: endPoint.kind !== "floor",
         emergencyClampLogged: false,
         path: null
@@ -1573,13 +1580,7 @@
     }
 
     function flightScrollAt(raw, config) {
-      var progress = 0;
-
-      if (config.upward) {
-        progress = easeInOut(raw);
-      } else if (raw > config.scrollDelay) {
-        progress = easeInOut((raw - config.scrollDelay) / (1 - config.scrollDelay));
-      }
+      var progress = raw;
 
       return mix(config.startScroll, config.finalScroll, clamp(progress, 0, 1));
     }
@@ -1824,28 +1825,32 @@
       var startTime = 0;
       var impactVelocity = flightVelocityAt(1, config);
       var impactVelocityY = Math.max(0, impactVelocity.y);
-      var firstPrepHeight = clamp(window.innerHeight * 0.054, 38, 57);
-      var secondPrepHeight = clamp(firstPrepHeight * 1.9, 66, 92);
-      var thirdPrepHeight = clamp(secondPrepHeight * 1.43, 92, 128);
-      var baseFirstPrepDuration = clamp(window.innerHeight * 0.52, 380, 440);
-      var baseSecondPrepDuration = clamp(baseFirstPrepDuration + 80, 420, 540);
-      var baseThirdPrepDuration = clamp(baseSecondPrepDuration + 70, 460, 620);
+      var ballSize = ballRadius() * 2;
+      var firstPrepHeight = clamp(ballSize * 0.45, 14, 24);
+      var secondPrepHeight = clamp(ballSize * 0.75, 24, 38);
+      var thirdPrepHeight = clamp(ballSize * 1.05, 36, 56);
+      var baseFirstPrepDuration = 250;
+      var baseSecondPrepDuration = 290;
+      var baseThirdPrepDuration = 330;
       var firstPrepDuration = config.upward ? scaleMotionDuration(baseFirstPrepDuration) : 0;
       var secondPrepDuration = config.upward ? scaleMotionDuration(baseSecondPrepDuration) : 0;
       var thirdPrepDuration = config.upward ? scaleMotionDuration(baseThirdPrepDuration) : 0;
       var flightDuration = scaleMotionDuration(clamp(config.duration * (config.upward ? 0.9 : 1), 1150, 2500));
-      var firstLandingHeight = clamp(Math.max(window.innerHeight * 0.062, impactVelocityY * 0.18) * (config.upward ? 1.04 : 1), 58, 82);
-      var secondLandingHeight = clamp(firstLandingHeight * 0.245, 14, 20);
-      var firstLandingDuration = scaleMotionDuration(clamp(window.innerHeight * 0.44, 340, 440));
-      var secondLandingDuration = scaleMotionDuration(clamp(window.innerHeight * 0.29, 210, 300));
-      var rollDuration = scaleMotionDuration(2030);
+      var firstLandingHeight = clamp(Math.max(ballSize * 1.05, impactVelocityY * 0.12), 38, 58);
+      var secondLandingHeight = clamp(ballSize * 0.52, 18, 32);
+      var thirdLandingHeight = clamp(ballSize * 0.2, 7, 14);
+      var firstLandingDuration = scaleMotionDuration(390);
+      var secondLandingDuration = scaleMotionDuration(280);
+      var thirdLandingDuration = scaleMotionDuration(200);
+      var rollDuration = scaleMotionDuration(2180);
       var prep1End = firstPrepDuration;
       var prep2End = prep1End + secondPrepDuration;
       var prep3End = prep2End + thirdPrepDuration;
       var flightEnd = prep3End + flightDuration;
       var rebound1End = flightEnd + firstLandingDuration;
       var rebound2End = rebound1End + secondLandingDuration;
-      var rollEnd = rebound2End + rollDuration;
+      var rebound3End = rebound2End + thirdLandingDuration;
+      var rollEnd = rebound3End + rollDuration;
       var rollDirection = rollDirectionFor(targetId);
       var rollStartX = config.endScreen.x;
       var rollEndX = rollDirection < 0 ? -ballRadius() - 18 : window.innerWidth + ballRadius() + 18;
@@ -1873,7 +1878,7 @@
       if (DEBUG_NAV_GEOMETRY) {
         console.table({
           isUpwardNavigation: config.upward,
-          timelinePhases: config.upward ? "prepBounceSmall, prepBounceHigher, prepBounceHighest, launchArc, impactReboundLarge, impactReboundSmall, rollOut" : "mainArc, impactReboundLarge, impactReboundSmall, rollOut",
+          timelinePhases: config.upward ? "prepBounceSmall, prepBounceHigher, prepBounceHighest, launchArc, impactReboundLarge, impactReboundSmall, impactReboundTiny, rollOut" : "mainArc, impactReboundLarge, impactReboundSmall, impactReboundTiny, rollOut",
           usedSetTimeoutForBounce: false,
           transformTransitionDuringFlight: false,
           usedEaseOutIntoLanding: false,
@@ -1882,8 +1887,10 @@
           thirdPrepBounceHeight: config.upward ? round(thirdPrepHeight) : 0,
           firstLandingBounceHeight: round(firstLandingHeight),
           secondLandingBounceHeight: round(secondLandingHeight),
+          thirdLandingBounceHeight: round(thirdLandingHeight),
           firstLandingBounceDuration: round(firstLandingDuration),
           secondLandingBounceDuration: round(secondLandingDuration),
+          thirdLandingBounceDuration: round(thirdLandingDuration),
           delayBetweenImpactAndBounceMs: 0,
           impactVelocityY: round(impactVelocityY),
           upwardArcLiftNew: config.upward ? round(config.path.start.y - config.path.apex.y) : 0,
@@ -1949,12 +1956,12 @@
         setTimelineShadow(mix(0.06, 0.34, approach), mix(0.72, 1.18, approach));
       }
 
-      function applyBounceShadow(raw, firstBounce) {
+      function applyBounceShadow(raw, bounceIndex) {
         var liftRatio = Math.sin(Math.PI * raw);
-        var compressedOpacity = firstBounce ? 0.42 : 0.32;
-        var airborneOpacity = firstBounce ? 0.1 : 0.16;
-        var compressedScale = firstBounce ? 1.32 : 1.14;
-        var airborneScale = firstBounce ? 0.62 : 0.8;
+        var compressedOpacity = bounceIndex === 1 ? 0.42 : bounceIndex === 2 ? 0.32 : 0.24;
+        var airborneOpacity = bounceIndex === 1 ? 0.1 : bounceIndex === 2 ? 0.16 : 0.2;
+        var compressedScale = bounceIndex === 1 ? 1.32 : bounceIndex === 2 ? 1.14 : 1.04;
+        var airborneScale = bounceIndex === 1 ? 0.62 : bounceIndex === 2 ? 0.8 : 0.92;
 
         if (endPoint.kind === "floor") {
           setTimelineShadow(0, 0.72);
@@ -2021,13 +2028,19 @@
           raw = (elapsed - flightEnd) / firstLandingDuration;
           lift = bounceLift(raw, firstLandingHeight);
           setBallPosition(config.endScreen.x, config.endScreen.y - lift);
-          applyBounceShadow(raw, true);
+          applyBounceShadow(raw, 1);
         } else if (elapsed < rebound2End) {
           applyImpact();
           raw = (elapsed - rebound1End) / secondLandingDuration;
           lift = bounceLift(raw, secondLandingHeight);
           setBallPosition(config.endScreen.x, config.endScreen.y - lift);
-          applyBounceShadow(raw, false);
+          applyBounceShadow(raw, 2);
+        } else if (elapsed < rebound3End) {
+          applyImpact();
+          raw = (elapsed - rebound2End) / thirdLandingDuration;
+          lift = bounceLift(raw, thirdLandingHeight);
+          setBallPosition(config.endScreen.x, config.endScreen.y - lift);
+          applyBounceShadow(raw, 3);
         } else if (elapsed < rollEnd) {
           applyImpact();
 
@@ -2038,7 +2051,7 @@
             ball.classList.add("is-rolling");
           }
 
-          rollRaw = (elapsed - rebound2End) / rollDuration;
+          rollRaw = (elapsed - rebound3End) / rollDuration;
           easedRoll = easeRollOut(rollRaw);
           x = mix(rollStartX, rollEndX, easedRoll);
           rotation = rollDirection * (Math.abs(x - rollStartX) / rollCircumference) * 360;
