@@ -334,6 +334,10 @@ html.is-ball-animating {
   transform: translate(-50%, -50%) rotate(90deg);
 }
 
+.nav-object.is-plus-restoring .nav-core {
+  animation: plusRestore 340ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 .nav-object.is-project-close {
   z-index: 980;
   pointer-events: none;
@@ -750,6 +754,18 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
   100% {
     opacity: 1;
     transform: translate(calc(-50% + var(--item-x)), var(--item-y)) scale(1);
+  }
+}
+
+@keyframes plusRestore {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) scale(0.92);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateX(-50%) scale(1);
   }
 }
 

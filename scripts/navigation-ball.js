@@ -509,11 +509,32 @@
       resetTimelineShadow();
     }
 
+    function hideTravelBallForPlusRestore() {
+      ball.style.transition = "none";
+      resetBallClasses();
+      ballLabel.textContent = "";
+      ball.style.opacity = "0";
+      ball.style.setProperty("--ball-x", "-9999px");
+      ball.style.setProperty("--ball-y", "-9999px");
+      ball.style.setProperty("--ball-lift", "0px");
+      ball.style.setProperty("--ball-scale-x", "1");
+      ball.style.setProperty("--ball-scale-y", "1");
+      ball.style.setProperty("--ball-rotation", "0deg");
+      ball.style.removeProperty("--restore-duration");
+      setTimelineShadow(0, 0.72);
+
+      window.requestAnimationFrame(function () {
+        ball.style.transition = "";
+        resetTimelineShadow();
+      });
+    }
+
     function resetBallState(finalState) {
       cancelBallAnimation();
       hideTravelBallImmediately();
       ballLabel.textContent = "";
       isTravelling = false;
+      nav.classList.remove("is-plus-restoring");
       document.documentElement.classList.remove("is-ball-animating");
       setState(finalState || STATES.PLUS_IDLE);
     }
@@ -1479,7 +1500,29 @@
       debugOverlay.marker("landing point", config.path.end.x, config.path.end.y, "rgb(210, 0, 0)");
     }
 
-    function restorePlus(token, targetId, options) {
+    function restorePlusAfterRoll(token, targetId) {
+      var restoreDuration = scaleMotionDuration(340);
+
+      if (!isCurrentAnimation(token)) {
+        debugNavBall("stale nav ball frame cancelled");
+        return;
+      }
+
+      debugNavBall("normal roll complete: hiding travel ball and restoring plus");
+      hideTravelBallForPlusRestore();
+      nav.classList.add("is-plus-restoring");
+      document.documentElement.classList.remove("is-ball-animating");
+      clearChoiceState(STATES.PLUS_RESTORED);
+
+      resetTimer = setBallTimeout(function () {
+        nav.classList.remove("is-plus-restoring");
+        hideTravelBallForPlusRestore();
+        setState(STATES.PLUS_IDLE);
+        updateCurrentSection(detectCurrentSection(), true);
+      }, restoreDuration, token);
+    }
+
+    function morphBallIntoPlus(token, targetId, options) {
       var restoreDuration = scaleMotionDuration(options && typeof options.duration === "number" ? options.duration : 260);
 
       if (!isCurrentAnimation(token)) {
@@ -1487,6 +1530,7 @@
         return;
       }
 
+      debugNavBall("home return: morphing ball into plus");
       setState(STATES.PLUS_RESTORED);
       ball.style.setProperty("--restore-duration", restoreDuration + "ms");
       ball.classList.add("is-restoring");
@@ -1562,7 +1606,7 @@
         window.scrollTo(0, 0);
         setBallPosition(endScreen.x, endScreen.y);
         updateCurrentSection("landing", true);
-        restorePlus(token, targetId);
+        morphBallIntoPlus(token, targetId);
         return;
       }
 
@@ -1651,7 +1695,7 @@
             window.history.replaceState(null, "", cleanUrl);
           }
 
-          restorePlus(token, targetId, { duration: homeMorphDuration });
+          morphBallIntoPlus(token, targetId, { duration: homeMorphDuration });
           return;
         }
 
@@ -1717,7 +1761,7 @@
         window.scrollTo(0, config.finalScroll);
         setBallPosition(config.endScreen.x, config.endScreen.y);
         updateCurrentSection(targetId, true);
-        restorePlus(token, targetId);
+        restorePlusAfterRoll(token, targetId);
         return;
       }
 
@@ -1888,7 +1932,7 @@
             setTimelineShadow(mix(0.3, 0, rollRaw), mix(1.08, 0.72, rollRaw));
           }
         } else {
-          restorePlus(token, targetId);
+          restorePlusAfterRoll(token, targetId);
           return;
         }
 
