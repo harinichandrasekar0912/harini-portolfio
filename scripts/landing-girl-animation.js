@@ -43,8 +43,8 @@
     collapseStart: 20000,
     collapseEnd: 22400,
     recoverStart: 21900,
-    recoverEnd: 22800,
-    walkOutStart: 24000,
+    recoverEnd: 24000,
+    walkOutStart: 24700,
     walkOutEnd: 27000,
     emptyAfterExitStart: 27000,
     peekInStart: 27700,
@@ -61,7 +61,7 @@
     width: VIEWBOX.width,
     height: VIEWBOX.height,
     duration: DURATION,
-    density: isPhone ? 0.7 : isTablet ? 0.85 : 1
+    density: isPhone ? 0.52 : isTablet ? 0.78 : 1
   };
 
   const state = createSceneState(config);
@@ -321,118 +321,142 @@
         layer: "behind",
         start: TIMING.threadStart,
         draw: 1450,
-        opacity: 0.82,
+        opacity: 0.76,
         soft: false,
-        width: 1.5,
-        d: "M960 318 C1008 274 923 253 990 216 C1062 176 1166 223 1090 278 C1038 315 1000 286 1044 226"
+        width: 1.25,
+        d: "M972 294 C1040 248 1128 264 1178 210 C1250 132 1412 154 1532 226"
+      },
+      {
+        id: "waist-ribbon-front",
+        layer: "front",
+        start: TIMING.loopsStart,
+        draw: 1850,
+        opacity: 0.64,
+        soft: true,
+        width: 2.35,
+        d: "M332 446 C536 348 760 332 1014 374 C1226 410 1398 364 1608 258"
       },
       {
         id: "main-fluid-left",
         layer: "behind",
-        start: TIMING.loopsStart,
+        start: TIMING.loopsStart + 220,
         draw: 1700,
-        opacity: 0.42,
+        opacity: 0.5,
         soft: true,
-        width: 1.2,
-        d: "M560 378 C704 212 1052 168 1262 294 C1428 394 1202 510 912 456 C698 416 548 410 560 378"
+        width: 1.45,
+        d: "M410 398 C580 214 924 166 1248 250 C1490 314 1512 452 1252 500 C968 553 610 510 410 398"
       },
       {
-        id: "main-fluid-front",
+        id: "high-orbit-right",
         layer: "front",
-        start: TIMING.loopsStart + 420,
+        start: TIMING.loopsStart + 520,
         draw: 1750,
-        opacity: 0.28,
+        opacity: 0.34,
         soft: true,
-        width: 1.05,
-        d: "M440 430 C610 302 856 258 1170 282 C1440 302 1508 420 1246 500 C1028 566 692 548 440 430"
+        width: 1,
+        d: "M642 226 C820 102 1152 132 1398 302 C1542 402 1452 518 1190 494"
       },
       {
-        id: "upper-dream-arc",
+        id: "low-dream-return",
         layer: "behind",
         start: TIMING.loopsStart + 820,
         draw: 1600,
-        opacity: 0.32,
+        opacity: 0.28,
         soft: true,
-        width: 0.9,
-        d: "M720 224 C896 124 1194 170 1378 300 C1496 384 1398 470 1196 454"
+        width: 0.86,
+        d: "M1568 444 C1320 380 1102 398 828 484 C650 540 450 518 302 440"
       },
       {
         id: "wide-process-sweep",
         layer: "behind",
-        start: TIMING.designStart + 400,
+        start: TIMING.designStart + 120,
         draw: 1700,
-        opacity: 0.34,
+        opacity: 0.42,
         soft: true,
         width: 1.65,
-        d: "M360 424 C560 294 744 226 1008 216 C1238 207 1436 252 1598 360"
+        d: "M278 412 C512 260 760 188 1044 198 C1290 206 1498 250 1680 358"
       },
       {
         id: "dotted-orbit-a",
         layer: "front",
-        start: TIMING.designStart + 820,
+        start: TIMING.designStart + 680,
         draw: 1550,
-        opacity: 0.34,
+        opacity: 0.42,
         soft: true,
         dotted: true,
-        width: 1.25,
-        d: "M560 292 C756 388 1020 390 1302 252 C1410 198 1484 216 1548 282"
+        width: 1.15,
+        d: "M478 270 C690 382 990 402 1306 246 C1438 182 1538 218 1612 292"
       },
       {
         id: "dotted-orbit-b",
         layer: "behind",
         start: TIMING.hobbyStart - 650,
         draw: 1500,
-        opacity: 0.28,
+        opacity: 0.32,
         soft: true,
         dotted: true,
-        width: 1.1,
-        d: "M1480 438 C1280 362 1074 372 820 462 C680 512 526 502 410 440"
+        width: 0.95,
+        d: "M1568 184 C1322 132 1138 206 914 338 C734 444 560 460 390 388"
+      },
+      {
+        id: "pencil-tail-sweep",
+        layer: "front",
+        start: TIMING.hobbyStart + 250,
+        draw: 1550,
+        opacity: 0.24,
+        soft: true,
+        width: 0.78,
+        d: "M214 314 C454 230 660 260 834 368 C1012 482 1262 486 1734 306"
       }
     ];
 
-    for (let i = 0; i < 10; i += 1) {
+    for (let i = 0; i < 14; i += 1) {
       threadPaths.push({
         id: "vortex-" + i,
         layer: i % 3 === 0 ? "front" : "behind",
-        start: TIMING.vortexStart + i * 135,
-        draw: 1700,
-        opacity: i % 3 === 0 ? 0.25 : 0.38,
+        start: TIMING.vortexStart + i * 105,
+        draw: 1800,
+        opacity: i % 3 === 0 ? 0.24 : 0.34,
         soft: i % 4 === 0,
-        width: seededRange(i + 4, 0.85, 2.2),
+        dotted: i === 4 || i === 11,
+        width: seededRange(i + 4, 0.7, 2.6),
         d: spiralPath(i),
-        spin: seededRange(i + 8, -0.48, 0.62),
-        scatterX: seededRange(i + 21, -260, 280),
-        scatterY: seededRange(i + 34, -70, 140)
+        spin: seededRange(i + 8, -0.38, 0.54),
+        scatterX: seededRange(i + 21, -340, 360),
+        scatterY: seededRange(i + 34, -90, 190)
       });
     }
 
     const designIcons = [
-      iconSpec("sketchbook", -305, -116, 0.88, TIMING.designStart, 118, 44, 0.48, rng),
-      iconSpec("floor-plan", -430, 42, 0.94, TIMING.designStart + 420, 132, 48, -0.42, rng),
-      iconSpec("perspective", 318, -88, 0.88, TIMING.designStart + 820, 132, 46, 0.46, rng),
-      iconSpec("laptop", 430, -8, 0.8, TIMING.designStart + 1080, 150, 54, -0.32, rng),
-      iconSpec("tablet", 170, 84, 0.72, TIMING.designStart + 1340, 128, 48, 0.38, rng),
-      iconSpec("pencil", 508, 86, 0.7, TIMING.designStart + 1580, 154, 54, -0.36, rng),
-      iconSpec("iteration", 12, -154, 0.78, TIMING.designStart + 1840, 118, 38, 0.54, rng),
-      iconSpec("panels", -98, 142, 0.82, TIMING.designStart + 2140, 128, 52, -0.5, rng),
-      iconSpec("sketch-panel", -540, -90, 0.78, TIMING.designStart + 2380, 148, 54, 0.34, rng),
-      iconSpec("cube", 246, 132, 0.72, TIMING.designStart + 2660, 122, 46, 0.4, rng),
-      iconSpec("model", -252, 128, 0.72, TIMING.designStart + 2920, 128, 46, -0.48, rng),
-      iconSpec("massing", 392, -146, 0.68, TIMING.designStart + 3140, 138, 50, 0.42, rng)
+      iconSpec("sketchbook", -360, -126, 0.8, TIMING.designStart, 144, 54, 0.48, rng),
+      iconSpec("floor-plan", -518, 64, 1.04, TIMING.designStart + 330, 150, 52, -0.42, rng),
+      iconSpec("perspective", 360, -108, 0.82, TIMING.designStart + 650, 148, 54, 0.46, rng),
+      iconSpec("laptop", 486, 18, 0.74, TIMING.designStart + 960, 170, 60, -0.32, rng),
+      iconSpec("tablet", 178, 96, 0.68, TIMING.designStart + 1240, 136, 50, 0.38, rng),
+      iconSpec("pencil", 554, 92, 0.68, TIMING.designStart + 1480, 168, 60, -0.36, rng),
+      iconSpec("iteration", 12, -172, 0.74, TIMING.designStart + 1720, 128, 42, 0.54, rng),
+      iconSpec("panels", -126, 154, 0.78, TIMING.designStart + 2020, 150, 58, -0.5, rng),
+      iconSpec("sketch-panel", -602, -76, 0.76, TIMING.designStart + 2300, 170, 56, 0.34, rng),
+      iconSpec("cube", 288, 154, 0.66, TIMING.designStart + 2560, 132, 48, 0.4, rng),
+      iconSpec("model", -296, 138, 0.68, TIMING.designStart + 2840, 142, 50, -0.48, rng),
+      iconSpec("massing", 420, -164, 0.66, TIMING.designStart + 3120, 150, 54, 0.42, rng),
+      iconSpec("grid-fragment", -650, 150, 0.72, TIMING.designStart + 3440, 178, 66, -0.34, rng),
+      iconSpec("loose-page", 628, -86, 0.58, TIMING.designStart + 3700, 178, 58, 0.32, rng)
     ];
 
     const hobbyIcons = [
-      iconSpec("chai", 520, -18, 0.54, TIMING.hobbyStart, 170, 62, 0.38, rng),
-      iconSpec("book", -548, -20, 0.56, TIMING.hobbyStart + 640, 170, 60, -0.34, rng),
-      iconSpec("book", -392, 82, 0.48, TIMING.hobbyStart + 980, 160, 56, -0.26, rng),
-      iconSpec("tennis", 500, 126, 0.5, TIMING.hobbyStart + 1240, 180, 70, 0.45, rng),
-      iconSpec("tennis-ball", 630, 72, 0.46, TIMING.hobbyStart + 1540, 184, 70, 0.44, rng),
-      iconSpec("reading", -474, 136, 0.48, TIMING.hobbyStart + 1860, 158, 62, -0.46, rng),
-      iconSpec("chai", 360, 166, 0.44, TIMING.hobbyStart + 2180, 154, 58, 0.31, rng)
+      iconSpec("chai", 560, -22, 0.52, TIMING.hobbyStart, 190, 68, 0.38, rng),
+      iconSpec("book", -604, -12, 0.54, TIMING.hobbyStart + 520, 186, 62, -0.34, rng),
+      iconSpec("book", -454, 92, 0.44, TIMING.hobbyStart + 880, 176, 58, -0.26, rng),
+      iconSpec("tennis", 540, 146, 0.48, TIMING.hobbyStart + 1160, 200, 74, 0.45, rng),
+      iconSpec("tennis-ball", 684, 78, 0.42, TIMING.hobbyStart + 1460, 202, 74, 0.44, rng),
+      iconSpec("reading", -524, 146, 0.44, TIMING.hobbyStart + 1780, 176, 64, -0.46, rng),
+      iconSpec("chai", 392, 180, 0.42, TIMING.hobbyStart + 2100, 170, 60, 0.31, rng),
+      iconSpec("loose-page", -690, -170, 0.46, TIMING.hobbyStart + 2360, 212, 70, -0.27, rng)
     ];
 
     const thoughtOrigins = iconParticleOrigins(designIcons.concat(hobbyIcons), threadPaths);
-    const particleCount = Math.round(130 * sceneConfig.density);
+    const particleCount = Math.round(150 * sceneConfig.density);
     const particles = [];
 
     for (let i = 0; i < particleCount; i += 1) {
@@ -441,11 +465,11 @@
       const shape = rng() > 0.38 ? "square" : "dot";
 
       particles.push({
-        originX: origin.x + lerp(-26, 26, rng()),
-        originY: origin.y + lerp(-20, 20, rng()),
-        scatterX: Math.cos(angle) * lerp(80, 310, rng()),
-        scatterY: Math.sin(angle) * lerp(20, 150, rng()) - lerp(0, 42, rng()),
-        gravity: lerp(420, 680, rng()),
+        originX: origin.x + lerp(-34, 34, rng()),
+        originY: origin.y + lerp(-26, 26, rng()),
+        scatterX: Math.cos(angle) * lerp(120, 420, rng()),
+        scatterY: Math.sin(angle) * lerp(30, 190, rng()) - lerp(0, 78, rng()),
+        gravity: lerp(520, 840, rng()),
         size: lerp(1.5, 8, rng()),
         shape: shape,
         angle: angle,
@@ -522,98 +546,104 @@
 
     const profileLegBack = svgEl("path", {
       class: "girl-limb profile-leg-back",
-      d: "M-8 -66 C-17 -48 -18 -25 -15 -8 C-9 -4 -3 -6 0 -11 C-3 -30 0 -48 8 -63 C5 -68 -3 -70 -8 -66 Z"
+      d: "M-10 -76 C-22 -54 -27 -29 -27 -9 C-22 -4 -12 -5 -8 -12 C-8 -32 -2 -52 10 -72 C6 -78 -4 -80 -10 -76 Z"
     }, profileLegs);
     const profileLegFront = svgEl("path", {
       class: "girl-limb profile-leg-front",
-      d: "M10 -65 C20 -48 22 -27 18 -8 C22 -4 31 -4 36 -9 C37 -31 31 -52 21 -68 C17 -70 11 -69 10 -65 Z"
+      d: "M16 -75 C32 -54 40 -31 39 -9 C45 -4 56 -5 61 -13 C58 -38 45 -61 27 -79 C22 -81 16 -80 16 -75 Z"
     }, profileLegs);
     const profileFootBack = svgEl("ellipse", {
       class: "girl-foot profile-foot-back",
-      cx: "-13",
+      cx: "-25",
       cy: "-3",
-      rx: "14",
-      ry: "4.2"
+      rx: "21",
+      ry: "5.4"
     }, profileLegs);
     const profileFootFront = svgEl("ellipse", {
       class: "girl-foot profile-foot-front",
-      cx: "32",
+      cx: "59",
       cy: "-3",
-      rx: "17",
-      ry: "4.2"
+      rx: "24",
+      ry: "5.6"
     }, profileLegs);
     const profileArmBack = svgEl("path", {
       class: "girl-limb profile-arm-back",
-      d: "M-7 -134 C-18 -116 -21 -95 -18 -76 C-14 -71 -7 -73 -5 -80 C-7 -97 -2 -114 7 -130 C4 -136 -2 -138 -7 -134 Z"
+      d: "M-14 -144 C-30 -124 -38 -98 -37 -78 C-32 -72 -22 -74 -20 -83 C-19 -102 -10 -122 6 -138 C3 -146 -8 -149 -14 -144 Z"
     }, profileBody);
     const profileArmFront = svgEl("path", {
       class: "girl-limb profile-arm-front",
-      d: "M22 -132 C34 -114 39 -96 37 -77 C41 -71 48 -72 51 -79 C51 -99 43 -121 31 -137 C27 -139 23 -136 22 -132 Z"
+      d: "M22 -142 C39 -124 48 -101 47 -81 C52 -74 62 -75 66 -84 C64 -106 51 -132 33 -149 C28 -150 22 -148 22 -142 Z"
     }, profileBody);
 
     svgEl("path", {
       class: "girl-fill profile-dress",
-      d: "M-16 -148 C-30 -130 -34 -94 -38 -58 C-18 -48 12 -49 38 -60 C31 -98 24 -131 11 -148 C3 -154 -8 -154 -16 -148 Z"
+      d: "M-20 -156 C-36 -134 -45 -102 -51 -64 C-28 -48 8 -44 48 -61 C42 -104 30 -139 10 -158 C0 -164 -12 -163 -20 -156 Z"
     }, profileBody);
     svgEl("path", {
       class: "girl-fill profile-neck",
-      d: "M-8 -164 L8 -164 L10 -143 L-7 -142 Z"
+      d: "M-9 -176 L12 -175 L13 -150 L-8 -148 Z"
     }, profileBody);
     svgEl("path", {
       class: "girl-fill profile-hair",
-      d: "M-23 -193 C-17 -222 15 -226 31 -204 C41 -188 34 -166 14 -158 C-7 -151 -29 -169 -23 -193 Z"
+      d: "M-26 -204 C-20 -234 16 -241 42 -218 C54 -202 48 -176 25 -163 C2 -151 -27 -170 -31 -193 C-32 -197 -30 -201 -26 -204 Z"
     }, profileHead);
     const profilePonytail = svgEl("path", {
       class: "girl-fill profile-ponytail",
-      d: "M25 -198 C70 -214 94 -188 76 -163 C58 -139 22 -160 30 -184 C31 -189 29 -194 25 -198 Z"
+      d: "M34 -206 C78 -226 122 -203 112 -176 C104 -152 75 -141 43 -160 C28 -169 31 -187 40 -196 C43 -200 40 -204 34 -206 Z"
     }, profileHead);
     svgEl("path", {
       class: "girl-fill profile-head-shape",
-      d: "M-12 -210 C13 -221 35 -204 34 -180 C32 -156 5 -149 -13 -164 C-28 -177 -28 -201 -12 -210 Z"
+      d: "M-20 -218 C11 -231 39 -211 40 -184 C40 -161 15 -151 -7 -160 C-19 -165 -26 -174 -31 -186 C-42 -187 -45 -194 -34 -198 C-32 -207 -28 -214 -20 -218 Z"
     }, profileHead);
     const profileStrands = [
-      svgEl("path", { class: "girl-strand", d: "M-14 -205 C-24 -193 -18 -181 -25 -170" }, profileHead),
-      svgEl("path", { class: "girl-strand", d: "M-1 -214 C-7 -198 -2 -183 -11 -169" }, profileHead),
-      svgEl("path", { class: "girl-strand", d: "M16 -207 C9 -194 15 -181 6 -168" }, profileHead)
+      svgEl("path", { class: "girl-strand", d: "M-28 -218 C-42 -205 -39 -190 -49 -178" }, profileHead),
+      svgEl("path", { class: "girl-strand", d: "M-9 -228 C-20 -210 -15 -191 -26 -174" }, profileHead),
+      svgEl("path", { class: "girl-strand", d: "M31 -210 C45 -198 38 -180 50 -166" }, profileHead),
+      svgEl("path", { class: "girl-strand", d: "M76 -207 C104 -196 98 -166 72 -148" }, profileHead),
+      svgEl("path", { class: "girl-strand", d: "M92 -196 C128 -180 112 -148 84 -137" }, profileHead)
     ];
 
     const frontLegLeft = svgEl("path", {
       class: "girl-limb front-leg-left",
-      d: "M-22 -66 C-28 -46 -29 -25 -27 -8 C-21 -4 -14 -5 -11 -10 C-13 -31 -9 -50 -4 -64 C-9 -68 -17 -70 -22 -66 Z"
+      d: "M-28 -74 C-36 -50 -39 -26 -37 -8 C-31 -3 -20 -4 -16 -11 C-17 -32 -12 -54 -4 -72 C-11 -78 -22 -79 -28 -74 Z"
     }, frontLegs);
     const frontLegRight = svgEl("path", {
       class: "girl-limb front-leg-right",
-      d: "M6 -64 C11 -47 14 -29 12 -9 C16 -4 24 -4 29 -8 C31 -28 28 -49 22 -66 C17 -69 10 -68 6 -64 Z"
+      d: "M6 -72 C16 -51 20 -29 18 -9 C23 -4 34 -4 40 -10 C42 -31 36 -56 25 -76 C18 -80 9 -78 6 -72 Z"
     }, frontLegs);
-    svgEl("ellipse", { class: "girl-foot front-foot-left", cx: "-29", cy: "-3", rx: "16", ry: "4.4" }, frontLegs);
-    svgEl("ellipse", { class: "girl-foot front-foot-right", cx: "28", cy: "-3", rx: "16", ry: "4.4" }, frontLegs);
+    svgEl("ellipse", { class: "girl-foot front-foot-left", cx: "-39", cy: "-3", rx: "21", ry: "5.2" }, frontLegs);
+    svgEl("ellipse", { class: "girl-foot front-foot-right", cx: "41", cy: "-3", rx: "21", ry: "5.2" }, frontLegs);
     const frontArmLeft = svgEl("path", {
       class: "girl-limb front-arm-left",
-      d: "M-34 -136 C-44 -118 -50 -96 -51 -76 C-47 -70 -40 -70 -37 -78 C-35 -96 -28 -116 -20 -130 C-23 -136 -29 -139 -34 -136 Z"
+      d: "M-44 -146 C-58 -124 -66 -98 -66 -76 C-61 -69 -50 -70 -47 -80 C-45 -101 -36 -123 -24 -140 C-28 -148 -38 -151 -44 -146 Z"
     }, frontBody);
     const frontArmRight = svgEl("path", {
       class: "girl-limb front-arm-right",
-      d: "M21 -130 C31 -116 38 -96 40 -78 C43 -70 51 -70 55 -76 C53 -96 46 -118 34 -136 C29 -139 24 -136 21 -130 Z"
+      d: "M28 -140 C42 -122 51 -99 52 -79 C56 -70 67 -70 72 -78 C70 -101 60 -126 44 -146 C38 -151 30 -148 28 -140 Z"
     }, frontBody);
     svgEl("path", {
       class: "girl-fill front-dress",
-      d: "M-30 -147 C-42 -130 -47 -100 -54 -59 C-36 -50 -12 -47 9 -49 C29 -50 45 -54 56 -60 C48 -101 42 -130 30 -147 C13 -155 -14 -155 -30 -147 Z"
+      d: "M-34 -158 C-51 -132 -60 -100 -69 -58 C-44 -44 -12 -41 10 -44 C38 -46 62 -52 77 -62 C66 -104 54 -136 34 -158 C14 -168 -16 -168 -34 -158 Z"
     }, frontBody);
-    svgEl("rect", { class: "girl-fill front-neck", x: "-9", y: "-162", width: "18", height: "23", rx: "6" }, frontBody);
+    svgEl("rect", { class: "girl-fill front-neck", x: "-11", y: "-177", width: "22", height: "28", rx: "7" }, frontBody);
     svgEl("path", {
       class: "girl-fill front-hair",
-      d: "M-31 -198 C-26 -224 4 -231 26 -215 C43 -201 39 -169 19 -157 C0 -146 -28 -154 -36 -175 C-39 -184 -37 -192 -31 -198 Z"
+      d: "M-38 -204 C-34 -235 4 -244 34 -224 C55 -209 50 -174 25 -159 C2 -146 -34 -154 -44 -178 C-48 -188 -46 -198 -38 -204 Z"
     }, frontHead);
     const frontPonytail = svgEl("path", {
       class: "girl-fill front-ponytail",
-      d: "M25 -202 C66 -211 78 -176 54 -158 C34 -143 10 -168 21 -190 C23 -195 24 -199 25 -202 Z"
+      d: "M28 -211 C73 -226 94 -192 73 -166 C52 -140 15 -164 24 -194 C26 -202 28 -207 28 -211 Z"
     }, frontHead);
-    svgEl("ellipse", { class: "girl-fill front-head-shape", cx: "0", cy: "-186", rx: "24", ry: "30" }, frontHead);
+    svgEl("path", {
+      class: "girl-fill front-head-shape",
+      d: "M-26 -217 C-4 -235 31 -226 39 -197 C47 -168 24 -150 -3 -154 C-31 -158 -45 -185 -35 -204 C-32 -210 -30 -214 -26 -217 Z"
+    }, frontHead);
     const frontStrands = [
-      svgEl("path", { class: "girl-strand", d: "M-20 -208 C-28 -190 -18 -177 -27 -163" }, frontHead),
-      svgEl("path", { class: "girl-strand", d: "M-2 -216 C-8 -198 -1 -181 -10 -166" }, frontHead),
-      svgEl("path", { class: "girl-strand", d: "M17 -210 C9 -194 18 -179 8 -164" }, frontHead),
-      svgEl("path", { class: "girl-strand", d: "M28 -196 C20 -184 26 -172 15 -160" }, frontHead)
+      svgEl("path", { class: "girl-strand", d: "M-34 -216 C-50 -198 -38 -181 -50 -164" }, frontHead),
+      svgEl("path", { class: "girl-strand", d: "M-10 -229 C-22 -204 -12 -184 -24 -164" }, frontHead),
+      svgEl("path", { class: "girl-strand", d: "M20 -222 C8 -202 24 -181 8 -160" }, frontHead),
+      svgEl("path", { class: "girl-strand", d: "M38 -204 C62 -190 52 -166 34 -150" }, frontHead),
+      svgEl("path", { class: "girl-strand", d: "M59 -198 C90 -178 74 -146 46 -138" }, frontHead)
     ];
 
     return {
@@ -942,11 +972,11 @@
     setTransform(scene.girl.profileLegFront, "rotate(" + (swing * 0.9).toFixed(2) + " 14 -64)");
     setTransform(
       scene.girl.profileFootBack,
-      "translate(" + (-Math.sin(girlState.walkPhase) * 5 * walk).toFixed(2) + " " + (Math.max(0, Math.cos(girlState.walkPhase)) * -2.4 * walk).toFixed(2) + ")"
+      "translate(" + (-Math.sin(girlState.walkPhase) * (5 * walk + 11 * run)).toFixed(2) + " " + (Math.max(0, Math.cos(girlState.walkPhase)) * (-2.4 * walk - 5.6 * run)).toFixed(2) + ")"
     );
     setTransform(
       scene.girl.profileFootFront,
-      "translate(" + (Math.sin(girlState.walkPhase) * 5 * walk).toFixed(2) + " " + (Math.max(0, -Math.cos(girlState.walkPhase)) * -2.4 * walk).toFixed(2) + ")"
+      "translate(" + (Math.sin(girlState.walkPhase) * (5 * walk + 11 * run)).toFixed(2) + " " + (Math.max(0, -Math.cos(girlState.walkPhase)) * (-2.4 * walk - 5.6 * run)).toFixed(2) + ")"
     );
     setTransform(
       scene.girl.profileHead,
@@ -994,22 +1024,22 @@
 
   function renderThreadDot(scene, elapsed, disintegrateProgress) {
     const threadProgress = easeOutCubic(phase(elapsed, TIMING.threadStart, TIMING.threadEnd));
-    const fade = 1 - phase(elapsed, TIMING.designEnd, TIMING.hobbyStart);
+    const fade = 1 - phase(elapsed, TIMING.hobbyStart, TIMING.vortexStart);
     const dis = easeOutCubic(disintegrateProgress);
     const orbitProgress = phase(elapsed, TIMING.threadEnd, TIMING.vortexEnd);
     let point = cubicPoint(
-      { x: GIRL_CENTER_X, y: 318 },
-      { x: 1032, y: 280 },
-      { x: 918, y: 242 },
-      { x: 1088, y: 226 },
+      { x: GIRL_CENTER_X + 12, y: 300 },
+      { x: GIRL_CENTER_X + 96, y: 250 },
+      { x: GIRL_CENTER_X + 176, y: 292 },
+      { x: GIRL_CENTER_X + 252, y: 220 },
       threadProgress
     );
 
     if (orbitProgress > 0) {
-      const angle = elapsed * 0.0011 + 0.7;
+      const angle = elapsed * 0.001 + 0.7;
       point = {
-        x: lerp(point.x, THOUGHT_CX + Math.cos(angle) * 260, orbitProgress * 0.72),
-        y: lerp(point.y, THOUGHT_CY + Math.sin(angle) * 92, orbitProgress * 0.72)
+        x: lerp(point.x, THOUGHT_CX + Math.cos(angle) * 360, orbitProgress * 0.72),
+        y: lerp(point.y, THOUGHT_CY + Math.sin(angle) * 132, orbitProgress * 0.72)
       };
     }
 
@@ -1263,6 +1293,23 @@
       return;
     }
 
+    if (type === "grid-fragment") {
+      for (let i = -3; i <= 3; i += 1) {
+        line(group, i * 12, -34, i * 12 + 18, 34);
+        line(group, -44, i * 9, 48, i * 9 - 10);
+      }
+      path(group, "M-46 -35 C-18 -24 22 -31 48 -18");
+      return;
+    }
+
+    if (type === "loose-page") {
+      path(group, "M-34 -27 C-9 -38 18 -30 36 -12 L24 31 C4 20 -16 24 -36 11 Z");
+      line(group, -21, -9, 18, -15);
+      line(group, -19, 1, 20, -4);
+      line(group, -16, 12, 12, 8);
+      return;
+    }
+
     if (type === "perspective") {
       rect(group, -39, -23, 78, 46);
       circle(group, 0, 1, 2.2);
@@ -1395,20 +1442,23 @@
 
   function spiralPath(index) {
     const points = [];
-    const turnOffset = index * 0.47;
-    const turns = 0.86 + (index % 5) * 0.12;
-    const startRadius = 70 + index * 13;
-    const endRadius = 320 + (index % 6) * 34;
-    const pointCount = 48;
+    const turnOffset = -1.25 + index * 0.38;
+    const turns = 0.72 + (index % 5) * 0.13;
+    const startRadius = 110 + index * 16;
+    const endRadius = 380 + (index % 7) * 46;
+    const pointCount = 42;
+    const centerX = THOUGHT_CX + 40;
+    const centerY = THOUGHT_CY + 36;
 
     for (let i = 0; i < pointCount; i += 1) {
       const t = i / (pointCount - 1);
       const angle = turnOffset + t * Math.PI * 2 * turns;
       const radius = lerp(startRadius, endRadius, t);
-      const wobble = Math.sin(t * Math.PI * 5 + index) * 12;
+      const wobble = Math.sin(t * Math.PI * 3 + index * 0.7) * 10;
+      const sweep = (t - 0.5) * (90 + index * 5);
       points.push([
-        THOUGHT_CX + Math.cos(angle) * (radius + wobble),
-        THOUGHT_CY + Math.sin(angle) * (radius * 0.42 + wobble * 0.22)
+        centerX + sweep + Math.cos(angle) * (radius * 1.24 + wobble),
+        centerY + Math.sin(angle) * (radius * 0.46 + wobble * 0.24)
       ]);
     }
 
