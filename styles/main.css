@@ -593,6 +593,8 @@ body.is-project-open .viewport-edge-blur {
   width: min(88vw, 560px);
   min-height: 100vh;
   min-height: 100svh;
+  justify-self: center;
+  align-self: center;
   margin-inline: auto;
   text-align: center;
 }
@@ -601,6 +603,7 @@ body.is-project-open .viewport-edge-blur {
   display: grid;
   justify-items: stretch;
   width: min(100%, 32rem);
+  margin-inline: auto;
   gap: clamp(1.65rem, 4vh, 2.85rem);
 }
 
@@ -725,6 +728,7 @@ body.is-project-open .viewport-edge-blur {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: max-content;
   gap: clamp(1rem, 3vw, 1.8rem);
   transform: translateX(-50%);
 }

@@ -1,5 +1,5 @@
 (function () {
-  const DEBUG_NAV_GEOMETRY = true;
+  const DEBUG_NAV_GEOMETRY = false;
 
   var SECTION_IDS = ["landing", "about", "work", "archive", "contact"];
   var SECTION_INDEX = {

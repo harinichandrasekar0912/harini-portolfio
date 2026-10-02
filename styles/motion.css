@@ -401,6 +401,15 @@ html.is-ball-animating {
   border-color: rgba(255, 255, 255, 0.72);
 }
 
+html:not([data-debug-nav-geometry="true"]) [data-nav-debug-overlay],
+html:not([data-debug-nav-geometry="true"]) .nav-debug-layer,
+html:not([data-debug-nav-geometry="true"]) .trajectory-debug,
+html:not([data-debug-nav-geometry="true"]) .geometry-debug,
+html:not([data-debug-nav-geometry="true"]) .debug-marker,
+html:not([data-debug-nav-geometry="true"]) .debug-label {
+  display: none !important;
+}
+
 .nav-travel-ball {
   --ball-x: 50vw;
   --ball-y: calc(100vh - 42px);
@@ -416,7 +425,8 @@ html.is-ball-animating {
   place-items: center;
   width: var(--ball-size);
   height: var(--ball-size);
-  border: var(--line-thin) solid var(--color-ink);
+  border: 0;
+  outline: 0;
   border-radius: 50%;
   background:
     radial-gradient(circle at 68% 24%, #ffffff 0%, #e8e8e8 12%, #a8a8a8 32%, #4a4a4a 62%, #111111 100%);
@@ -429,8 +439,8 @@ html.is-ball-animating {
   ) scale(var(--ball-scale-x), var(--ball-scale-y));
   will-change: transform, opacity;
   box-shadow:
-    inset -7px -8px 14px rgba(0, 0, 0, 0.38),
-    inset 5px 5px 10px rgba(255, 255, 255, 0.16);
+    inset -5px -6px 12px rgba(0, 0, 0, 0.24),
+    inset 5px 5px 10px rgba(255, 255, 255, 0.18);
 }
 
 .nav-travel-ball::before,
@@ -453,8 +463,8 @@ html.is-ball-animating {
 
 .nav-travel-ball::after {
   inset: 1px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  box-shadow: inset 7px 8px 16px rgba(0, 0, 0, 0.34);
+  border: 0;
+  box-shadow: inset 5px 6px 12px rgba(0, 0, 0, 0.18);
 }
 
 .nav-travel-ball.is-visible {
