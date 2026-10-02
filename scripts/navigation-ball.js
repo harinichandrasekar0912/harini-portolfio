@@ -464,6 +464,12 @@
       return isMobileViewport() || isCoarsePointer();
     }
 
+    function isTabletLandscapeTouchViewport() {
+      const isTabletLandscapeTouch =
+        window.matchMedia("(min-width: 768px) and (max-width: 1180px) and (orientation: landscape) and (pointer: coarse)").matches;
+      return isTabletLandscapeTouch;
+    }
+
     function canUseHoverNav() {
       return canHover.matches && !isMobileTapMode();
     }
@@ -2116,7 +2122,7 @@
         return;
       }
 
-      if (isMobileViewport() && !isOpen) {
+      if ((isMobileViewport() || isTabletLandscapeTouchViewport()) && !isOpen) {
         preparePhoneMenuOpen();
         return;
       }

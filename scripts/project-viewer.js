@@ -52,6 +52,12 @@
       return window.innerWidth <= 767;
     }
 
+    function isTabletLandscapeTouchViewport() {
+      const isTabletLandscapeTouch =
+        window.matchMedia("(min-width: 768px) and (max-width: 1180px) and (orientation: landscape) and (pointer: coarse)").matches;
+      return isTabletLandscapeTouch;
+    }
+
     function findProject(id) {
       return projects.find(function (project) {
         return project.id === id;
@@ -102,8 +108,20 @@
       });
     }
 
+    function waitForLayoutFrames(count) {
+      var frames = Math.max(1, count || 2);
+      var chain = Promise.resolve();
+
+      while (frames > 0) {
+        chain = chain.then(waitForFrame);
+        frames -= 1;
+      }
+
+      return chain;
+    }
+
     function waitForLayout() {
-      return waitForFrame().then(waitForFrame);
+      return waitForLayoutFrames(2);
     }
 
     function waitForPhoneLayout() {
@@ -112,6 +130,14 @@
       }
 
       return waitForLayout().then(waitForLayout);
+    }
+
+    function waitForProjectMeasurementLayout() {
+      if (isTabletLandscapeTouchViewport()) {
+        return waitForLayoutFrames(3);
+      }
+
+      return waitForPhoneLayout();
     }
 
     function waitForImageLoad(img) {
@@ -130,7 +156,7 @@
         return img.decode ? img.decode().catch(function () {}) : Promise.resolve();
       }
 
-      if (!isStackedMode()) {
+      if (!isStackedMode() && !isTabletLandscapeTouchViewport()) {
         return img.decode ? img.decode().catch(function () {}) : waitForImageLoad(img);
       }
 
@@ -207,7 +233,7 @@
         }
 
         clone.addEventListener("transitionend", handleTransitionEnd);
-        window.setTimeout(finish, isStackedMode() ? 1480 : 1280);
+        window.setTimeout(finish, isTabletLandscapeTouchViewport() ? 1440 : isStackedMode() ? 1480 : 1280);
         window.requestAnimationFrame(function () {
           clone.classList.add("is-moving");
           clone.style.left = targetRect.left + "px";
@@ -370,7 +396,7 @@
       removeActiveClone();
       cloneParts = createOpenClone(trigger, project, tileRect);
       prepareProjectOpen(trigger, project, tileRect);
-      await waitForPhoneLayout();
+      await waitForProjectMeasurementLayout();
 
       await Promise.all([
         ensureImageReady(cloneParts.image),
@@ -387,7 +413,7 @@
       viewer.classList.add("is-expanded");
       updateMaxShift();
       setProgress();
-      await waitForPhoneLayout();
+      await waitForProjectMeasurementLayout();
 
       await Promise.all([
         ensureImageReady(hero),
@@ -462,7 +488,7 @@
         viewer.classList.remove("is-expanded");
       });
 
-      closeTimer = window.setTimeout(finishClose, reducedMotion.matches ? 1 : isStackedMode() ? 1380 : 1220);
+      closeTimer = window.setTimeout(finishClose, reducedMotion.matches ? 1 : isTabletLandscapeTouchViewport() ? 1380 : isStackedMode() ? 1380 : 1220);
     }
 
     triggers.forEach(function (trigger) {
