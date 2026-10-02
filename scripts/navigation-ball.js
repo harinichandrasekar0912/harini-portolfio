@@ -2029,7 +2029,7 @@
         ball.classList.remove("is-forming");
         ball.classList.add("is-ready");
         flyBall(startPoint, targetId, token);
-      }, scaleMotionDuration(1360), token);
+      }, scaleMotionDuration(1100), token);
     }
 
     core.addEventListener("click", function (event) {

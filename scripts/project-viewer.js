@@ -160,6 +160,10 @@
       return frame.getBoundingClientRect();
     }
 
+    function firstPanelImage() {
+      return track.querySelector(".project-panel-image img");
+    }
+
     function animateCloneTo(clone, targetRect) {
       if (!clone || reducedMotion.matches) {
         return Promise.resolve();
@@ -185,7 +189,7 @@
         }
 
         clone.addEventListener("transitionend", handleTransitionEnd);
-        window.setTimeout(finish, 1220);
+        window.setTimeout(finish, 1280);
         window.requestAnimationFrame(function () {
           clone.classList.add("is-moving");
           clone.style.left = targetRect.left + "px";
@@ -352,6 +356,7 @@
       await Promise.all([
         ensureImageReady(cloneParts.image),
         ensureImageReady(hero),
+        ensureImageReady(firstPanelImage()),
         waitForLayout()
       ]);
 
@@ -364,7 +369,11 @@
       updateMaxShift();
       setProgress();
 
-      await waitForLayout();
+      await Promise.all([
+        ensureImageReady(hero),
+        ensureImageReady(firstPanelImage()),
+        waitForLayout()
+      ]);
 
       if (token !== openToken) {
         removeActiveClone();
@@ -433,7 +442,7 @@
         viewer.classList.remove("is-expanded");
       });
 
-      closeTimer = window.setTimeout(finishClose, reducedMotion.matches ? 1 : 1120);
+      closeTimer = window.setTimeout(finishClose, reducedMotion.matches ? 1 : 1220);
     }
 
     triggers.forEach(function (trigger) {

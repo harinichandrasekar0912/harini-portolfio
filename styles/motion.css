@@ -421,6 +421,7 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
   --ball-scale-x: 1;
   --ball-scale-y: 1;
   --ball-rotation: 0deg;
+  --ball-sphere-opacity: 0;
   position: fixed;
   left: 0;
   top: 0;
@@ -432,8 +433,7 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
   border: 0;
   outline: 0;
   border-radius: 50%;
-  background:
-    radial-gradient(circle at 68% 24%, #ffffff 0%, #e8e8e8 12%, #a8a8a8 32%, #4a4a4a 62%, #111111 100%);
+  background: transparent;
   opacity: 0;
   pointer-events: none;
   transform: translate3d(
@@ -442,9 +442,7 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
     0
   ) scale(var(--ball-scale-x), var(--ball-scale-y));
   will-change: transform, opacity;
-  box-shadow:
-    inset -5px -6px 12px rgba(0, 0, 0, 0.24),
-    inset 5px 5px 10px rgba(255, 255, 255, 0.18);
+  box-shadow: none;
 }
 
 .nav-travel-ball::before,
@@ -456,20 +454,31 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
 }
 
 .nav-travel-ball::before {
+  z-index: 1;
   right: 18%;
   top: 16%;
   width: 26%;
   height: 20%;
   background: rgba(255, 255, 255, 0.82);
   filter: blur(2px);
-  opacity: 0.96;
+  opacity: 0;
 }
 
 .nav-travel-ball::after {
-  inset: 1px;
+  z-index: 0;
+  inset: 0;
   border: 0;
-  background: transparent;
+  background:
+    radial-gradient(circle at 70% 24%,
+      rgba(255, 255, 255, 0.98) 0%,
+      rgba(237, 237, 237, 0.96) 10%,
+      rgba(180, 180, 180, 0.98) 27%,
+      rgba(82, 82, 82, 0.98) 55%,
+      rgba(22, 22, 22, 1) 84%,
+      rgba(6, 6, 6, 1) 100%);
+  opacity: var(--ball-sphere-opacity);
   box-shadow: none;
+  transform: scale(1);
 }
 
 .nav-travel-ball.is-visible {
@@ -477,8 +486,7 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
 }
 
 .nav-travel-ball.is-moving {
-  background:
-    radial-gradient(circle at 68% 24%, #ffffff 0%, #e8e8e8 12%, #a8a8a8 32%, #4a4a4a 62%, #111111 100%);
+  --ball-sphere-opacity: 1;
 }
 
 .nav-travel-ball.is-moving .travel-label {
@@ -490,39 +498,46 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
 }
 
 .nav-travel-ball.is-paused {
-  background:
-    radial-gradient(circle at 68% 24%, #ffffff 0%, #e8e8e8 12%, #a8a8a8 32%, #4a4a4a 62%, #111111 100%);
+  --ball-sphere-opacity: 1;
 }
 
 .nav-travel-ball.is-forming {
+  --ball-sphere-opacity: 0;
   border: 0;
   outline: 0;
-  background:
-    radial-gradient(circle at 68% 24%, #ffffff 0%, #e8e8e8 12%, #a8a8a8 32%, #4a4a4a 62%, #111111 100%);
-  box-shadow:
-    inset -5px -6px 12px rgba(0, 0, 0, 0.16),
-    inset 5px 5px 10px rgba(255, 255, 255, 0.08);
-  animation: ballForm var(--nav-ball-form-duration, 1100ms) var(--ease-standard) forwards;
+  background: var(--color-ink);
+  box-shadow: none;
+  animation: ballForm var(--nav-ball-form-duration, 1100ms) cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .nav-travel-ball.is-forming::before {
   opacity: 0;
-  animation: ballLightBuild var(--nav-ball-form-duration, 1100ms) var(--ease-standard) forwards;
+  animation: ballLightBuild var(--nav-ball-form-duration, 1100ms) cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .nav-travel-ball.is-forming::after {
-  opacity: 1;
-  background: var(--color-ink);
-  box-shadow: none;
-  animation: ballFlatFade var(--nav-ball-form-duration, 1100ms) var(--ease-standard) forwards;
+  opacity: 0;
+  animation: ballSphereReveal var(--nav-ball-form-duration, 1100ms) cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .nav-travel-ball.is-ready,
 .nav-travel-ball.is-flying,
 .nav-travel-ball.is-landing,
-.nav-travel-ball.is-rolling {
-  background:
-    radial-gradient(circle at 68% 24%, #ffffff 0%, #e8e8e8 12%, #a8a8a8 32%, #4a4a4a 62%, #111111 100%);
+.nav-travel-ball.is-contact-landing,
+.nav-travel-ball.is-rolling,
+.nav-travel-ball.is-restoring {
+  --ball-sphere-opacity: 1;
+  background: transparent;
+}
+
+.nav-travel-ball.is-ready::before,
+.nav-travel-ball.is-flying::before,
+.nav-travel-ball.is-landing::before,
+.nav-travel-ball.is-contact-landing::before,
+.nav-travel-ball.is-rolling::before,
+.nav-travel-ball.is-moving::before,
+.nav-travel-ball.is-paused::before {
+  opacity: 0.72;
 }
 
 .nav-travel-ball.is-arrived {
@@ -556,9 +571,7 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
   inset: 9px;
   z-index: 1;
   border-radius: 50%;
-  border-top: 1px solid rgba(255, 255, 255, 0.16);
-  border-left: 1px solid rgba(255, 255, 255, 0.05);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  border: 0;
   opacity: 0;
   pointer-events: none;
   transform: rotate(var(--ball-rotation));
@@ -568,7 +581,7 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
 }
 
 .nav-travel-ball.is-rolling .travel-roll-detail {
-  opacity: 0.22;
+  opacity: 0;
 }
 
 .nav-travel-ball.is-forming .travel-roll-detail,
@@ -800,23 +813,34 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
     opacity: 0;
   }
 
-  58% {
-    opacity: 0.18;
+  30% {
+    opacity: 0.08;
+  }
+
+  68% {
+    opacity: 0.48;
   }
 
   100% {
-    opacity: 0.96;
+    opacity: 0.72;
   }
 }
 
-@keyframes ballFlatFade {
+@keyframes ballSphereReveal {
   0%,
-  18% {
-    opacity: 1;
+  24% {
+    opacity: 0;
+    transform: scale(0.965);
+  }
+
+  64% {
+    opacity: 0.46;
+    transform: scale(0.99);
   }
 
   100% {
-    opacity: 0;
+    opacity: 1;
+    transform: scale(1);
   }
 }
 
@@ -848,9 +872,9 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
   pointer-events: none;
   color: var(--project-text);
   transition:
-    opacity 1050ms var(--ease-standard),
-    visibility 0ms linear 1050ms,
-    color 900ms var(--ease-standard);
+    opacity 1120ms var(--ease-standard),
+    visibility 0ms linear 1120ms,
+    color 980ms var(--ease-standard);
 }
 
 .project-viewer.is-active {
@@ -878,11 +902,11 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
   transform: translate3d(0, 0, 0);
   will-change: left, top, width, height;
   transition:
-    left 1040ms var(--ease-standard),
-    top 1040ms var(--ease-standard),
-    width 1040ms var(--ease-standard),
-    height 1040ms var(--ease-standard),
-    opacity 650ms var(--ease-standard);
+    left 1100ms var(--ease-standard),
+    top 1100ms var(--ease-standard),
+    width 1100ms var(--ease-standard),
+    height 1100ms var(--ease-standard),
+    opacity 720ms var(--ease-standard);
 }
 
 .project-open-clone img {
@@ -1140,6 +1164,10 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
   opacity: 0;
 }
 
+.project-viewer.is-preparing .project-glass {
+  opacity: 0;
+}
+
 .project-viewer.is-ready .project-hero-frame {
   opacity: 0;
 }
@@ -1151,7 +1179,7 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
 }
 
 .project-viewer.is-ready .project-panel-copy {
-  transition-delay: 220ms;
+  transition-delay: 280ms;
 }
 
 .project-viewer.is-closing .project-panel-image,
@@ -1246,24 +1274,24 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
 .project-progress,
 .project-progress span {
   transition:
-    opacity 920ms var(--ease-standard),
-    transform 920ms var(--ease-standard),
-    left 1040ms var(--ease-standard),
-    top 1040ms var(--ease-standard),
-    width 1040ms var(--ease-standard),
-    height 1040ms var(--ease-standard),
-    color 900ms var(--ease-standard),
-    background-color 900ms var(--ease-standard),
-    border-color 900ms var(--ease-standard),
-    backdrop-filter 1000ms var(--ease-standard);
+    opacity 980ms var(--ease-standard),
+    transform 980ms var(--ease-standard),
+    left 1100ms var(--ease-standard),
+    top 1100ms var(--ease-standard),
+    width 1100ms var(--ease-standard),
+    height 1100ms var(--ease-standard),
+    color 980ms var(--ease-standard),
+    background-color 980ms var(--ease-standard),
+    border-color 980ms var(--ease-standard),
+    backdrop-filter 1120ms var(--ease-standard);
 }
 
 .project-glass {
   transition:
-    opacity 1040ms var(--ease-standard),
-    background-color 1040ms var(--ease-standard),
-    backdrop-filter 1040ms var(--ease-standard),
-    -webkit-backdrop-filter 1040ms var(--ease-standard);
+    opacity 1120ms var(--ease-standard),
+    background-color 1120ms var(--ease-standard),
+    backdrop-filter 1120ms var(--ease-standard),
+    -webkit-backdrop-filter 1120ms var(--ease-standard);
 }
 
 .project-step,
