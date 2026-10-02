@@ -507,17 +507,17 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
   outline: 0;
   background: var(--color-ink);
   box-shadow: none;
-  animation: ballForm var(--nav-ball-form-duration, 1100ms) cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: ballForm var(--nav-ball-form-duration, 1220ms) cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .nav-travel-ball.is-forming::before {
   opacity: 0;
-  animation: ballLightBuild var(--nav-ball-form-duration, 1100ms) cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: ballLightBuild var(--nav-ball-form-duration, 1220ms) cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .nav-travel-ball.is-forming::after {
   opacity: 0;
-  animation: ballSphereReveal var(--nav-ball-form-duration, 1100ms) cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: ballSphereReveal var(--nav-ball-form-duration, 1220ms) cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .nav-travel-ball.is-ready,
@@ -788,7 +788,7 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
       calc(var(--ball-x) - (var(--ball-size) / 2)),
       calc(var(--ball-y) - (var(--ball-size) / 2)),
       0
-    ) scale(1.02);
+    ) scale(0.995);
   }
 
   52% {
@@ -796,7 +796,7 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
       calc(var(--ball-x) - (var(--ball-size) / 2)),
       calc(var(--ball-y) - (var(--ball-size) / 2)),
       0
-    ) scale(1.01);
+    ) scale(0.998);
   }
 
   100% {
@@ -813,29 +813,29 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
     opacity: 0;
   }
 
-  30% {
-    opacity: 0.08;
+  35% {
+    opacity: 0.04;
   }
 
-  68% {
-    opacity: 0.48;
+  72% {
+    opacity: 0.42;
   }
 
   100% {
-    opacity: 0.72;
+    opacity: 0.74;
   }
 }
 
 @keyframes ballSphereReveal {
   0%,
-  24% {
+  30% {
     opacity: 0;
-    transform: scale(0.965);
+    transform: scale(0.985);
   }
 
-  64% {
-    opacity: 0.46;
-    transform: scale(0.99);
+  70% {
+    opacity: 0.52;
+    transform: scale(0.996);
   }
 
   100% {

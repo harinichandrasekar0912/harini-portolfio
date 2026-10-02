@@ -1353,9 +1353,10 @@
       var direction = dx < 0 ? -1 : 1;
       var distanceX = Math.abs(dx);
       var verticalSpan = Math.abs(landing.y - start.y);
-      var apexLift = clamp(Math.max(window.innerHeight * 0.54, distanceX * 0.48, verticalSpan * 0.74), 330, 620);
-      var apexY = clamp(Math.min(start.y, landing.y) - apexLift, bounds.minY + 10, bounds.maxY);
-      var transferDrop = clamp(window.innerHeight * 0.14, 86, 150);
+      var upwardOvershoot = clamp(window.innerHeight * 0.075, 42, 86);
+      var apexLift = clamp(Math.max(window.innerHeight * 0.54, distanceX * 0.48, verticalSpan * 0.74) * 1.24 + upwardOvershoot, 380, 700);
+      var apexY = clamp(Math.min(start.y, landing.y) - apexLift, bounds.minY + 8, bounds.maxY);
+      var transferDrop = clamp(window.innerHeight * 0.16, 98, 168);
       var transferMaxY = Math.max(bounds.minY + 28, Math.min(start.y, landing.y) - 42);
       var path = {
         start: start,
@@ -1364,7 +1365,7 @@
           y: apexY
         }, bounds),
         controlB: fitControlPointInsideBounds({
-          x: start.x + dx * 0.84,
+          x: start.x + dx * 0.92,
           y: clamp(apexY + transferDrop, bounds.minY + 22, transferMaxY)
         }, bounds),
         end: landing
@@ -1718,9 +1719,9 @@
       var startTime = 0;
       var impactVelocity = flightVelocityAt(1, config);
       var impactVelocityY = Math.max(0, impactVelocity.y);
-      var firstPrepHeight = clamp(window.innerHeight * 0.034, 24, 34);
-      var secondPrepHeight = clamp(firstPrepHeight * 1.7, 40, 58);
-      var thirdPrepHeight = clamp(secondPrepHeight * 1.34, 52, 76);
+      var firstPrepHeight = clamp(window.innerHeight * 0.039, 27, 39);
+      var secondPrepHeight = clamp(firstPrepHeight * 1.74, 45, 66);
+      var thirdPrepHeight = clamp(secondPrepHeight * 1.36, 60, 86);
       var baseFirstPrepDuration = clamp(window.innerHeight * 0.52, 380, 440);
       var baseSecondPrepDuration = clamp(baseFirstPrepDuration + 80, 420, 540);
       var baseThirdPrepDuration = clamp(baseSecondPrepDuration + 70, 460, 620);
@@ -1729,8 +1730,8 @@
       var thirdPrepDuration = config.upward ? scaleMotionDuration(baseThirdPrepDuration) : 0;
       var flightDuration = scaleMotionDuration(clamp(config.duration * (config.upward ? 0.9 : 1), 1150, 2500));
       var baseFirstLandingHeight = clamp(Math.max(window.innerHeight * 0.04, impactVelocityY * 0.024), 32, 44);
-      var firstLandingHeight = clamp(baseFirstLandingHeight * 1.15, 32, 44);
-      var secondLandingHeight = clamp(baseFirstLandingHeight * 0.34, 10, 16);
+      var firstLandingHeight = clamp(baseFirstLandingHeight * (config.upward ? 1.3 : 1.24), 35, 52);
+      var secondLandingHeight = clamp(baseFirstLandingHeight * (config.upward ? 0.36 : 0.35), 10, 17);
       var firstLandingDuration = scaleMotionDuration(clamp(window.innerHeight * 0.42, 300, 380));
       var secondLandingDuration = scaleMotionDuration(clamp(window.innerHeight * 0.28, 190, 260));
       var rollDuration = scaleMotionDuration(2030);
@@ -2029,7 +2030,7 @@
         ball.classList.remove("is-forming");
         ball.classList.add("is-ready");
         flyBall(startPoint, targetId, token);
-      }, scaleMotionDuration(1100), token);
+      }, scaleMotionDuration(1220), token);
     }
 
     core.addEventListener("click", function (event) {
