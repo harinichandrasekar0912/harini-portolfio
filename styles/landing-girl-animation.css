@@ -40,7 +40,7 @@
 .landing-girl-animation .thought-line,
 .landing-girl-animation .thought-icon-line,
 .landing-girl-animation .impact-line,
-.landing-girl-animation .floor-line {
+.landing-girl-animation .girl-strand {
   fill: none;
   stroke: currentColor;
   stroke-linecap: round;
@@ -52,9 +52,12 @@
   stroke-width: var(--line-width, 1.15px);
 }
 
-.landing-girl-animation .thought-line.is-soft,
-.landing-girl-animation .floor-line {
+.landing-girl-animation .thought-line.is-soft {
   stroke-width: 1;
+}
+
+.landing-girl-animation .thought-line.is-dotted {
+  stroke-linecap: round;
 }
 
 .landing-girl-animation .thought-icon-line {
@@ -63,6 +66,21 @@
 
 .landing-girl-animation .impact-line {
   stroke-width: 1.8;
+}
+
+.landing-girl-animation .girl-profile,
+.landing-girl-animation .girl-front {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.landing-girl-animation .girl-shadow {
+  fill: currentColor;
+  opacity: 0;
+}
+
+.landing-girl-animation .girl-strand {
+  stroke-width: 1.45;
 }
 
 .landing-girl-animation .girl-fill,

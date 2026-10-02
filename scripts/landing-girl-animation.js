@@ -8,38 +8,46 @@
   }
 
   const VIEWBOX = { width: 1920, height: 620 };
-  const DURATION = 24000;
+  const DURATION = 30000;
   const NS = "http://www.w3.org/2000/svg";
+  const STAGE_WIDTH = VIEWBOX.width;
   const GROUND_Y = 480;
-  const GIRL_CENTER_X = 960;
+  const GIRL_CENTER_X = STAGE_WIDTH / 2;
+  const GIRL_OFFSCREEN_RIGHT = STAGE_WIDTH + 180;
+  const GIRL_OFFSCREEN_LEFT = -180;
+  const GIRL_PEEK_X = STAGE_WIDTH - 70;
   const THOUGHT_CX = GIRL_CENTER_X;
   const THOUGHT_CY = 305;
 
   const TIMING = {
-    emptyEnd: 1500,
-    walkInStart: 1500,
-    walkInEnd: 6000,
-    settleStart: 6000,
-    settleEnd: 7100,
-    threadStart: 7100,
-    threadEnd: 8600,
-    loopsStart: 8600,
-    loopsEnd: 10800,
-    designStart: 10800,
+    emptyEnd: 1200,
+    walkInStart: 1200,
+    walkInEnd: 5800,
+    settleStart: 5800,
+    settleEnd: 7000,
+    threadStart: 7000,
+    threadEnd: 8700,
+    loopsStart: 8700,
+    loopsEnd: 10500,
+    designStart: 10500,
     designEnd: 14000,
-    hobbyStart: 14000,
-    hobbyEnd: 16500,
-    vortexStart: 16500,
-    vortexEnd: 19000,
-    ballStart: 19000,
-    impact: 19750,
+    hobbyStart: 13200,
+    hobbyEnd: 15500,
+    vortexStart: 15500,
+    vortexEnd: 19500,
+    ballStart: 19500,
+    impact: 20000,
     collapseStart: 20000,
-    collapseEnd: 21900,
+    collapseEnd: 22400,
     recoverStart: 21900,
-    recoverEnd: 22600,
-    walkOutStart: 22600,
-    walkOutEnd: 23700,
-    resetEnd: 24000
+    recoverEnd: 22800,
+    walkOutStart: 24000,
+    walkOutEnd: 27000,
+    emptyAfterExitStart: 27000,
+    peekInStart: 27700,
+    peekInEnd: 28600,
+    peekOutEnd: 29200,
+    resetEnd: 30000
   };
 
   const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -83,77 +91,87 @@
         id: "first-thread",
         layer: "behind",
         start: TIMING.threadStart,
-        draw: 1200,
-        opacity: 0.78,
+        draw: 1450,
+        opacity: 0.82,
         soft: false,
-        d: "M960 318 C1018 280 920 254 994 218 C1066 184 1146 232 1084 278 C1046 306 1000 294 1038 236"
+        width: 1.5,
+        d: "M960 318 C1008 274 923 253 990 216 C1062 176 1166 223 1090 278 C1038 315 1000 286 1044 226"
       },
       {
-        id: "head-loop",
+        id: "main-fluid-left",
         layer: "behind",
         start: TIMING.loopsStart,
-        draw: 1500,
-        opacity: 0.38,
+        draw: 1700,
+        opacity: 0.42,
         soft: true,
-        d: "M690 350 C762 206 1058 188 1190 305 C1310 414 1134 506 920 462 C706 418 626 372 690 350"
+        width: 1.2,
+        d: "M560 378 C704 212 1052 168 1262 294 C1428 394 1202 510 912 456 C698 416 548 410 560 378"
       },
       {
-        id: "torso-loop",
+        id: "main-fluid-front",
         layer: "front",
-        start: TIMING.loopsStart + 360,
-        draw: 1500,
+        start: TIMING.loopsStart + 420,
+        draw: 1750,
         opacity: 0.28,
         soft: true,
-        d: "M610 408 C728 276 984 220 1196 286 C1376 342 1398 446 1216 500 C1000 565 716 522 610 408"
+        width: 1.05,
+        d: "M440 430 C610 302 856 258 1170 282 C1440 302 1508 420 1246 500 C1028 566 692 548 440 430"
       },
       {
-        id: "upper-orbit",
+        id: "upper-dream-arc",
         layer: "behind",
-        start: TIMING.loopsStart + 760,
-        draw: 1450,
-        opacity: 0.34,
+        start: TIMING.loopsStart + 820,
+        draw: 1600,
+        opacity: 0.32,
         soft: true,
-        d: "M812 228 C948 154 1228 202 1312 340 C1394 478 1140 552 884 498 C650 448 674 300 812 228"
+        width: 0.9,
+        d: "M720 224 C896 124 1194 170 1378 300 C1496 384 1398 470 1196 454"
       },
       {
-        id: "spatial-sweep-left",
+        id: "wide-process-sweep",
         layer: "behind",
         start: TIMING.designStart + 400,
         draw: 1700,
-        opacity: 0.3,
+        opacity: 0.34,
         soft: true,
-        d: "M410 432 C552 312 744 236 1000 220 C1198 208 1398 252 1530 348"
+        width: 1.65,
+        d: "M360 424 C560 294 744 226 1008 216 C1238 207 1436 252 1598 360"
       },
       {
-        id: "spatial-sweep-right",
+        id: "dotted-orbit-a",
         layer: "front",
-        start: TIMING.designStart + 900,
-        draw: 1650,
-        opacity: 0.24,
+        start: TIMING.designStart + 820,
+        draw: 1550,
+        opacity: 0.34,
         soft: true,
-        d: "M470 292 C690 410 974 384 1246 238 C1330 196 1410 212 1484 270"
+        dotted: true,
+        width: 1.25,
+        d: "M560 292 C756 388 1020 390 1302 252 C1410 198 1484 216 1548 282"
       },
       {
-        id: "lower-return",
+        id: "dotted-orbit-b",
         layer: "behind",
         start: TIMING.hobbyStart - 650,
         draw: 1500,
-        opacity: 0.26,
+        opacity: 0.28,
         soft: true,
-        d: "M1430 440 C1258 378 1068 384 822 464 C698 504 556 500 448 448"
+        dotted: true,
+        width: 1.1,
+        d: "M1480 438 C1280 362 1074 372 820 462 C680 512 526 502 410 440"
       }
     ];
 
-    for (let i = 0; i < 18; i += 1) {
+    for (let i = 0; i < 10; i += 1) {
       threadPaths.push({
         id: "vortex-" + i,
         layer: i % 3 === 0 ? "front" : "behind",
-        start: TIMING.vortexStart + i * 82,
-        draw: 1550,
-        opacity: i % 3 === 0 ? 0.28 : 0.42,
+        start: TIMING.vortexStart + i * 135,
+        draw: 1700,
+        opacity: i % 3 === 0 ? 0.25 : 0.38,
         soft: i % 4 === 0,
+        width: seededRange(i + 4, 0.85, 2.2),
         d: spiralPath(i),
-        spin: seededRange(i + 8, -0.9, 1.2),
+        spin: seededRange(i + 8, -0.48, 0.62),
         scatterX: seededRange(i + 21, -260, 280),
         scatterY: seededRange(i + 34, -70, 140)
       });
@@ -163,35 +181,43 @@
       iconSpec("sketchbook", -305, -116, 0.88, TIMING.designStart, 118, 44, 0.48, rng),
       iconSpec("floor-plan", -430, 42, 0.94, TIMING.designStart + 420, 132, 48, -0.42, rng),
       iconSpec("perspective", 318, -88, 0.88, TIMING.designStart + 820, 132, 46, 0.46, rng),
-      iconSpec("pencil", 452, 54, 0.78, TIMING.designStart + 1240, 150, 54, -0.36, rng),
-      iconSpec("iteration", 12, -154, 0.8, TIMING.designStart + 1600, 118, 38, 0.54, rng),
-      iconSpec("panels", -98, 142, 0.88, TIMING.designStart + 2020, 128, 52, -0.5, rng),
-      iconSpec("cube", 246, 132, 0.78, TIMING.designStart + 2440, 122, 46, 0.4, rng),
-      iconSpec("model", -252, 128, 0.78, TIMING.designStart + 2780, 128, 46, -0.48, rng)
+      iconSpec("laptop", 430, -8, 0.8, TIMING.designStart + 1080, 150, 54, -0.32, rng),
+      iconSpec("tablet", 170, 84, 0.72, TIMING.designStart + 1340, 128, 48, 0.38, rng),
+      iconSpec("pencil", 508, 86, 0.7, TIMING.designStart + 1580, 154, 54, -0.36, rng),
+      iconSpec("iteration", 12, -154, 0.78, TIMING.designStart + 1840, 118, 38, 0.54, rng),
+      iconSpec("panels", -98, 142, 0.82, TIMING.designStart + 2140, 128, 52, -0.5, rng),
+      iconSpec("sketch-panel", -540, -90, 0.78, TIMING.designStart + 2380, 148, 54, 0.34, rng),
+      iconSpec("cube", 246, 132, 0.72, TIMING.designStart + 2660, 122, 46, 0.4, rng),
+      iconSpec("model", -252, 128, 0.72, TIMING.designStart + 2920, 128, 46, -0.48, rng),
+      iconSpec("massing", 392, -146, 0.68, TIMING.designStart + 3140, 138, 50, 0.42, rng)
     ];
 
     const hobbyIcons = [
       iconSpec("chai", 520, -18, 0.54, TIMING.hobbyStart, 170, 62, 0.38, rng),
       iconSpec("book", -548, -20, 0.56, TIMING.hobbyStart + 640, 170, 60, -0.34, rng),
-      iconSpec("tennis", 500, 126, 0.52, TIMING.hobbyStart + 1240, 180, 70, 0.45, rng),
-      iconSpec("reading", -474, 136, 0.5, TIMING.hobbyStart + 1860, 158, 62, -0.46, rng)
+      iconSpec("book", -392, 82, 0.48, TIMING.hobbyStart + 980, 160, 56, -0.26, rng),
+      iconSpec("tennis", 500, 126, 0.5, TIMING.hobbyStart + 1240, 180, 70, 0.45, rng),
+      iconSpec("tennis-ball", 630, 72, 0.46, TIMING.hobbyStart + 1540, 184, 70, 0.44, rng),
+      iconSpec("reading", -474, 136, 0.48, TIMING.hobbyStart + 1860, 158, 62, -0.46, rng),
+      iconSpec("chai", 360, 166, 0.44, TIMING.hobbyStart + 2180, 154, 58, 0.31, rng)
     ];
 
-    const particleCount = Math.round(66 * sceneConfig.density);
+    const thoughtOrigins = iconParticleOrigins(designIcons.concat(hobbyIcons), threadPaths);
+    const particleCount = Math.round(130 * sceneConfig.density);
     const particles = [];
 
     for (let i = 0; i < particleCount; i += 1) {
+      const origin = thoughtOrigins[i % thoughtOrigins.length];
       const angle = rng() * Math.PI * 2;
-      const radius = lerp(70, 470, rng());
       const shape = rng() > 0.38 ? "square" : "dot";
 
       particles.push({
-        originX: THOUGHT_CX + Math.cos(angle) * radius,
-        originY: THOUGHT_CY + Math.sin(angle) * radius * 0.44,
-        scatterX: Math.cos(angle) * lerp(90, 270, rng()),
-        scatterY: Math.sin(angle) * lerp(24, 118, rng()),
-        gravity: lerp(54, 150, rng()),
-        size: lerp(1.5, 4.8, rng()),
+        originX: origin.x + lerp(-26, 26, rng()),
+        originY: origin.y + lerp(-20, 20, rng()),
+        scatterX: Math.cos(angle) * lerp(80, 310, rng()),
+        scatterY: Math.sin(angle) * lerp(20, 150, rng()) - lerp(0, 42, rng()),
+        gravity: lerp(420, 680, rng()),
+        size: lerp(1.5, 8, rng()),
         shape: shape,
         angle: angle,
         orbit: lerp(8, 42, rng()),
@@ -199,7 +225,7 @@
         rotation: lerp(-160, 160, rng()),
         rotationSpeed: lerp(-260, 260, rng()),
         opacity: lerp(0.28, 0.72, rng()),
-        delay: lerp(0, 0.35, rng())
+        delay: lerp(0, 0.22, rng())
       });
     }
 
@@ -224,7 +250,6 @@
     }, container);
 
     const layers = {
-      floor: svgEl("g", { class: "floor-layer" }, svg),
       behind: svgEl("g", { class: "thoughts-behind" }, svg),
       girl: svgEl("g", { class: "girl-layer" }, svg),
       front: svgEl("g", { class: "thoughts-front" }, svg),
@@ -234,12 +259,7 @@
 
     const scene = {
       svg: svg,
-      layers: layers,
-      floorLine: svgEl("path", {
-        class: "floor-line",
-        d: "M330 484 C506 474 642 486 790 480 C1010 470 1176 490 1384 480 C1466 476 1538 478 1604 483",
-        pathLength: "1"
-      }, layers.floor)
+      layers: layers
     };
 
     scene.thoughtPaths = createThoughtPaths(scene, sceneState);
@@ -254,86 +274,144 @@
   }
 
   function createGirl(scene) {
+    const shadow = svgEl("ellipse", {
+      class: "girl-shadow",
+      cx: "0",
+      cy: "0",
+      rx: "40",
+      ry: "5"
+    }, scene.layers.girl);
     const group = svgEl("g", { class: "landing-girl" }, scene.layers.girl);
-    const legs = svgEl("g", { class: "girl-legs" }, group);
-    const body = svgEl("g", { class: "girl-body" }, group);
-    const head = svgEl("g", { class: "girl-head" }, body);
+    const profile = svgEl("g", { class: "girl-profile" }, group);
+    const profileLegs = svgEl("g", { class: "girl-legs profile-legs" }, profile);
+    const profileBody = svgEl("g", { class: "girl-body profile-body" }, profile);
+    const profileHead = svgEl("g", { class: "girl-head profile-head" }, profileBody);
+    const front = svgEl("g", { class: "girl-front" }, group);
+    const frontLegs = svgEl("g", { class: "girl-legs front-legs" }, front);
+    const frontBody = svgEl("g", { class: "girl-body front-body" }, front);
+    const frontHead = svgEl("g", { class: "girl-head front-head" }, frontBody);
 
-    const legLeft = svgEl("path", {
-      class: "girl-limb leg-left",
-      d: "M-22 -66 C-29 -48 -31 -27 -28 -7 C-22 -4 -15 -5 -12 -10 C-14 -30 -11 -48 -6 -64 C-10 -68 -17 -69 -22 -66 Z"
-    }, legs);
-    const legRight = svgEl("path", {
-      class: "girl-limb leg-right",
-      d: "M8 -64 C13 -46 15 -28 12 -9 C16 -4 24 -4 30 -8 C32 -28 29 -49 22 -66 C17 -69 11 -68 8 -64 Z"
-    }, legs);
-    const footLeft = svgEl("ellipse", {
-      class: "girl-foot foot-left",
-      cx: "-28",
+    const profileLegBack = svgEl("path", {
+      class: "girl-limb profile-leg-back",
+      d: "M-8 -66 C-17 -48 -18 -25 -15 -8 C-9 -4 -3 -6 0 -11 C-3 -30 0 -48 8 -63 C5 -68 -3 -70 -8 -66 Z"
+    }, profileLegs);
+    const profileLegFront = svgEl("path", {
+      class: "girl-limb profile-leg-front",
+      d: "M10 -65 C20 -48 22 -27 18 -8 C22 -4 31 -4 36 -9 C37 -31 31 -52 21 -68 C17 -70 11 -69 10 -65 Z"
+    }, profileLegs);
+    const profileFootBack = svgEl("ellipse", {
+      class: "girl-foot profile-foot-back",
+      cx: "-13",
       cy: "-3",
-      rx: "16",
-      ry: "4.5"
-    }, legs);
-    const footRight = svgEl("ellipse", {
-      class: "girl-foot foot-right",
-      cx: "28",
+      rx: "14",
+      ry: "4.2"
+    }, profileLegs);
+    const profileFootFront = svgEl("ellipse", {
+      class: "girl-foot profile-foot-front",
+      cx: "32",
       cy: "-3",
-      rx: "16",
-      ry: "4.5"
-    }, legs);
-
-    const armLeft = svgEl("path", {
-      class: "girl-limb arm-left",
-      d: "M-33 -136 C-45 -118 -52 -96 -53 -76 C-49 -70 -41 -70 -38 -78 C-36 -96 -29 -116 -20 -130 C-23 -136 -28 -139 -33 -136 Z"
-    }, body);
-    const armRight = svgEl("path", {
-      class: "girl-limb arm-right",
-      d: "M21 -130 C31 -116 38 -96 40 -78 C43 -70 51 -70 55 -76 C53 -96 46 -118 34 -136 C29 -139 24 -136 21 -130 Z"
-    }, body);
+      rx: "17",
+      ry: "4.2"
+    }, profileLegs);
+    const profileArmBack = svgEl("path", {
+      class: "girl-limb profile-arm-back",
+      d: "M-7 -134 C-18 -116 -21 -95 -18 -76 C-14 -71 -7 -73 -5 -80 C-7 -97 -2 -114 7 -130 C4 -136 -2 -138 -7 -134 Z"
+    }, profileBody);
+    const profileArmFront = svgEl("path", {
+      class: "girl-limb profile-arm-front",
+      d: "M22 -132 C34 -114 39 -96 37 -77 C41 -71 48 -72 51 -79 C51 -99 43 -121 31 -137 C27 -139 23 -136 22 -132 Z"
+    }, profileBody);
 
     svgEl("path", {
-      class: "girl-fill dress",
+      class: "girl-fill profile-dress",
+      d: "M-16 -148 C-30 -130 -34 -94 -38 -58 C-18 -48 12 -49 38 -60 C31 -98 24 -131 11 -148 C3 -154 -8 -154 -16 -148 Z"
+    }, profileBody);
+    svgEl("path", {
+      class: "girl-fill profile-neck",
+      d: "M-8 -164 L8 -164 L10 -143 L-7 -142 Z"
+    }, profileBody);
+    svgEl("path", {
+      class: "girl-fill profile-hair",
+      d: "M-23 -193 C-17 -222 15 -226 31 -204 C41 -188 34 -166 14 -158 C-7 -151 -29 -169 -23 -193 Z"
+    }, profileHead);
+    const profilePonytail = svgEl("path", {
+      class: "girl-fill profile-ponytail",
+      d: "M25 -198 C70 -214 94 -188 76 -163 C58 -139 22 -160 30 -184 C31 -189 29 -194 25 -198 Z"
+    }, profileHead);
+    svgEl("path", {
+      class: "girl-fill profile-head-shape",
+      d: "M-12 -210 C13 -221 35 -204 34 -180 C32 -156 5 -149 -13 -164 C-28 -177 -28 -201 -12 -210 Z"
+    }, profileHead);
+    const profileStrands = [
+      svgEl("path", { class: "girl-strand", d: "M-14 -205 C-24 -193 -18 -181 -25 -170" }, profileHead),
+      svgEl("path", { class: "girl-strand", d: "M-1 -214 C-7 -198 -2 -183 -11 -169" }, profileHead),
+      svgEl("path", { class: "girl-strand", d: "M16 -207 C9 -194 15 -181 6 -168" }, profileHead)
+    ];
+
+    const frontLegLeft = svgEl("path", {
+      class: "girl-limb front-leg-left",
+      d: "M-22 -66 C-28 -46 -29 -25 -27 -8 C-21 -4 -14 -5 -11 -10 C-13 -31 -9 -50 -4 -64 C-9 -68 -17 -70 -22 -66 Z"
+    }, frontLegs);
+    const frontLegRight = svgEl("path", {
+      class: "girl-limb front-leg-right",
+      d: "M6 -64 C11 -47 14 -29 12 -9 C16 -4 24 -4 29 -8 C31 -28 28 -49 22 -66 C17 -69 10 -68 6 -64 Z"
+    }, frontLegs);
+    svgEl("ellipse", { class: "girl-foot front-foot-left", cx: "-29", cy: "-3", rx: "16", ry: "4.4" }, frontLegs);
+    svgEl("ellipse", { class: "girl-foot front-foot-right", cx: "28", cy: "-3", rx: "16", ry: "4.4" }, frontLegs);
+    const frontArmLeft = svgEl("path", {
+      class: "girl-limb front-arm-left",
+      d: "M-34 -136 C-44 -118 -50 -96 -51 -76 C-47 -70 -40 -70 -37 -78 C-35 -96 -28 -116 -20 -130 C-23 -136 -29 -139 -34 -136 Z"
+    }, frontBody);
+    const frontArmRight = svgEl("path", {
+      class: "girl-limb front-arm-right",
+      d: "M21 -130 C31 -116 38 -96 40 -78 C43 -70 51 -70 55 -76 C53 -96 46 -118 34 -136 C29 -139 24 -136 21 -130 Z"
+    }, frontBody);
+    svgEl("path", {
+      class: "girl-fill front-dress",
       d: "M-30 -147 C-42 -130 -47 -100 -54 -59 C-36 -50 -12 -47 9 -49 C29 -50 45 -54 56 -60 C48 -101 42 -130 30 -147 C13 -155 -14 -155 -30 -147 Z"
-    }, body);
-    svgEl("rect", {
-      class: "girl-fill neck",
-      x: "-9",
-      y: "-162",
-      width: "18",
-      height: "23",
-      rx: "6"
-    }, body);
-    svgEl("ellipse", {
-      class: "girl-fill hair",
-      cx: "-7",
-      cy: "-192",
-      rx: "30",
-      ry: "36"
-    }, head);
-    const ponytail = svgEl("path", {
-      class: "girl-fill ponytail",
-      d: "M21 -198 C58 -215 73 -176 46 -160 C25 -151 10 -182 21 -198 Z"
-    }, head);
-    svgEl("ellipse", {
-      class: "girl-fill head-shape",
-      cx: "0",
-      cy: "-186",
-      rx: "24",
-      ry: "30"
-    }, head);
+    }, frontBody);
+    svgEl("rect", { class: "girl-fill front-neck", x: "-9", y: "-162", width: "18", height: "23", rx: "6" }, frontBody);
+    svgEl("path", {
+      class: "girl-fill front-hair",
+      d: "M-31 -198 C-26 -224 4 -231 26 -215 C43 -201 39 -169 19 -157 C0 -146 -28 -154 -36 -175 C-39 -184 -37 -192 -31 -198 Z"
+    }, frontHead);
+    const frontPonytail = svgEl("path", {
+      class: "girl-fill front-ponytail",
+      d: "M25 -202 C66 -211 78 -176 54 -158 C34 -143 10 -168 21 -190 C23 -195 24 -199 25 -202 Z"
+    }, frontHead);
+    svgEl("ellipse", { class: "girl-fill front-head-shape", cx: "0", cy: "-186", rx: "24", ry: "30" }, frontHead);
+    const frontStrands = [
+      svgEl("path", { class: "girl-strand", d: "M-20 -208 C-28 -190 -18 -177 -27 -163" }, frontHead),
+      svgEl("path", { class: "girl-strand", d: "M-2 -216 C-8 -198 -1 -181 -10 -166" }, frontHead),
+      svgEl("path", { class: "girl-strand", d: "M17 -210 C9 -194 18 -179 8 -164" }, frontHead),
+      svgEl("path", { class: "girl-strand", d: "M28 -196 C20 -184 26 -172 15 -160" }, frontHead)
+    ];
 
     return {
+      shadow: shadow,
       group: group,
-      legs: legs,
-      body: body,
-      head: head,
-      ponytail: ponytail,
-      legLeft: legLeft,
-      legRight: legRight,
-      footLeft: footLeft,
-      footRight: footRight,
-      armLeft: armLeft,
-      armRight: armRight
+      profile: profile,
+      profileLegs: profileLegs,
+      profileBody: profileBody,
+      profileHead: profileHead,
+      profilePonytail: profilePonytail,
+      profileStrands: profileStrands,
+      profileLegBack: profileLegBack,
+      profileLegFront: profileLegFront,
+      profileFootBack: profileFootBack,
+      profileFootFront: profileFootFront,
+      profileArmBack: profileArmBack,
+      profileArmFront: profileArmFront,
+      front: front,
+      frontLegs: frontLegs,
+      frontBody: frontBody,
+      frontHead: frontHead,
+      frontPonytail: frontPonytail,
+      frontStrands: frontStrands,
+      frontLegLeft: frontLegLeft,
+      frontLegRight: frontLegRight,
+      frontArmLeft: frontArmLeft,
+      frontArmRight: frontArmRight
     };
   }
 
@@ -341,12 +419,13 @@
     return sceneState.threadPaths.map(function (spec, index) {
       const parent = spec.layer === "front" ? scene.layers.front : scene.layers.behind;
       const element = svgEl("path", {
-        class: "thought-line" + (spec.soft ? " is-soft" : ""),
+        class: "thought-line" + (spec.soft ? " is-soft" : "") + (spec.dotted ? " is-dotted" : ""),
         d: spec.d,
         pathLength: "1"
       }, parent);
 
-      element.style.strokeDasharray = "1";
+      element.style.setProperty("--line-width", (spec.width || 1.15) + "px");
+      element.style.strokeDasharray = spec.dotted ? "0.018 0.055" : "1";
       element.style.strokeDashoffset = "1";
 
       return {
@@ -355,6 +434,7 @@
         start: spec.start,
         draw: spec.draw,
         opacity: spec.opacity,
+        dotted: Boolean(spec.dotted),
         spin: spec.spin || seededRange(index + 4, -0.4, 0.55),
         scatterX: spec.scatterX || seededRange(index + 10, -110, 120),
         scatterY: spec.scatterY || seededRange(index + 20, -36, 120)
@@ -396,6 +476,7 @@
     svgEl("line", { class: "impact-line", x1: "0", y1: "-18", x2: "0", y2: "-38" }, impact);
     svgEl("line", { class: "impact-line", x1: "12", y1: "-11", x2: "30", y2: "-26" }, impact);
     svgEl("line", { class: "impact-line", x1: "-10", y1: "-10", x2: "-26", y2: "-24" }, impact);
+    svgEl("path", { class: "impact-line", d: "M-7 -30 L0 -21 L8 -31" }, impact);
 
     return {
       group: group,
@@ -406,17 +487,23 @@
 
   function getGirlState(elapsed) {
     const state = {
-      x: 2050,
+      x: GIRL_OFFSCREEN_RIGHT,
       y: GROUND_Y,
       opacity: 0,
       mode: "hidden",
       facing: "left",
       turnProgress: 0,
-      walkPhase: elapsed * 0.0088,
+      walkPhase: elapsed * 0.0078,
       bodyBob: 0,
       headTilt: 0,
       impactAmount: 0,
-      breathingAmount: 0
+      breathingAmount: 0,
+      profileOpacity: 0,
+      frontOpacity: 0,
+      scratchProgress: 0,
+      shakeProgress: 0,
+      lean: 0,
+      peekLean: 0
     };
 
     if (elapsed < TIMING.walkInStart) {
@@ -425,10 +512,11 @@
 
     if (elapsed < TIMING.walkInEnd) {
       const p = easeInOutCubic(phase(elapsed, TIMING.walkInStart, TIMING.walkInEnd));
-      state.x = lerp(2050, GIRL_CENTER_X, p);
+      state.x = lerp(GIRL_OFFSCREEN_RIGHT, GIRL_CENTER_X, p);
       state.opacity = phase(elapsed, TIMING.walkInStart, TIMING.walkInStart + 420);
-      state.mode = "walkIn";
-      state.bodyBob = Math.abs(Math.sin(state.walkPhase)) * 2.2;
+      state.profileOpacity = state.opacity;
+      state.mode = "walkProfile";
+      state.bodyBob = Math.abs(Math.sin(state.walkPhase)) * 1.9;
       return state;
     }
 
@@ -439,58 +527,96 @@
       state.mode = "settle";
       state.facing = "front";
       state.turnProgress = smoothstep(settle);
-      state.walkPhase = Math.PI * 0.5;
+      state.walkPhase = elapsed * 0.0078;
       state.bodyBob = Math.sin(settle * Math.PI) * 2;
+      state.profileOpacity = 1 - state.turnProgress;
+      state.frontOpacity = state.turnProgress;
       return state;
     }
 
     if (elapsed < TIMING.impact) {
       state.x = GIRL_CENTER_X;
       state.opacity = 1;
-      state.mode = "zoned";
+      state.mode = "frontThinking";
       state.facing = "front";
       state.turnProgress = 1;
+      state.frontOpacity = 1;
       state.walkPhase = Math.PI * 0.5;
       state.breathingAmount = Math.sin(elapsed * 0.0016) * 1.4;
       return state;
     }
 
-    if (elapsed < TIMING.collapseEnd) {
-      const hitIn = Math.sin(phase(elapsed, TIMING.impact, TIMING.impact + 230) * Math.PI);
-      const hitOut = 1 - phase(elapsed, TIMING.impact + 230, TIMING.collapseEnd);
+    if (elapsed < TIMING.recoverEnd) {
+      const scratch = phase(elapsed, TIMING.impact, TIMING.impact + 1300);
+      const shake = phase(elapsed, TIMING.impact + 900, TIMING.recoverEnd);
+      const hitIn = Math.sin(phase(elapsed, TIMING.impact, TIMING.impact + 220) * Math.PI);
+      const hitOut = 1 - phase(elapsed, TIMING.impact + 220, TIMING.recoverEnd);
       const hit = Math.max(hitIn, hitOut * 0.68);
       state.x = GIRL_CENTER_X;
       state.opacity = 1;
-      state.mode = "impact";
+      state.mode = "owReaction";
       state.facing = "front";
       state.turnProgress = 1;
+      state.frontOpacity = 1;
       state.walkPhase = Math.PI * 0.5;
       state.impactAmount = hit;
-      state.headTilt = -4.5 * hit;
-      state.bodyBob = 3.6 * hit;
+      state.scratchProgress = scratch;
+      state.shakeProgress = shake;
+      state.headTilt = -5.2 * hit + Math.sin(shake * Math.PI * 6) * 3.5 * (1 - shake);
+      state.bodyBob = 3.2 * hit;
+      state.lean = -2.6 * hit;
       return state;
     }
 
-    if (elapsed < TIMING.recoverEnd) {
-      const recover = 1 - phase(elapsed, TIMING.recoverStart, TIMING.recoverEnd);
+    if (elapsed < TIMING.walkOutStart) {
+      const turn = phase(elapsed, TIMING.recoverEnd, TIMING.walkOutStart);
       state.x = GIRL_CENTER_X;
       state.opacity = 1;
       state.mode = "recover";
       state.facing = "front";
-      state.turnProgress = 1;
+      state.turnProgress = 1 - smoothstep(turn);
+      state.frontOpacity = state.turnProgress;
+      state.profileOpacity = 1 - state.turnProgress;
       state.walkPhase = Math.PI * 0.5;
-      state.bodyBob = Math.sin((1 - recover) * Math.PI) * 1.2;
+      state.bodyBob = Math.sin(turn * Math.PI) * 1.1;
       return state;
     }
 
     if (elapsed < TIMING.walkOutEnd) {
       const p = easeInOutCubic(phase(elapsed, TIMING.walkOutStart, TIMING.walkOutEnd));
-      state.x = lerp(GIRL_CENTER_X, -160, p);
-      state.opacity = 1 - phase(elapsed, TIMING.walkOutEnd - 260, TIMING.walkOutEnd) * 0.55;
-      state.mode = "walkOut";
+      state.x = lerp(GIRL_CENTER_X, GIRL_OFFSCREEN_LEFT, p);
+      state.opacity = 1 - phase(elapsed, TIMING.walkOutEnd - 360, TIMING.walkOutEnd) * 0.65;
+      state.profileOpacity = state.opacity;
+      state.mode = "walkOutProfile";
       state.facing = "left";
-      state.walkPhase = elapsed * 0.0096;
-      state.bodyBob = Math.abs(Math.sin(state.walkPhase)) * 2.2;
+      state.walkPhase = elapsed * 0.0078;
+      state.bodyBob = Math.abs(Math.sin(state.walkPhase)) * 1.9;
+      return state;
+    }
+
+    if (elapsed < TIMING.peekInStart) {
+      return state;
+    }
+
+    if (elapsed < TIMING.peekInEnd) {
+      const p = easeOutCubic(phase(elapsed, TIMING.peekInStart, TIMING.peekInEnd));
+      state.x = lerp(GIRL_OFFSCREEN_RIGHT, GIRL_PEEK_X, p);
+      state.opacity = phase(elapsed, TIMING.peekInStart, TIMING.peekInStart + 220);
+      state.profileOpacity = state.opacity;
+      state.mode = "peekProfile";
+      state.walkPhase = Math.PI * 0.2;
+      state.peekLean = -6 * p;
+      return state;
+    }
+
+    if (elapsed < TIMING.peekOutEnd) {
+      const p = easeInOutCubic(phase(elapsed, TIMING.peekInEnd, TIMING.peekOutEnd));
+      state.x = lerp(GIRL_PEEK_X, GIRL_OFFSCREEN_RIGHT, p);
+      state.opacity = 1 - phase(elapsed, TIMING.peekOutEnd - 180, TIMING.peekOutEnd);
+      state.profileOpacity = state.opacity;
+      state.mode = "peekProfile";
+      state.walkPhase = Math.PI * 0.2;
+      state.peekLean = -6 * (1 - p);
       return state;
     }
 
@@ -498,39 +624,69 @@
   }
 
   function renderGirl(scene, girlState) {
-    const walk = girlState.mode === "walkIn" || girlState.mode === "walkOut" ? 1 : 0;
-    const sideScale = 0.78;
-    const scaleX = girlState.facing === "front" ? lerp(sideScale, 0.96, girlState.turnProgress) : sideScale;
+    const walk = girlState.mode === "walkProfile" || girlState.mode === "walkOutProfile" ? 1 : 0;
+    const peek = girlState.mode === "peekProfile" ? 1 : 0;
     const breathing = girlState.breathingAmount;
     const y = girlState.y + girlState.bodyBob + breathing;
-    const swing = Math.sin(girlState.walkPhase) * 14 * walk;
-    const armEase = girlState.mode === "zoned" ? 2.4 : 0;
+    const swing = Math.sin(girlState.walkPhase) * 12 * walk;
+    const footLift = Math.abs(Math.sin(girlState.walkPhase)) * walk;
+    const scratchRaise = smoothstep(clamp(girlState.scratchProgress / 0.32, 0, 1)) * (1 - smoothstep(clamp((girlState.scratchProgress - 0.78) / 0.22, 0, 1)));
+    const scratchRub = Math.sin(girlState.scratchProgress * Math.PI * 8) * scratchRaise;
+    const frontArmEase = girlState.mode === "frontThinking" ? 2.4 : 0;
+    const shadowOpacity = girlState.opacity * (girlState.mode === "hidden" ? 0 : 0.17);
+    const shadowRx = 36 + footLift * 7 + peek * 2;
 
     scene.girl.group.style.opacity = girlState.opacity.toFixed(3);
     setTransform(
       scene.girl.group,
-      "translate(" + girlState.x.toFixed(2) + " " + y.toFixed(2) + ") scale(" + scaleX.toFixed(3) + " 1)"
+      "translate(" + girlState.x.toFixed(2) + " " + y.toFixed(2) + ") rotate(" + (girlState.lean + girlState.peekLean).toFixed(2) + " 0 -96)"
     );
 
-    setTransform(scene.girl.armLeft, "rotate(" + (swing * 0.56 - armEase).toFixed(2) + " -30 -132)");
-    setTransform(scene.girl.armRight, "rotate(" + (-swing * 0.56 + armEase).toFixed(2) + " 30 -132)");
-    setTransform(scene.girl.legLeft, "rotate(" + (-swing * 0.82).toFixed(2) + " -15 -63)");
-    setTransform(scene.girl.legRight, "rotate(" + (swing * 0.82).toFixed(2) + " 16 -63)");
+    scene.girl.profile.style.opacity = String(clamp(girlState.profileOpacity, 0, 1).toFixed(3));
+    scene.girl.front.style.opacity = String(clamp(girlState.frontOpacity, 0, 1).toFixed(3));
+    setAttrs(scene.girl.shadow, {
+      cx: girlState.x.toFixed(2),
+      cy: String(GROUND_Y + 3),
+      rx: shadowRx.toFixed(2),
+      ry: (4.5 + footLift * 1.8).toFixed(2)
+    });
+    scene.girl.shadow.style.opacity = shadowOpacity.toFixed(3);
+
+    setTransform(scene.girl.profileArmBack, "rotate(" + (swing * 0.38).toFixed(2) + " -7 -132)");
+    setTransform(scene.girl.profileArmFront, "rotate(" + (-swing * 0.58).toFixed(2) + " 26 -132)");
+    setTransform(scene.girl.profileLegBack, "rotate(" + (-swing * 0.85).toFixed(2) + " -6 -64)");
+    setTransform(scene.girl.profileLegFront, "rotate(" + (swing * 0.9).toFixed(2) + " 14 -64)");
     setTransform(
-      scene.girl.footLeft,
-      "translate(" + (-Math.sin(girlState.walkPhase) * 6 * walk).toFixed(2) + " " + (Math.max(0, Math.cos(girlState.walkPhase)) * -2.2 * walk).toFixed(2) + ")"
+      scene.girl.profileFootBack,
+      "translate(" + (-Math.sin(girlState.walkPhase) * 5 * walk).toFixed(2) + " " + (Math.max(0, Math.cos(girlState.walkPhase)) * -2.4 * walk).toFixed(2) + ")"
     );
     setTransform(
-      scene.girl.footRight,
-      "translate(" + (Math.sin(girlState.walkPhase) * 6 * walk).toFixed(2) + " " + (Math.max(0, -Math.cos(girlState.walkPhase)) * -2.2 * walk).toFixed(2) + ")"
+      scene.girl.profileFootFront,
+      "translate(" + (Math.sin(girlState.walkPhase) * 5 * walk).toFixed(2) + " " + (Math.max(0, -Math.cos(girlState.walkPhase)) * -2.4 * walk).toFixed(2) + ")"
     );
     setTransform(
-      scene.girl.head,
-      "translate(0 " + (girlState.impactAmount * 3).toFixed(2) + ") rotate(" + (girlState.headTilt + Math.sin(girlState.walkPhase) * 1.1 * walk).toFixed(2) + " 0 -164)"
+      scene.girl.profileHead,
+      "translate(0 " + (girlState.impactAmount * 2).toFixed(2) + ") rotate(" + (girlState.headTilt + Math.sin(girlState.walkPhase) * 0.8 * walk).toFixed(2) + " 0 -164)"
     );
     setTransform(
-      scene.girl.ponytail,
-      "rotate(" + (Math.sin(girlState.walkPhase + 1.1) * 5 * walk + girlState.impactAmount * 10).toFixed(2) + " 22 -183)"
+      scene.girl.profilePonytail,
+      "rotate(" + (Math.sin(girlState.walkPhase + 1.1) * 6 * walk + girlState.impactAmount * 12 + girlState.peekLean * -0.4).toFixed(2) + " 26 -186)"
+    );
+
+    setTransform(scene.girl.frontLegLeft, "rotate(" + (-1.8 + girlState.impactAmount * 1.2).toFixed(2) + " -16 -64)");
+    setTransform(scene.girl.frontLegRight, "rotate(" + (1.8 - girlState.impactAmount * 1.2).toFixed(2) + " 16 -64)");
+    setTransform(scene.girl.frontArmLeft, "rotate(" + (-frontArmEase - girlState.impactAmount * 2).toFixed(2) + " -30 -132)");
+    setTransform(
+      scene.girl.frontArmRight,
+      "rotate(" + (-112 * scratchRaise + frontArmEase + scratchRub * 5).toFixed(2) + " 31 -132) translate(" + (scratchRub * 1.2).toFixed(2) + " " + (-scratchRaise * 10).toFixed(2) + ")"
+    );
+    setTransform(
+      scene.girl.frontHead,
+      "translate(0 " + (girlState.impactAmount * 3).toFixed(2) + ") rotate(" + girlState.headTilt.toFixed(2) + " 0 -164)"
+    );
+    setTransform(
+      scene.girl.frontPonytail,
+      "rotate(" + (girlState.impactAmount * 16 + Math.sin(girlState.scratchProgress * Math.PI * 4) * scratchRaise * 4).toFixed(2) + " 23 -188)"
     );
   }
 
@@ -576,7 +732,7 @@
   function renderPathItems(items, elapsed, vortexProgress, disintegrateProgress, resetProgress) {
     items.forEach(function (item) {
       const draw = easeOutCubic(phase(elapsed, item.start, item.start + item.draw));
-      const dis = easeOutCubic(clamp((disintegrateProgress - item.index * 0.005) / 0.92, 0, 1));
+      const dis = easeOutCubic(clamp((disintegrateProgress - item.index * 0.004) / 0.48, 0, 1));
       const opacity = item.opacity * draw * (0.72 + vortexProgress * 0.38) * (1 - dis) * (1 - resetProgress * 0.85);
       const wobbleX = Math.sin(elapsed * 0.0012 + item.index * 0.7) * (1.1 + vortexProgress * 3.6);
       const wobbleY = Math.cos(elapsed * 0.001 + item.index * 1.1) * (0.9 + vortexProgress * 2.8);
@@ -602,7 +758,7 @@
     items.forEach(function (item) {
       const intro = easeOutBackSmall(phase(elapsed, item.start, item.start + 980));
       const orbitBuild = phase(elapsed, item.start + 320, TIMING.vortexEnd);
-      const dis = easeOutCubic(clamp((disintegrateProgress - item.index * 0.025) / 0.9, 0, 1));
+      const dis = easeOutCubic(clamp((disintegrateProgress - item.index * 0.014) / 0.5, 0, 1));
       const angle = item.baseAngle + elapsed * 0.00042 * item.speed + vortexProgress * item.speed * 1.35;
       const orbitScale = 0.2 + orbitBuild * 0.52 + vortexProgress * 0.42;
       const x = THOUGHT_CX + item.x + Math.cos(angle) * item.radiusX * orbitScale + item.scatterX * dis;
@@ -627,64 +783,59 @@
 
   function renderBall(scene, state, elapsed) {
     const approach = phase(elapsed, TIMING.ballStart, TIMING.impact);
-    const rebound = phase(elapsed, TIMING.impact, TIMING.impact + 430);
+    const rebound = phase(elapsed, TIMING.impact, TIMING.impact + 760);
     const impactPoint = {
       x: GIRL_CENTER_X + 28,
-      y: GROUND_Y - 214
+      y: GROUND_Y - 222
     };
-    let point = { x: 1608, y: 118 };
+    let point = { x: STAGE_WIDTH + 80, y: 108 };
     let opacity = 0;
 
     if (approach > 0 && approach < 1) {
-      point = quadraticPoint(
-        { x: 1608, y: 118 },
-        { x: 1332, y: 96 },
+      point = cubicPoint(
+        { x: STAGE_WIDTH + 80, y: 108 },
+        { x: 1706, y: 70 },
+        { x: 1260, y: 118 },
         impactPoint,
         easeInOutCubic(approach)
       );
       opacity = phase(elapsed, TIMING.ballStart, TIMING.ballStart + 160);
-    } else if (elapsed >= TIMING.impact && elapsed < TIMING.impact + 620) {
-      const r = easeOutCubic(rebound);
-      point = {
-        x: impactPoint.x + r * 42,
-        y: impactPoint.y - Math.sin(rebound * Math.PI) * 22 - r * 12
-      };
-      opacity = 1 - phase(elapsed, TIMING.impact + 380, TIMING.impact + 620);
+    } else if (elapsed >= TIMING.impact && elapsed < TIMING.impact + 900) {
+      point = quadraticPoint(
+        impactPoint,
+        { x: impactPoint.x + 126, y: impactPoint.y - 78 },
+        { x: impactPoint.x + 282, y: impactPoint.y + 28 },
+        easeOutCubic(rebound)
+      );
+      opacity = 1 - phase(elapsed, TIMING.impact + 620, TIMING.impact + 900);
     }
 
     scene.ball.group.style.opacity = opacity.toFixed(3);
     setTransform(scene.ball.group, "translate(" + point.x.toFixed(2) + " " + point.y.toFixed(2) + ")");
 
-    const mark = phase(elapsed, TIMING.impact - 70, TIMING.impact + 70) * (1 - phase(elapsed, TIMING.impact + 160, TIMING.impact + 520));
+    const mark = phase(elapsed, TIMING.impact - 70, TIMING.impact + 90) * (1 - phase(elapsed, TIMING.impact + 190, TIMING.impact + 650));
     scene.ball.impact.style.opacity = mark.toFixed(3);
     setTransform(scene.ball.impact, "translate(" + impactPoint.x + " " + impactPoint.y + ")");
   }
 
   function renderDisintegration(scene, state, elapsed) {
-    const vortexProgress = phase(elapsed, TIMING.vortexStart, TIMING.vortexEnd);
     const disintegrateProgress = phase(elapsed, TIMING.collapseStart, TIMING.collapseEnd);
     const settleFade = phase(elapsed, TIMING.collapseEnd, TIMING.recoverEnd);
 
     scene.particles.forEach(function (item) {
       if (elapsed < TIMING.collapseStart) {
-        const show = vortexProgress * (1 - phase(elapsed, TIMING.impact - 240, TIMING.collapseStart) * 0.28);
-        const angle = item.angle + elapsed * 0.00055 * item.speed;
-        const x = item.originX + Math.cos(angle) * item.orbit;
-        const y = item.originY + Math.sin(angle * 1.17) * item.orbit * 0.56;
-        const opacity = item.opacity * 0.36 * show;
-
-        placeParticle(item, x, y, item.rotation + angle * 20, 0.78, opacity);
+        item.element.style.opacity = "0";
         return;
       }
 
       const rawD = clamp((disintegrateProgress - item.delay) / (1 - item.delay), 0, 1);
       const d = easeOutCubic(rawD);
-      const fade = 1 - smoothstep(clamp(rawD * 1.08 + settleFade * 0.5, 0, 1));
+      const fade = 1 - smoothstep(clamp(rawD * 0.82 + settleFade * 0.7, 0, 1));
       const outward = easeOutCubic(clamp(rawD / 0.42, 0, 1));
       const falling = smoothstep(clamp((rawD - 0.22) / 0.78, 0, 1));
       const x = item.originX + item.scatterX * outward;
-      const y = item.originY + item.scatterY * outward + item.gravity * falling * falling;
-      const opacity = item.opacity * 0.9 * fade;
+      const y = item.originY + item.scatterY * outward + item.gravity * falling * falling + 160 * rawD * rawD;
+      const opacity = item.opacity * 1.08 * fade;
       const rotation = item.rotation + item.rotationSpeed * d;
       const scale = 0.92 - d * 0.22;
 
@@ -695,7 +846,6 @@
   function renderFrame(scene, state, elapsed, sceneConfig) {
     const girlState = getGirlState(elapsed, sceneConfig);
 
-    renderFloor(scene, elapsed, girlState);
     renderThoughts(scene, state, elapsed, sceneConfig);
     renderGirl(scene, girlState, elapsed);
     renderBall(scene, state, elapsed, sceneConfig);
@@ -710,16 +860,6 @@
     scene.particles.forEach(function (item) {
       item.element.style.opacity = "0";
     });
-  }
-
-  function renderFloor(scene, elapsed, girlState) {
-    const enter = phase(elapsed, TIMING.walkInStart, TIMING.walkInStart + 900);
-    const exit = phase(elapsed, TIMING.walkOutStart, TIMING.walkOutEnd);
-    const opacity = (0.11 + enter * 0.15) * girlState.opacity * (1 - exit * 0.4);
-
-    scene.floorLine.style.opacity = opacity.toFixed(3);
-    scene.floorLine.style.strokeDasharray = "1";
-    scene.floorLine.style.strokeDashoffset = (1 - enter).toFixed(3);
   }
 
   function placeParticle(item, x, y, rotation, scale, opacity) {
@@ -755,6 +895,28 @@
       scatterY: lerp(-48, 145, rng()),
       scatterRotation: lerp(-120, 120, rng())
     };
+  }
+
+  function iconParticleOrigins(icons, paths) {
+    const origins = icons.map(function (icon) {
+      return {
+        x: THOUGHT_CX + icon.x,
+        y: THOUGHT_CY + icon.y
+      };
+    });
+
+    paths.forEach(function (pathSpec, index) {
+      const angle = index * 0.72;
+      const radiusX = index < 7 ? 180 + index * 34 : 260 + (index % 5) * 58;
+      const radiusY = index < 7 ? 76 + index * 7 : 96 + (index % 4) * 16;
+
+      origins.push({
+        x: THOUGHT_CX + Math.cos(angle) * radiusX,
+        y: THOUGHT_CY + Math.sin(angle) * radiusY
+      });
+    });
+
+    return origins;
   }
 
   function buildIcon(type, group) {
@@ -797,6 +959,24 @@
       return;
     }
 
+    if (type === "laptop") {
+      rect(group, -42, -28, 84, 48);
+      path(group, "M-56 29 L56 29 L42 20 L-42 20 Z");
+      line(group, -30, -14, 26, -14);
+      line(group, -24, 0, 16, 0);
+      circle(group, 0, 25, 1.8);
+      return;
+    }
+
+    if (type === "tablet") {
+      rect(group, -30, -40, 60, 80);
+      line(group, -18, -24, 18, -24);
+      line(group, -18, -8, 12, -8);
+      line(group, -18, 10, 20, 10);
+      circle(group, 0, 30, 2.2);
+      return;
+    }
+
     if (type === "iteration") {
       path(group, "M-32 2 C-26 -24 23 -28 31 -2");
       path(group, "M31 -2 L21 -7 M31 -2 L26 -13");
@@ -816,6 +996,14 @@
       return;
     }
 
+    if (type === "sketch-panel") {
+      rect(group, -46, -29, 92, 58);
+      path(group, "M-34 12 C-12 -18 10 -19 34 9");
+      path(group, "M-38 -9 C-15 -2 11 -5 37 -15");
+      line(group, -26, 20, 26, 20);
+      return;
+    }
+
     if (type === "cube") {
       path(group, "M0 -33 L29 -16 L29 18 L0 35 L-29 18 L-29 -16 Z");
       path(group, "M0 -33 L0 1 L29 -16 M0 1 L-29 -16 M0 1 L0 35");
@@ -826,6 +1014,15 @@
       path(group, "M-38 16 L-4 -5 L36 14 L2 35 Z");
       path(group, "M-4 -5 L-4 -34 L36 -14 L36 14");
       path(group, "M-4 -34 L-38 -12 L-38 16");
+      return;
+    }
+
+    if (type === "massing") {
+      path(group, "M-42 18 L-12 0 L16 15 L-13 34 Z");
+      path(group, "M-12 0 L-12 -30 L17 -12 L16 15");
+      path(group, "M18 14 L42 0 L42 24 L17 39 Z");
+      path(group, "M18 14 L18 -8 L42 0");
+      line(group, -33, 17, -6, 32);
       return;
     }
 
@@ -857,6 +1054,13 @@
       line(group, -8, -43, -8, 16);
       line(group, 5, -35, 5, 9);
       circle(group, 34, -28, 5);
+      return;
+    }
+
+    if (type === "tennis-ball") {
+      circle(group, 0, 0, 14);
+      path(group, "M-10 -9 C-1 -2 -1 2 -10 9");
+      path(group, "M10 -9 C1 -2 1 2 10 9");
       return;
     }
 
