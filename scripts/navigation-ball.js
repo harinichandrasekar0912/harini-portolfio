@@ -10,7 +10,7 @@
     contact: 4
   };
   var FLIGHT_DURATION_MULTIPLIER = 1.32;
-  var MOBILE_BALL_TIME_SCALE = 1.35;
+  var MOBILE_BALL_TIME_SCALE = 1.42;
 
   function clamp(value, min, max) {
     return Math.min(Math.max(value, min), max);
@@ -145,6 +145,7 @@
     var isTravelling = false;
     var isProjectMode = false;
     var closeOnBlurTimer = 0;
+    var phoneMenuReadyTimer = 0;
     var resetTimer = 0;
     var sectionFrame = 0;
     var navGeometryFrame = 0;
@@ -464,6 +465,12 @@
 
     function canUseHoverNav() {
       return canHover.matches && !isMobileTapMode();
+    }
+
+    function clearPhoneMenuOpeningState() {
+      window.clearTimeout(phoneMenuReadyTimer);
+      phoneMenuReadyTimer = 0;
+      nav.classList.remove("is-phone-preparing", "is-phone-opening", "is-phone-items-ready");
     }
 
     function mobileMotionScale() {
@@ -1090,6 +1097,10 @@
 
       window.clearTimeout(closeOnBlurTimer);
 
+      if (!open) {
+        clearPhoneMenuOpeningState();
+      }
+
       if (open) {
         updateCurrentSection(detectCurrentSection(), true);
       }
@@ -1120,8 +1131,36 @@
       }
     }
 
+    function preparePhoneMenuOpen() {
+      if (isTravelling || isProjectMode || isOpen) {
+        return;
+      }
+
+      clearPhoneMenuOpeningState();
+      nav.classList.add("is-phone-preparing");
+      updateCurrentSection(detectCurrentSection(), true);
+      updateSpokeGeometry({ resetDraw: true });
+
+      window.requestAnimationFrame(function () {
+        if (isTravelling || isProjectMode || isOpen) {
+          clearPhoneMenuOpeningState();
+          return;
+        }
+
+        nav.classList.remove("is-phone-preparing");
+        nav.classList.add("is-phone-opening");
+        setOpen(true);
+
+        phoneMenuReadyTimer = window.setTimeout(function () {
+          nav.classList.add("is-phone-items-ready");
+        }, reducedMotion.matches ? 1 : 980);
+      });
+    }
+
     function clearChoiceState(finalState) {
-      nav.classList.remove("is-open", "is-choosing", "is-travelling");
+      nav.classList.remove("is-open", "is-choosing", "is-travelling", "is-phone-preparing", "is-phone-opening", "is-phone-items-ready");
+      window.clearTimeout(phoneMenuReadyTimer);
+      phoneMenuReadyTimer = 0;
       items.forEach(function (item) {
         item.disabled = false;
         item.parentElement.classList.remove("is-selected");
@@ -1146,7 +1185,7 @@
         isOpen = false;
       }
 
-      nav.classList.remove("is-open", "is-choosing", "is-travelling");
+      nav.classList.remove("is-open", "is-choosing", "is-travelling", "is-phone-preparing", "is-phone-opening", "is-phone-items-ready");
       isProjectMode = true;
       nav.classList.remove("is-project-closing");
       nav.classList.add("is-project-close");
@@ -2048,6 +2087,11 @@
       }
 
       if (canUseHoverNav() && isOpen) {
+        return;
+      }
+
+      if (isMobileViewport() && !isOpen) {
+        preparePhoneMenuOpen();
         return;
       }
 

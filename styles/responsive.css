@@ -215,7 +215,31 @@
 
 @media (max-width: 767px) {
   :root {
-    --nav-ball-form-duration: 1485ms;
+    --nav-ball-form-duration: 1818ms;
+  }
+
+  .section {
+    padding-block: clamp(4rem, 10vh, 6.5rem);
+  }
+
+  .about-section,
+  .work-section,
+  .archive-section {
+    padding-top: clamp(4rem, 9vh, 6rem);
+    padding-bottom: clamp(4rem, 9.5vh, 6.5rem);
+  }
+
+  .section-title {
+    margin-bottom: clamp(3.25rem, 9vh, 5.25rem);
+    transform: translateY(-0.75rem);
+  }
+
+  .work-list {
+    gap: clamp(2.25rem, 6vh, 3.5rem);
+  }
+
+  .work-space {
+    min-height: clamp(2.5rem, 10vw, 4.5rem);
   }
 
   .about-portrait {
@@ -324,14 +348,82 @@
     display: none;
   }
 
+  .project-open-clone {
+    transition:
+      left 1240ms var(--ease-standard),
+      top 1240ms var(--ease-standard),
+      width 1240ms var(--ease-standard),
+      height 1240ms var(--ease-standard),
+      opacity 780ms var(--ease-standard);
+  }
+
   .project-open-clone,
   .project-open-clone.is-left-attached,
   .project-open-clone.is-right-attached {
     border-radius: var(--image-radius);
   }
+
+  .project-glass {
+    transition:
+      opacity 1250ms var(--ease-standard),
+      background-color 1250ms var(--ease-standard),
+      backdrop-filter 1250ms var(--ease-standard),
+      -webkit-backdrop-filter 1250ms var(--ease-standard);
+  }
+
+  .project-viewer[data-project-mode="stacked"] .project-panel-image,
+  .project-viewer[data-project-mode="stacked"] .project-panel-copy {
+    transition:
+      opacity 720ms var(--ease-standard),
+      transform 720ms var(--ease-standard),
+      border-color 900ms var(--ease-standard),
+      background-color 900ms var(--ease-standard);
+  }
+
+  .project-viewer.is-ready[data-project-mode="stacked"] .project-panel-copy {
+    transition-delay: 320ms;
+  }
 }
 
 @media (max-width: 767px) and (pointer: coarse) {
+  .nav-object.is-phone-preparing .radial-lines,
+  .nav-object.is-phone-preparing .radial-line,
+  .nav-object.is-phone-preparing .radial-item,
+  .nav-object.is-phone-opening.is-open .radial-item {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .nav-object.is-phone-preparing .radial-item,
+  .nav-object.is-phone-opening.is-open .radial-item {
+    transform: translate(calc(-50% + var(--item-x)), var(--item-y)) scale(0.92);
+    animation: none;
+  }
+
+  .nav-object.is-phone-preparing .nav-ring circle {
+    stroke-dashoffset: 1;
+    transition: none;
+  }
+
+  .nav-object.is-phone-opening.is-open .radial-menu {
+    pointer-events: none;
+  }
+
+  .nav-object.is-phone-opening.is-open .radial-item {
+    animation: none;
+  }
+
+  .nav-object.is-phone-opening.is-phone-items-ready.is-open .radial-menu {
+    pointer-events: auto;
+  }
+
+  .nav-object.is-phone-opening.is-phone-items-ready.is-open .radial-item {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translate(calc(-50% + var(--item-x)), var(--item-y)) scale(1);
+    animation: radialPop 440ms var(--ease-standard) var(--pop-delay, 0ms) both;
+  }
+
   .archive-bars.has-active-archive-item .archive-bar:not(.is-active) {
     opacity: 1;
     transform: none;

@@ -106,23 +106,41 @@
       return waitForFrame().then(waitForFrame);
     }
 
+    function waitForPhoneLayout() {
+      if (!isStackedMode()) {
+        return Promise.resolve();
+      }
+
+      return waitForLayout().then(waitForLayout);
+    }
+
+    function waitForImageLoad(img) {
+      return new Promise(function (resolve) {
+        img.addEventListener("load", resolve, { once: true });
+        img.addEventListener("error", resolve, { once: true });
+      });
+    }
+
     function ensureImageReady(img) {
       if (!img) {
         return Promise.resolve();
       }
 
-      if (img.decode) {
-        return img.decode().catch(function () {});
-      }
-
       if (img.complete) {
-        return Promise.resolve();
+        return img.decode ? img.decode().catch(function () {}) : Promise.resolve();
       }
 
-      return new Promise(function (resolve) {
-        img.addEventListener("load", resolve, { once: true });
-        img.addEventListener("error", resolve, { once: true });
-      });
+      if (!isStackedMode()) {
+        return img.decode ? img.decode().catch(function () {}) : waitForImageLoad(img);
+      }
+
+      if (img.decode) {
+        return img.decode().catch(function () {
+          return waitForImageLoad(img);
+        });
+      }
+
+      return waitForImageLoad(img);
     }
 
     function removeActiveClone() {
@@ -189,7 +207,7 @@
         }
 
         clone.addEventListener("transitionend", handleTransitionEnd);
-        window.setTimeout(finish, 1280);
+        window.setTimeout(finish, isStackedMode() ? 1480 : 1280);
         window.requestAnimationFrame(function () {
           clone.classList.add("is-moving");
           clone.style.left = targetRect.left + "px";
@@ -352,6 +370,7 @@
       removeActiveClone();
       cloneParts = createOpenClone(trigger, project, tileRect);
       prepareProjectOpen(trigger, project, tileRect);
+      await waitForPhoneLayout();
 
       await Promise.all([
         ensureImageReady(cloneParts.image),
@@ -368,6 +387,7 @@
       viewer.classList.add("is-expanded");
       updateMaxShift();
       setProgress();
+      await waitForPhoneLayout();
 
       await Promise.all([
         ensureImageReady(hero),
@@ -442,7 +462,7 @@
         viewer.classList.remove("is-expanded");
       });
 
-      closeTimer = window.setTimeout(finishClose, reducedMotion.matches ? 1 : 1220);
+      closeTimer = window.setTimeout(finishClose, reducedMotion.matches ? 1 : isStackedMode() ? 1380 : 1220);
     }
 
     triggers.forEach(function (trigger) {
