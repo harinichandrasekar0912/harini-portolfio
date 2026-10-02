@@ -50,6 +50,7 @@
   --navi-circle-size: 62px;
   --nav-size: var(--plus-circle-size);
   --ball-size: 44px;
+  --contact-icon-size: 32px;
   --landing-media-width: min(92vw, 1180px);
   --landing-media-mobile-width: min(90vw, 560px);
 }
@@ -162,6 +163,17 @@ textarea:focus-visible {
 
 .section:focus {
   outline: none;
+}
+
+.section-title {
+  width: 100%;
+  margin: 0 0 clamp(2.5rem, 6vh, 5rem);
+  color: var(--color-ink);
+  font-size: clamp(1rem, 0.86rem + 0.48vw, 1.32rem);
+  font-weight: 380;
+  line-height: 1.2;
+  text-align: center;
+  text-transform: lowercase;
 }
 
 .viewport-edge-blur {
@@ -368,7 +380,9 @@ body.is-project-open .viewport-edge-blur {
 
 .about-section {
   display: flex;
+  flex-direction: column;
   align-items: center;
+  justify-content: center;
   padding-block: clamp(9rem, 14vw, 15rem);
 }
 
@@ -483,7 +497,9 @@ body.is-project-open .viewport-edge-blur {
 
 .archive-section {
   display: flex;
+  flex-direction: column;
   align-items: center;
+  justify-content: center;
   padding-block: clamp(9rem, 15vw, 16rem);
 }
 
@@ -724,20 +740,21 @@ body.is-project-open .viewport-edge-blur {
 .contact-links {
   position: absolute;
   left: 50%;
-  bottom: clamp(1.75rem, 5vh, 3.5rem);
-  display: flex;
+  bottom: clamp(5.5rem, 11vh, 8rem);
+  display: grid;
+  grid-template-columns: repeat(4, var(--contact-icon-size));
   align-items: center;
   justify-content: center;
   width: max-content;
-  gap: clamp(1rem, 3vw, 1.8rem);
+  gap: clamp(1.1rem, 2vw, 1.8rem);
   transform: translateX(-50%);
 }
 
 .contact-links a {
   display: grid;
   place-items: center;
-  width: 2.25rem;
-  height: 2.25rem;
+  width: var(--contact-icon-size);
+  height: var(--contact-icon-size);
   border-radius: 50%;
   color: var(--color-ink);
 }
@@ -745,8 +762,8 @@ body.is-project-open .viewport-edge-blur {
 .contact-icon-placeholder {
   display: grid;
   place-items: center;
-  width: clamp(28px, 2.4vw, 36px);
-  height: clamp(28px, 2.4vw, 36px);
+  width: var(--contact-icon-size);
+  height: var(--contact-icon-size);
   border: var(--line-thin) solid rgba(21, 20, 18, 0.26);
   border-radius: 50%;
   color: rgba(21, 20, 18, 0.72);

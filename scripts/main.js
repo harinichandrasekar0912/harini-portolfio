@@ -32,9 +32,60 @@
 
   function initArchivePlaceholders() {
     var items = Array.prototype.slice.call(document.querySelectorAll(".archive-item"));
+    var container = document.querySelector(".archive-bars");
+    var activeItem = null;
+
+    function setActive(item) {
+      if (!container) {
+        return;
+      }
+
+      if (activeItem && activeItem !== item) {
+        activeItem.classList.remove("is-active");
+      }
+
+      activeItem = item;
+
+      if (activeItem) {
+        activeItem.classList.add("is-active");
+        container.classList.add("has-active-archive-item");
+      } else {
+        container.classList.remove("has-active-archive-item");
+      }
+    }
+
+    function clearActive(item) {
+      if (activeItem !== item) {
+        return;
+      }
+
+      item.classList.remove("is-active");
+      activeItem = null;
+
+      if (container) {
+        container.classList.remove("has-active-archive-item");
+      }
+    }
+
     items.forEach(function (item) {
       item.addEventListener("click", function () {
         item.blur();
+      });
+
+      item.addEventListener("pointerenter", function () {
+        setActive(item);
+      });
+
+      item.addEventListener("pointerleave", function () {
+        clearActive(item);
+      });
+
+      item.addEventListener("focus", function () {
+        setActive(item);
+      });
+
+      item.addEventListener("blur", function () {
+        clearActive(item);
       });
     });
   }

@@ -31,6 +31,10 @@
     padding-block: clamp(5.5rem, 16vw, 8rem);
   }
 
+  .section-title {
+    margin-bottom: clamp(2rem, 8vw, 3.5rem);
+  }
+
   .landing-section {
     min-height: 100svh;
     padding-top: 1.2rem;
@@ -113,7 +117,7 @@
   }
 
   .contact-links {
-    bottom: clamp(1.25rem, 4vh, 2.5rem);
+    bottom: clamp(5rem, 9vh, 6.5rem);
     gap: var(--space-4);
   }
 
@@ -174,7 +178,7 @@
   }
 
   .contact-links {
-    bottom: 1.25rem;
+    bottom: 4.25rem;
   }
 }
 

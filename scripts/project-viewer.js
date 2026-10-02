@@ -184,7 +184,7 @@
         }
 
         clone.addEventListener("transitionend", handleTransitionEnd);
-        window.setTimeout(finish, 980);
+        window.setTimeout(finish, 1220);
         window.requestAnimationFrame(function () {
           clone.classList.add("is-moving");
           clone.style.left = targetRect.left + "px";
@@ -432,7 +432,7 @@
         viewer.classList.remove("is-expanded");
       });
 
-      closeTimer = window.setTimeout(finishClose, reducedMotion.matches ? 1 : 980);
+      closeTimer = window.setTimeout(finishClose, reducedMotion.matches ? 1 : 1120);
     }
 
     triggers.forEach(function (trigger) {

@@ -1395,18 +1395,21 @@
       var dx = endScreen.x - startScreen.x;
       var firstPrepHeight = clamp(window.innerHeight * 0.034, 24, 34);
       var secondPrepHeight = clamp(firstPrepHeight * 1.7, 40, 58);
+      var thirdPrepHeight = clamp(secondPrepHeight * 1.34, 52, 76);
       var firstPrepDuration = clamp(window.innerHeight * 0.52, 380, 440);
       var secondPrepDuration = clamp(firstPrepDuration + 80, 420, 540);
+      var thirdPrepDuration = clamp(secondPrepDuration + 70, 460, 620);
       var previousHomeArcDuration = clamp(Math.abs(startScreen.y - endScreen.y) * 0.78 + Math.abs(dx) * 0.28 + 900, 1300, 2200) * 2.1;
       var homeRouteLeadProgress = 0.65;
       var routeLeadDuration = previousHomeArcDuration * homeRouteLeadProgress;
       var finalHomeApproachDuration = previousHomeArcDuration * (1 - homeRouteLeadProgress) * 1.6;
       var homeArcDuration = routeLeadDuration + finalHomeApproachDuration;
-      var homeMorphDuration = 560;
+      var homeMorphDuration = 680;
       var arcDuration = homeArcDuration;
       var prep1End = firstPrepDuration;
       var prep2End = prep1End + secondPrepDuration;
-      var arcEnd = prep2End + arcDuration;
+      var prep3End = prep2End + thirdPrepDuration;
+      var arcEnd = prep3End + arcDuration;
       var apexY = clamp(window.innerHeight * 0.12, 72, 128);
       var launchLift = clamp(window.innerHeight * 0.42, 260, 480);
       var path = {
@@ -1442,11 +1445,13 @@
       if (DEBUG_NAV_GEOMETRY) {
         console.table({
           isHomeReturn: true,
-          timelinePhases: "prepBounceSmall, prepBounceHigher, homeReturnArc, morphToPlus",
+          timelinePhases: "prepBounceSmall, prepBounceHigher, prepBounceHighest, homeReturnArc, morphToPlus",
           firstPrepBounceHeight: round(firstPrepHeight),
           secondPrepBounceHeight: round(secondPrepHeight),
+          thirdPrepBounceHeight: round(thirdPrepHeight),
           firstPrepBounceDuration: round(firstPrepDuration),
           secondPrepBounceDuration: round(secondPrepDuration),
+          thirdPrepBounceDuration: round(thirdPrepDuration),
           noLandingBounces: true,
           noRollAway: true,
           homeTargetX: round(endScreen.x),
@@ -1491,8 +1496,13 @@
           setState(STATES.BALL_TAKEOFF);
           ball.classList.add("is-launching", "is-lifting");
           setBallPosition(startScreen.x, startScreen.y - bounceLift(raw, secondPrepHeight));
+        } else if (elapsed < prep3End) {
+          raw = (elapsed - prep2End) / thirdPrepDuration;
+          setState(STATES.BALL_TAKEOFF);
+          ball.classList.add("is-launching", "is-lifting");
+          setBallPosition(startScreen.x, startScreen.y - bounceLift(raw, thirdPrepHeight));
         } else if (elapsed < arcEnd) {
-          arcElapsed = elapsed - prep2End;
+          arcElapsed = elapsed - prep3End;
 
           if (arcElapsed < routeLeadDuration) {
             raw = (arcElapsed / routeLeadDuration) * homeRouteLeadProgress;
@@ -1542,8 +1552,10 @@
       var impactVelocityY = Math.max(0, impactVelocity.y);
       var firstPrepHeight = clamp(window.innerHeight * 0.034, 24, 34);
       var secondPrepHeight = clamp(firstPrepHeight * 1.7, 40, 58);
+      var thirdPrepHeight = clamp(secondPrepHeight * 1.34, 52, 76);
       var firstPrepDuration = config.upward ? clamp(window.innerHeight * 0.52, 380, 440) : 0;
       var secondPrepDuration = config.upward ? clamp(firstPrepDuration + 80, 420, 540) : 0;
+      var thirdPrepDuration = config.upward ? clamp(secondPrepDuration + 70, 460, 620) : 0;
       var flightDuration = clamp(config.duration * (config.upward ? 0.9 : 1), 1150, 2500);
       var baseFirstLandingHeight = clamp(Math.max(window.innerHeight * 0.04, impactVelocityY * 0.024), 32, 44);
       var firstLandingHeight = clamp(baseFirstLandingHeight * 1.15, 32, 44);
@@ -1553,7 +1565,8 @@
       var rollDuration = 2030;
       var prep1End = firstPrepDuration;
       var prep2End = prep1End + secondPrepDuration;
-      var flightEnd = prep2End + flightDuration;
+      var prep3End = prep2End + thirdPrepDuration;
+      var flightEnd = prep3End + flightDuration;
       var rebound1End = flightEnd + firstLandingDuration;
       var rebound2End = rebound1End + secondLandingDuration;
       var rollEnd = rebound2End + rollDuration;
@@ -1584,12 +1597,13 @@
       if (DEBUG_NAV_GEOMETRY) {
         console.table({
           isUpwardNavigation: config.upward,
-          timelinePhases: config.upward ? "prepBounceSmall, prepBounceHigher, launchArc, impactReboundLarge, impactReboundSmall, rollOut" : "mainArc, impactReboundLarge, impactReboundSmall, rollOut",
+          timelinePhases: config.upward ? "prepBounceSmall, prepBounceHigher, prepBounceHighest, launchArc, impactReboundLarge, impactReboundSmall, rollOut" : "mainArc, impactReboundLarge, impactReboundSmall, rollOut",
           usedSetTimeoutForBounce: false,
           transformTransitionDuringFlight: false,
           usedEaseOutIntoLanding: false,
           firstPrepBounceHeight: config.upward ? round(firstPrepHeight) : 0,
           secondPrepBounceHeight: config.upward ? round(secondPrepHeight) : 0,
+          thirdPrepBounceHeight: config.upward ? round(thirdPrepHeight) : 0,
           firstLandingBounceHeight: round(firstLandingHeight),
           secondLandingBounceHeight: round(secondLandingHeight),
           delayBetweenImpactAndBounceMs: 0,
@@ -1692,8 +1706,14 @@
           ball.classList.add("is-launching", "is-lifting");
           setBallPosition(config.startScreen.x, config.startScreen.y - bounceLift(raw, secondPrepHeight));
           setTimelineShadow(0, 0.72);
+        } else if (config.upward && elapsed < prep3End) {
+          raw = (elapsed - prep2End) / thirdPrepDuration;
+          setState(STATES.BALL_TAKEOFF);
+          ball.classList.add("is-launching", "is-lifting");
+          setBallPosition(config.startScreen.x, config.startScreen.y - bounceLift(raw, thirdPrepHeight));
+          setTimelineShadow(0, 0.72);
         } else if (elapsed < flightEnd) {
-          raw = (elapsed - prep2End) / flightDuration;
+          raw = (elapsed - prep3End) / flightDuration;
           point = flightPointAt(raw, config);
           actualScroll = flightScrollAt(raw, config);
           screen = emergencyClampToViewport(point, config, raw);
@@ -1826,11 +1846,11 @@
 
       setBallTimeout(function () {
         setState(STATES.NAVI_TEXT_VANISHING);
-      }, reducedMotion.matches ? 1 : 80, token);
+      }, reducedMotion.matches ? 1 : 120, token);
 
       setBallTimeout(function () {
         setState(STATES.NAVI_TO_BALL_MORPH);
-      }, reducedMotion.matches ? 1 : 280, token);
+      }, reducedMotion.matches ? 1 : 220, token);
 
       setBallTimeout(function () {
         nav.classList.add("is-travelling");
@@ -1838,7 +1858,7 @@
         ball.classList.remove("is-forming");
         ball.classList.add("is-ready");
         flyBall(startPoint, targetId, token);
-      }, reducedMotion.matches ? 1 : 1320, token);
+      }, reducedMotion.matches ? 1 : 1120, token);
     }
 
     core.addEventListener("click", function () {

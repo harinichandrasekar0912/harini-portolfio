@@ -464,7 +464,8 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
 .nav-travel-ball::after {
   inset: 1px;
   border: 0;
-  box-shadow: inset 5px 6px 12px rgba(0, 0, 0, 0.18);
+  background: transparent;
+  box-shadow: none;
 }
 
 .nav-travel-ball.is-visible {
@@ -490,16 +491,26 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
 }
 
 .nav-travel-ball.is-forming {
-  border-color: var(--color-ink);
-  background: var(--color-ink);
-  box-shadow: none;
-  animation: ballForm 1300ms var(--ease-standard) forwards;
+  border: 0;
+  outline: 0;
+  background:
+    radial-gradient(circle at 68% 24%, #ffffff 0%, #e8e8e8 12%, #a8a8a8 32%, #4a4a4a 62%, #111111 100%);
+  box-shadow:
+    inset -5px -6px 12px rgba(0, 0, 0, 0.16),
+    inset 5px 5px 10px rgba(255, 255, 255, 0.08);
+  animation: ballForm 900ms var(--ease-standard) forwards;
 }
 
-.nav-travel-ball.is-forming::before,
-.nav-travel-ball.is-forming::after {
+.nav-travel-ball.is-forming::before {
   opacity: 0;
-  animation: ballLightBuild 1300ms var(--ease-standard) forwards;
+  animation: ballLightBuild 900ms var(--ease-standard) forwards;
+}
+
+.nav-travel-ball.is-forming::after {
+  opacity: 1;
+  background: var(--color-ink);
+  box-shadow: none;
+  animation: ballFlatFade 900ms var(--ease-standard) forwards;
 }
 
 .nav-travel-ball.is-ready,
@@ -516,7 +527,10 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
 }
 
 .nav-travel-ball.is-restoring {
+  --ball-scale-x: 0.12;
+  --ball-scale-y: 0.12;
   opacity: 0;
+  filter: blur(0.25px);
 }
 
 .travel-label {
@@ -538,9 +552,9 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
   inset: 9px;
   z-index: 1;
   border-radius: 50%;
-  border-top: 1px solid rgba(255, 255, 255, 0.24);
-  border-left: 1px solid rgba(255, 255, 255, 0.08);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.2);
+  border-top: 1px solid rgba(255, 255, 255, 0.16);
+  border-left: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
   opacity: 0;
   pointer-events: none;
   transform: rotate(var(--ball-rotation));
@@ -550,7 +564,7 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
 }
 
 .nav-travel-ball.is-rolling .travel-roll-detail {
-  opacity: 0.34;
+  opacity: 0.22;
 }
 
 .nav-travel-ball.is-forming .travel-roll-detail,
@@ -635,12 +649,12 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
   border-color: var(--color-line-soft);
 }
 
-.archive-bars:hover .archive-bar:not(:hover, :focus-visible) {
+.archive-bars.has-active-archive-item .archive-bar:not(.is-active) {
   opacity: 0.72;
   transform: scaleX(0.965) scaleY(0.94);
 }
 
-.archive-bars:hover .archive-bar:not(:hover, :focus-visible)::after {
+.archive-bars.has-active-archive-item .archive-bar:not(.is-active)::after {
   background: rgba(0, 0, 0, 0.18);
 }
 
@@ -649,13 +663,15 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
 }
 
 .archive-bar:hover,
-.archive-bar:focus-visible {
+.archive-bar:focus-visible,
+.archive-bar.is-active {
   border-color: var(--color-line-strong);
   transform: scaleX(1.035) scaleY(1.08);
 }
 
 .archive-bar:hover::after,
-.archive-bar:focus-visible::after {
+.archive-bar:focus-visible::after,
+.archive-bar.is-active::after {
   background: rgba(0, 0, 0, 0.04);
 }
 
@@ -714,6 +730,8 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
 .nav-travel-ball.is-restoring {
   transition:
     opacity var(--restore-duration, var(--duration-medium)) var(--ease-standard),
+    transform var(--restore-duration, var(--duration-medium)) var(--ease-standard),
+    filter var(--restore-duration, var(--duration-medium)) var(--ease-standard),
     background-color var(--duration-medium) var(--ease-standard),
     border-color var(--duration-medium) var(--ease-standard);
 }
@@ -737,26 +755,22 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
 
 @keyframes ballForm {
   0% {
-    background: var(--color-ink);
     transform: translate3d(
       calc(var(--ball-x) - (var(--ball-size) / 2)),
       calc(var(--ball-y) - (var(--ball-size) / 2)),
       0
-    ) scale(1.42);
+    ) scale(1.16);
   }
 
   52% {
-    background: var(--color-ink);
     transform: translate3d(
       calc(var(--ball-x) - (var(--ball-size) / 2)),
       calc(var(--ball-y) - (var(--ball-size) / 2)),
       0
-    ) scale(1.12);
+    ) scale(1.045);
   }
 
   100% {
-    background:
-      radial-gradient(circle at 68% 24%, #ffffff 0%, #e8e8e8 12%, #a8a8a8 32%, #4a4a4a 62%, #111111 100%);
     transform: translate3d(
       calc(var(--ball-x) - (var(--ball-size) / 2)),
       calc(var(--ball-y) - (var(--ball-size) / 2)),
@@ -766,13 +780,27 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
 }
 
 @keyframes ballLightBuild {
-  0%,
-  42% {
+  0% {
     opacity: 0;
   }
 
+  58% {
+    opacity: 0.18;
+  }
+
   100% {
+    opacity: 0.96;
+  }
+}
+
+@keyframes ballFlatFade {
+  0%,
+  18% {
     opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
   }
 }
 
@@ -804,9 +832,9 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
   pointer-events: none;
   color: var(--project-text);
   transition:
-    opacity 900ms var(--ease-standard),
-    visibility 0ms linear 900ms,
-    color 780ms var(--ease-standard);
+    opacity 1050ms var(--ease-standard),
+    visibility 0ms linear 1050ms,
+    color 900ms var(--ease-standard);
 }
 
 .project-viewer.is-active {
@@ -834,11 +862,11 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
   transform: translate3d(0, 0, 0);
   will-change: left, top, width, height;
   transition:
-    left 860ms var(--ease-standard),
-    top 860ms var(--ease-standard),
-    width 860ms var(--ease-standard),
-    height 860ms var(--ease-standard),
-    opacity var(--duration-medium) var(--ease-standard);
+    left 1040ms var(--ease-standard),
+    top 1040ms var(--ease-standard),
+    width 1040ms var(--ease-standard),
+    height 1040ms var(--ease-standard),
+    opacity 650ms var(--ease-standard);
 }
 
 .project-open-clone img {
@@ -1107,7 +1135,7 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
 }
 
 .project-viewer.is-ready .project-panel-copy {
-  transition-delay: 120ms;
+  transition-delay: 220ms;
 }
 
 .project-viewer.is-closing .project-panel-image,
@@ -1202,24 +1230,24 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
 .project-progress,
 .project-progress span {
   transition:
-    opacity var(--duration-slow) var(--ease-standard),
-    transform var(--duration-slow) var(--ease-standard),
-    left var(--duration-slow) var(--ease-standard),
-    top var(--duration-slow) var(--ease-standard),
-    width var(--duration-slow) var(--ease-standard),
-    height var(--duration-slow) var(--ease-standard),
-    color 780ms var(--ease-standard),
-    background-color 780ms var(--ease-standard),
-    border-color 780ms var(--ease-standard),
-    backdrop-filter var(--duration-slow) var(--ease-standard);
+    opacity 920ms var(--ease-standard),
+    transform 920ms var(--ease-standard),
+    left 1040ms var(--ease-standard),
+    top 1040ms var(--ease-standard),
+    width 1040ms var(--ease-standard),
+    height 1040ms var(--ease-standard),
+    color 900ms var(--ease-standard),
+    background-color 900ms var(--ease-standard),
+    border-color 900ms var(--ease-standard),
+    backdrop-filter 1000ms var(--ease-standard);
 }
 
 .project-glass {
   transition:
-    opacity 920ms var(--ease-standard),
-    background-color 920ms var(--ease-standard),
-    backdrop-filter 920ms var(--ease-standard),
-    -webkit-backdrop-filter 920ms var(--ease-standard);
+    opacity 1040ms var(--ease-standard),
+    background-color 1040ms var(--ease-standard),
+    backdrop-filter 1040ms var(--ease-standard),
+    -webkit-backdrop-filter 1040ms var(--ease-standard);
 }
 
 .project-step,
