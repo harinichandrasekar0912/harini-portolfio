@@ -1,6 +1,9 @@
 .landing-media {
-  width: min(82vw, 1100px, 145svh);
-  aspect-ratio: 16 / 9;
+  justify-self: stretch;
+  width: 100vw;
+  height: clamp(320px, 42vh, 470px);
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
   border: 0;
   background: transparent;
   overflow: hidden;
@@ -14,9 +17,15 @@
 
 .landing-girl-animation {
   position: absolute;
-  inset: 0;
+  left: 50%;
+  top: 50%;
+  width: 100vw;
+  height: 100%;
+  margin-left: calc(50% - 50vw);
+  transform: translate(-50%, -50%);
   z-index: 1;
   pointer-events: none;
+  overflow: hidden;
 }
 
 .landing-girl-animation svg {
@@ -40,7 +49,7 @@
 }
 
 .landing-girl-animation .thought-line {
-  stroke-width: 1.3;
+  stroke-width: var(--line-width, 1.15px);
 }
 
 .landing-girl-animation .thought-line.is-soft,
@@ -49,7 +58,7 @@
 }
 
 .landing-girl-animation .thought-icon-line {
-  stroke-width: 1.55;
+  stroke-width: 1.15;
 }
 
 .landing-girl-animation .impact-line {
@@ -57,18 +66,11 @@
 }
 
 .landing-girl-animation .girl-fill,
+.landing-girl-animation .girl-limb,
 .landing-girl-animation .reset-ball,
 .landing-girl-animation .thought-dot,
 .landing-girl-animation .particle {
   fill: currentColor;
-}
-
-.landing-girl-animation .girl-stroke {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 13;
-  stroke-linecap: round;
-  stroke-linejoin: round;
 }
 
 .landing-girl-animation .girl-foot {
@@ -82,19 +84,19 @@
 
 @media (max-width: 760px) {
   .landing-media {
-    width: min(94vw, 620px, 142svh);
-    aspect-ratio: 16 / 9;
+    width: 100vw;
+    height: clamp(260px, 38vh, 390px);
   }
 }
 
 @media (max-width: 480px) {
   .landing-media {
-    width: min(94vw, 420px, 142svh);
+    height: clamp(240px, 36vh, 340px);
   }
 }
 
 @media (max-height: 620px) {
   .landing-media {
-    width: min(76vw, 760px, 132svh);
+    height: clamp(240px, 48vh, 330px);
   }
 }
