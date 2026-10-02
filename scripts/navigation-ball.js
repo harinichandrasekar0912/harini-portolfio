@@ -511,6 +511,59 @@
       clearBallTimersAndFrames();
     }
 
+    function landingAnimationController() {
+      return window.landingGirlAnimation || null;
+    }
+
+    function shouldDelayForLandingAnimation(targetId) {
+      var landingAnimation = landingAnimationController();
+
+      return targetId !== "landing" &&
+        landingAnimation &&
+        typeof landingAnimation.isLandingActive === "function" &&
+        landingAnimation.isLandingActive() &&
+        typeof landingAnimation.interruptForNavigation === "function";
+    }
+
+    function notifyLandingPlusOpened() {
+      var landingAnimation = landingAnimationController();
+
+      window.dispatchEvent(new CustomEvent("landing-nav-plus-opened"));
+
+      if (
+        landingAnimation &&
+        typeof landingAnimation.isLandingActive === "function" &&
+        landingAnimation.isLandingActive() &&
+        typeof landingAnimation.handlePlusDistraction === "function"
+      ) {
+        landingAnimation.handlePlusDistraction();
+      }
+    }
+
+    function startLandingAnimationInterrupt(targetId) {
+      var landingAnimation = landingAnimationController();
+
+      if (!shouldDelayForLandingAnimation(targetId)) {
+        return Promise.resolve();
+      }
+
+      window.dispatchEvent(new CustomEvent("landing-nav-circle-selected", {
+        detail: {
+          targetSectionId: targetId
+        }
+      }));
+
+      return landingAnimation.interruptForNavigation();
+    }
+
+    function waitForLandingAnimationBeforeFlight(targetId, pendingInterrupt) {
+      if (pendingInterrupt) {
+        return pendingInterrupt;
+      }
+
+      return startLandingAnimationInterrupt(targetId);
+    }
+
     function beginBallAnimation(targetId) {
       cancelBallAnimation();
       activeAnimationToken += 1;
@@ -2087,7 +2140,9 @@
       var startX = buttonRect.left + buttonRect.width / 2;
       var startY = buttonRect.top + buttonRect.height / 2;
       var scrollY = window.scrollY || window.pageYOffset;
-      var morphDuration = reducedMotion.matches ? 1 : BALL_MORPH_DURATION;
+      var delayForLandingAnimation = shouldDelayForLandingAnimation(targetId);
+      var morphDuration = reducedMotion.matches ? 1 : delayForLandingAnimation ? 1500 : BALL_MORPH_DURATION;
+      var landingInterruptPromise = null;
       var startPoint = {
         element: button,
         section: "menu",
@@ -2150,6 +2205,10 @@
       resetBallClasses();
       ball.classList.add("is-visible", "is-forming");
 
+      if (delayForLandingAnimation) {
+        landingInterruptPromise = startLandingAnimationInterrupt(targetId);
+      }
+
       setBallTimeout(function () {
         setState(STATES.NAVI_TEXT_VANISHING);
       }, reducedMotion.matches ? 1 : morphDuration * 0.14, token);
@@ -2163,7 +2222,20 @@
         setState(STATES.BALL_READY);
         ball.classList.remove("is-forming");
         ball.classList.add("is-ready");
-        flyBall(startPoint, targetId, token);
+
+        waitForLandingAnimationBeforeFlight(targetId, landingInterruptPromise).then(function () {
+          if (!isCurrentAnimation(token)) {
+            return;
+          }
+
+          flyBall(startPoint, targetId, token);
+        }, function () {
+          if (!isCurrentAnimation(token)) {
+            return;
+          }
+
+          flyBall(startPoint, targetId, token);
+        });
       }, morphDuration, token);
     }
 
@@ -2182,6 +2254,10 @@
         return;
       }
 
+      if (!isOpen) {
+        notifyLandingPlusOpened();
+      }
+
       if ((isMobileViewport() || isTabletLandscapeTouchViewport()) && !isOpen) {
         preparePhoneMenuOpen();
         return;
@@ -2192,6 +2268,10 @@
 
     nav.addEventListener("pointerenter", function () {
       if (canUseHoverNav() && !isProjectMode) {
+        if (!isOpen) {
+          notifyLandingPlusOpened();
+        }
+
         setOpen(true);
       }
     });

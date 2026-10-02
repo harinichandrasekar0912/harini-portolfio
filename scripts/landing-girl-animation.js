@@ -18,6 +18,9 @@
   const GIRL_PEEK_X = STAGE_WIDTH - 70;
   const THOUGHT_CX = GIRL_CENTER_X;
   const THOUGHT_CY = 305;
+  const INTERRUPT_DURATION = 3400;
+  const INTERRUPT_RUN_START = 900;
+  const INTERRUPT_RUN_END = 2700;
 
   const TIMING = {
     emptyEnd: 1200,
@@ -63,26 +66,252 @@
 
   const state = createSceneState(config);
   const scene = createScene(root, config, state);
-
-  if (prefersReducedMotion) {
-    renderStaticScene(scene, state, config);
-    return;
-  }
+  const landingSection = document.getElementById("landing") || root.closest("section");
+  const plusDistraction = {
+    active: false,
+    startTime: 0,
+    duration: 1200
+  };
+  const interruptState = {
+    active: false,
+    startTime: 0,
+    frozenElapsed: 0,
+    startX: GIRL_CENTER_X,
+    promise: null,
+    resolve: null,
+    completed: false
+  };
 
   let startTime = performance.now();
   let frameId = 0;
+  let currentElapsed = 0;
+  let isLandingVisible = measureLandingVisible();
+
+  window.landingGirlAnimation = {
+    isLandingActive: isLandingActive,
+    isPlaying: isPlaying,
+    restart: restart,
+    pause: pause,
+    resume: resume,
+    handlePlusDistraction: handlePlusDistraction,
+    interruptForNavigation: interruptForNavigation
+  };
+
+  window.addEventListener("landing-nav-plus-opened", handlePlusDistraction);
+  window.addEventListener("landing-nav-circle-selected", function () {
+    interruptForNavigation();
+  });
+
+  setupVisibilityObserver();
+
+  if (prefersReducedMotion) {
+    renderStaticScene(scene, state, config);
+  } else if (isLandingVisible) {
+    restart();
+  } else {
+    renderFrame(scene, state, 0, config, performance.now());
+  }
 
   function tick(now) {
-    const elapsed = (now - startTime) % config.duration;
-    renderFrame(scene, state, elapsed, config);
+    if (!isLandingVisible && !interruptState.active) {
+      frameId = 0;
+      return;
+    }
+
+    if (interruptState.active) {
+      const interruptElapsed = now - interruptState.startTime;
+      renderInterruptFrame(scene, state, interruptElapsed, config, now);
+
+      if (interruptElapsed >= INTERRUPT_DURATION) {
+        completeInterrupt();
+        return;
+      }
+
+      frameId = requestAnimationFrame(tick);
+      return;
+    }
+
+    currentElapsed = (now - startTime) % config.duration;
+    renderFrame(scene, state, currentElapsed, config, now);
     frameId = requestAnimationFrame(tick);
   }
 
-  frameId = requestAnimationFrame(tick);
-
   window.addEventListener("pagehide", function () {
-    cancelAnimationFrame(frameId);
+    pause();
   });
+
+  function setupVisibilityObserver() {
+    if (!landingSection || !("IntersectionObserver" in window)) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        const visible = entry.isIntersecting && entry.intersectionRatio >= 0.35;
+
+        if (visible === isLandingVisible) {
+          return;
+        }
+
+        isLandingVisible = visible;
+
+        if (visible) {
+          restart();
+          return;
+        }
+
+        if (interruptState.active) {
+          completeInterrupt();
+        }
+
+        pause();
+        resetRuntimeState(false);
+      });
+    }, {
+      threshold: [0, 0.35, 0.5]
+    });
+
+    observer.observe(landingSection);
+  }
+
+  function measureLandingVisible() {
+    if (!landingSection) {
+      return true;
+    }
+
+    const rect = landingSection.getBoundingClientRect();
+    const visibleHeight = Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0);
+    const ratio = rect.height > 0 ? visibleHeight / rect.height : 0;
+
+    return visibleHeight > 0 && ratio >= 0.35;
+  }
+
+  function isLandingActive() {
+    return isLandingVisible && !interruptState.completed;
+  }
+
+  function isPlaying() {
+    return Boolean(frameId) && isLandingVisible && !prefersReducedMotion;
+  }
+
+  function startLoop() {
+    if (prefersReducedMotion || frameId) {
+      return;
+    }
+
+    frameId = requestAnimationFrame(tick);
+  }
+
+  function pause() {
+    if (frameId) {
+      cancelAnimationFrame(frameId);
+      frameId = 0;
+    }
+  }
+
+  function resume() {
+    if (!isLandingVisible || prefersReducedMotion) {
+      return;
+    }
+
+    startLoop();
+  }
+
+  function restart() {
+    pause();
+    resetRuntimeState(true);
+    startTime = performance.now();
+    currentElapsed = 0;
+
+    if (prefersReducedMotion) {
+      renderStaticScene(scene, state, config);
+      return;
+    }
+
+    renderFrame(scene, state, 0, config, startTime);
+
+    if (isLandingVisible) {
+      startLoop();
+    }
+  }
+
+  function resetRuntimeState(resolvePending) {
+    plusDistraction.active = false;
+    plusDistraction.startTime = 0;
+    resetInterruptState(resolvePending);
+  }
+
+  function resetInterruptState(resolvePending) {
+    if (resolvePending && interruptState.resolve) {
+      interruptState.resolve();
+    }
+
+    interruptState.active = false;
+    interruptState.startTime = 0;
+    interruptState.frozenElapsed = 0;
+    interruptState.startX = GIRL_CENTER_X;
+    interruptState.promise = null;
+    interruptState.resolve = null;
+    interruptState.completed = false;
+  }
+
+  function handlePlusDistraction() {
+    if (!isLandingActive() || interruptState.active || prefersReducedMotion) {
+      return;
+    }
+
+    plusDistraction.active = true;
+    plusDistraction.startTime = performance.now();
+  }
+
+  function interruptForNavigation() {
+    if (!isLandingActive()) {
+      return Promise.resolve();
+    }
+
+    if (prefersReducedMotion) {
+      pause();
+      interruptState.completed = true;
+
+      return new Promise(function (resolve) {
+        window.setTimeout(resolve, 360);
+      });
+    }
+
+    if (interruptState.active && interruptState.promise) {
+      return interruptState.promise;
+    }
+
+    const now = performance.now();
+    const frozenGirlState = getGirlState(currentElapsed);
+
+    plusDistraction.active = false;
+    interruptState.active = true;
+    interruptState.completed = false;
+    interruptState.startTime = now;
+    interruptState.frozenElapsed = currentElapsed;
+    interruptState.startX = Number.isFinite(frozenGirlState.x) ? frozenGirlState.x : GIRL_CENTER_X;
+    interruptState.promise = new Promise(function (resolve) {
+      interruptState.resolve = resolve;
+    });
+
+    startLoop();
+    return interruptState.promise;
+  }
+
+  function completeInterrupt() {
+    renderInterruptFrame(scene, state, INTERRUPT_DURATION, config, performance.now());
+    pause();
+    interruptState.active = false;
+    interruptState.completed = true;
+
+    if (interruptState.resolve) {
+      interruptState.resolve();
+    }
+
+    interruptState.resolve = null;
+    interruptState.promise = null;
+  }
 
   function createSceneState(sceneConfig) {
     const rng = createSeededRandom(42);
@@ -503,7 +732,8 @@
       scratchProgress: 0,
       shakeProgress: 0,
       lean: 0,
-      peekLean: 0
+      peekLean: 0,
+      distractionAmount: 0
     };
 
     if (elapsed < TIMING.walkInStart) {
@@ -623,23 +853,77 @@
     return state;
   }
 
+  function getInterruptGirlState(elapsed) {
+    const snap = phase(elapsed, 0, 260);
+    const turn = smoothstep(phase(elapsed, 220, INTERRUPT_RUN_START));
+    const run = easeInCubic(phase(elapsed, INTERRUPT_RUN_START, INTERRUPT_RUN_END));
+    const fade = 1 - phase(elapsed, INTERRUPT_RUN_END - 260, INTERRUPT_RUN_END);
+    const runActive = elapsed >= INTERRUPT_RUN_START;
+    const x = runActive
+      ? lerp(interruptState.startX, GIRL_OFFSCREEN_LEFT - 70, run)
+      : interruptState.startX;
+    const opacity = clamp(fade, 0, 1);
+
+    return {
+      x: x,
+      y: GROUND_Y,
+      opacity: opacity,
+      mode: runActive ? "interruptRunProfile" : "owReaction",
+      facing: "left",
+      turnProgress: turn,
+      walkPhase: elapsed * 0.021,
+      bodyBob: runActive ? Math.abs(Math.sin(elapsed * 0.021)) * 2.8 : Math.sin(snap * Math.PI) * 2.2,
+      headTilt: runActive ? -2 : -6 * Math.sin(snap * Math.PI),
+      impactAmount: runActive ? 0 : Math.sin(snap * Math.PI) * 0.38,
+      breathingAmount: 0,
+      profileOpacity: runActive ? opacity : opacity * turn,
+      frontOpacity: runActive ? 0 : opacity * (1 - turn),
+      scratchProgress: 0,
+      shakeProgress: 0,
+      lean: runActive ? -7 : -2.2 * Math.sin(snap * Math.PI),
+      peekLean: 0,
+      distractionAmount: 0
+    };
+  }
+
+  function applyPlusDistraction(girlState, now) {
+    if (!plusDistraction.active) {
+      return girlState;
+    }
+
+    const t = phase(now, plusDistraction.startTime, plusDistraction.startTime + plusDistraction.duration);
+
+    if (t >= 1) {
+      plusDistraction.active = false;
+      girlState.distractionAmount = 0;
+      return girlState;
+    }
+
+    const baseAmount = Math.sin(t * Math.PI);
+    const thinkingMode = girlState.mode === "frontThinking" || girlState.mode === "settle" || girlState.mode === "recover";
+    girlState.distractionAmount = baseAmount * (thinkingMode ? 1 : 0.35);
+    return girlState;
+  }
+
   function renderGirl(scene, girlState) {
     const walk = girlState.mode === "walkProfile" || girlState.mode === "walkOutProfile" ? 1 : 0;
+    const run = girlState.mode === "interruptRunProfile" ? 1 : 0;
     const peek = girlState.mode === "peekProfile" ? 1 : 0;
+    const distraction = girlState.distractionAmount || 0;
     const breathing = girlState.breathingAmount;
-    const y = girlState.y + girlState.bodyBob + breathing;
-    const swing = Math.sin(girlState.walkPhase) * 12 * walk;
-    const footLift = Math.abs(Math.sin(girlState.walkPhase)) * walk;
+    const y = girlState.y + girlState.bodyBob + breathing + distraction * 1.5;
+    const swing = Math.sin(girlState.walkPhase) * (12 * walk + 21 * run);
+    const footLift = Math.abs(Math.sin(girlState.walkPhase)) * (walk + run * 1.35);
     const scratchRaise = smoothstep(clamp(girlState.scratchProgress / 0.32, 0, 1)) * (1 - smoothstep(clamp((girlState.scratchProgress - 0.78) / 0.22, 0, 1)));
     const scratchRub = Math.sin(girlState.scratchProgress * Math.PI * 8) * scratchRaise;
     const frontArmEase = girlState.mode === "frontThinking" ? 2.4 : 0;
     const shadowOpacity = girlState.opacity * (girlState.mode === "hidden" ? 0 : 0.17);
-    const shadowRx = 36 + footLift * 7 + peek * 2;
+    const shadowRx = 36 + footLift * 7 + peek * 2 + run * 4;
 
     scene.girl.group.style.opacity = girlState.opacity.toFixed(3);
     setTransform(
       scene.girl.group,
-      "translate(" + girlState.x.toFixed(2) + " " + y.toFixed(2) + ") rotate(" + (girlState.lean + girlState.peekLean).toFixed(2) + " 0 -96)"
+      "translate(" + girlState.x.toFixed(2) + " " + y.toFixed(2) + ") rotate(" + (girlState.lean + girlState.peekLean + distraction * 1.6).toFixed(2) + " 0 -96)"
     );
 
     scene.girl.profile.style.opacity = String(clamp(girlState.profileOpacity, 0, 1).toFixed(3));
@@ -666,11 +950,11 @@
     );
     setTransform(
       scene.girl.profileHead,
-      "translate(0 " + (girlState.impactAmount * 2).toFixed(2) + ") rotate(" + (girlState.headTilt + Math.sin(girlState.walkPhase) * 0.8 * walk).toFixed(2) + " 0 -164)"
+      "translate(0 " + (girlState.impactAmount * 2 + distraction * 2).toFixed(2) + ") rotate(" + (girlState.headTilt + distraction * 8 + Math.sin(girlState.walkPhase) * 0.8 * (walk + run)).toFixed(2) + " 0 -164)"
     );
     setTransform(
       scene.girl.profilePonytail,
-      "rotate(" + (Math.sin(girlState.walkPhase + 1.1) * 6 * walk + girlState.impactAmount * 12 + girlState.peekLean * -0.4).toFixed(2) + " 26 -186)"
+      "rotate(" + (Math.sin(girlState.walkPhase + 1.1) * (6 * walk + 11 * run) + girlState.impactAmount * 12 + girlState.peekLean * -0.4).toFixed(2) + " 26 -186)"
     );
 
     setTransform(scene.girl.frontLegLeft, "rotate(" + (-1.8 + girlState.impactAmount * 1.2).toFixed(2) + " -16 -64)");
@@ -682,7 +966,7 @@
     );
     setTransform(
       scene.girl.frontHead,
-      "translate(0 " + (girlState.impactAmount * 3).toFixed(2) + ") rotate(" + girlState.headTilt.toFixed(2) + " 0 -164)"
+      "translate(0 " + (girlState.impactAmount * 3 + distraction * 2).toFixed(2) + ") rotate(" + (girlState.headTilt + distraction * 8).toFixed(2) + " 0 -164)"
     );
     setTransform(
       scene.girl.frontPonytail,
@@ -690,10 +974,17 @@
     );
   }
 
-  function renderThoughts(scene, state, elapsed) {
-    const vortexProgress = phase(elapsed, TIMING.vortexStart, TIMING.vortexEnd);
-    const disintegrateProgress = phase(elapsed, TIMING.collapseStart, TIMING.collapseEnd);
-    const resetProgress = phase(elapsed, TIMING.collapseEnd, TIMING.recoverEnd);
+  function renderThoughts(scene, state, elapsed, sceneConfig, options) {
+    const renderOptions = options || {};
+    const vortexProgress = renderOptions.vortexProgress != null
+      ? renderOptions.vortexProgress
+      : phase(elapsed, TIMING.vortexStart, TIMING.vortexEnd);
+    const disintegrateProgress = renderOptions.disintegrateProgress != null
+      ? renderOptions.disintegrateProgress
+      : phase(elapsed, TIMING.collapseStart, TIMING.collapseEnd);
+    const resetProgress = renderOptions.resetProgress != null
+      ? renderOptions.resetProgress
+      : phase(elapsed, TIMING.collapseEnd, TIMING.recoverEnd);
 
     renderThreadDot(scene, elapsed, disintegrateProgress);
     renderPathItems(scene.thoughtPaths, elapsed, vortexProgress, disintegrateProgress, resetProgress);
@@ -818,12 +1109,18 @@
     setTransform(scene.ball.impact, "translate(" + impactPoint.x + " " + impactPoint.y + ")");
   }
 
-  function renderDisintegration(scene, state, elapsed) {
-    const disintegrateProgress = phase(elapsed, TIMING.collapseStart, TIMING.collapseEnd);
-    const settleFade = phase(elapsed, TIMING.collapseEnd, TIMING.recoverEnd);
+  function renderDisintegration(scene, state, elapsed, sceneConfig, options) {
+    const renderOptions = options || {};
+    const forceDisintegration = Boolean(renderOptions.forceDisintegration);
+    const disintegrateProgress = renderOptions.disintegrateProgress != null
+      ? renderOptions.disintegrateProgress
+      : phase(elapsed, TIMING.collapseStart, TIMING.collapseEnd);
+    const settleFade = renderOptions.settleFade != null
+      ? renderOptions.settleFade
+      : phase(elapsed, TIMING.collapseEnd, TIMING.recoverEnd);
 
     scene.particles.forEach(function (item) {
-      if (elapsed < TIMING.collapseStart) {
+      if (!forceDisintegration && elapsed < TIMING.collapseStart) {
         item.element.style.opacity = "0";
         return;
       }
@@ -844,12 +1141,36 @@
   }
 
   function renderFrame(scene, state, elapsed, sceneConfig) {
-    const girlState = getGirlState(elapsed, sceneConfig);
+    const now = arguments.length > 4 ? arguments[4] : performance.now();
+    const girlState = applyPlusDistraction(getGirlState(elapsed, sceneConfig), now);
 
     renderThoughts(scene, state, elapsed, sceneConfig);
     renderGirl(scene, girlState, elapsed);
     renderBall(scene, state, elapsed, sceneConfig);
     renderDisintegration(scene, state, elapsed, sceneConfig);
+  }
+
+  function renderInterruptFrame(scene, state, elapsed, sceneConfig) {
+    const thoughtElapsed = Math.max(interruptState.frozenElapsed, TIMING.threadStart + 900);
+    const vortexProgress = Math.max(phase(interruptState.frozenElapsed, TIMING.vortexStart, TIMING.vortexEnd), 0.38);
+    const thoughtDisintegration = phase(elapsed, 0, 760);
+    const particleDisintegration = phase(elapsed, 0, 2600);
+    const settleFade = phase(elapsed, 2500, INTERRUPT_DURATION);
+    const resetProgress = phase(elapsed, 900, 1900);
+
+    scene.ball.group.style.opacity = "0";
+    scene.ball.impact.style.opacity = "0";
+    renderThoughts(scene, state, thoughtElapsed, sceneConfig, {
+      vortexProgress: vortexProgress,
+      disintegrateProgress: thoughtDisintegration,
+      resetProgress: resetProgress
+    });
+    renderGirl(scene, getInterruptGirlState(elapsed), elapsed);
+    renderDisintegration(scene, state, thoughtElapsed, sceneConfig, {
+      forceDisintegration: true,
+      disintegrateProgress: particleDisintegration,
+      settleFade: settleFade
+    });
   }
 
   function renderStaticScene(scene, state, sceneConfig) {
