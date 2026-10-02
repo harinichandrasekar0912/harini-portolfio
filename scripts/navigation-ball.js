@@ -637,14 +637,16 @@
       var lift = clamp(window.innerHeight * (0.09 + attempt * 0.055), 72, 190);
       var controlBias = clamp(0.46 + attempt * 0.16, 0.46, 0.78);
       var topClear = collision ? collision.rect.top - lift : config.path.apex.y - lift;
+      var controlAX = config.upward ? config.path.start.x : mix(config.path.controlA.x, laneX, controlBias * 0.28);
+      var controlBX = config.upward ? config.path.controlB.x : config.path.end.x;
 
       config.path.controlA = fitControlPointInsideBounds({
-        x: mix(config.path.controlA.x, laneX, controlBias * 0.28),
+        x: controlAX,
         y: Math.min(config.path.controlA.y, topClear)
       }, config.bounds);
 
       config.path.controlB = fitControlPointInsideBounds({
-        x: config.path.end.x,
+        x: controlBX,
         y: Math.min(config.path.controlB.y, topClear + lift * 0.18)
       }, config.bounds);
 
@@ -1284,6 +1286,33 @@
       path.apex = apex;
     }
 
+    function createUpwardFlightPath(start, landing, config) {
+      var bounds = config.bounds;
+      var dx = landing.x - start.x;
+      var direction = dx < 0 ? -1 : 1;
+      var distanceX = Math.abs(dx);
+      var verticalSpan = Math.abs(landing.y - start.y);
+      var apexLift = clamp(Math.max(window.innerHeight * 0.54, distanceX * 0.48, verticalSpan * 0.74), 330, 620);
+      var apexY = clamp(Math.min(start.y, landing.y) - apexLift, bounds.minY + 10, bounds.maxY);
+      var transferDrop = clamp(window.innerHeight * 0.14, 86, 150);
+      var transferMaxY = Math.max(bounds.minY + 28, Math.min(start.y, landing.y) - 42);
+      var path = {
+        start: start,
+        controlA: fitControlPointInsideBounds({
+          x: start.x + direction * Math.min(distanceX * 0.012, 6),
+          y: apexY
+        }, bounds),
+        controlB: fitControlPointInsideBounds({
+          x: start.x + dx * 0.84,
+          y: clamp(apexY + transferDrop, bounds.minY + 22, transferMaxY)
+        }, bounds),
+        end: landing
+      };
+
+      updatePathApex(path);
+      return path;
+    }
+
     function createSmoothFlightPath(startScreen, endScreen, config) {
       var bounds = config.bounds;
       var start = fitControlPointInsideBounds(startScreen, bounds);
@@ -1296,6 +1325,10 @@
       var arcHeight = clamp(Math.max(window.innerHeight * 0.42, distanceX * 0.42, Math.abs(landing.y - start.y) * 0.48), 230, 520);
       var controlY = Math.max(bounds.minY + 12, Math.min(start.y, landing.y) - arcHeight);
       var path;
+
+      if (config.upward) {
+        return createUpwardFlightPath(start, landing, config);
+      }
 
       path = {
         start: start,
