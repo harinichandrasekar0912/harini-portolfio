@@ -39,6 +39,7 @@
     var touchY = 0;
     var closeTimer = 0;
     var readyTimer = 0;
+    var contentReadyTimer = 0;
     var pendingShift = 0;
     var shiftFrame = 0;
     var openToken = 0;
@@ -251,6 +252,7 @@
       pendingShift = 0;
       window.clearTimeout(closeTimer);
       window.clearTimeout(readyTimer);
+      window.clearTimeout(contentReadyTimer);
 
       if (shiftFrame) {
         window.cancelAnimationFrame(shiftFrame);
@@ -267,6 +269,16 @@
       document.body.classList.add("is-project-open", "is-project-dark");
       document.body.classList.remove("is-project-closing");
       notifyProjectState("harini:project-open");
+    }
+
+    function revealProjectContent(token) {
+      if (token !== openToken || !viewer.classList.contains("is-active")) {
+        return;
+      }
+
+      viewer.classList.remove("is-preparing");
+      viewer.classList.add("is-ready");
+      viewer.focus({ preventScroll: true });
     }
 
     function updateMaxShift() {
@@ -392,6 +404,7 @@
       var tileRect = trigger.getBoundingClientRect();
       var cloneParts;
       var targetRect;
+      var cloneMotion;
       openToken = token;
       removeActiveClone();
       cloneParts = createOpenClone(trigger, project, tileRect);
@@ -427,16 +440,20 @@
       }
 
       targetRect = measureProjectTargetRect();
-      await animateCloneTo(cloneParts.element, targetRect);
+      cloneMotion = animateCloneTo(cloneParts.element, targetRect);
+      contentReadyTimer = window.setTimeout(function () {
+        revealProjectContent(token);
+      }, reducedMotion.matches ? 1 : isStackedMode() ? 560 : isTabletLandscapeTouchViewport() ? 520 : 420);
+
+      await cloneMotion;
 
       if (token !== openToken) {
         removeActiveClone();
         return;
       }
 
-      viewer.classList.remove("is-preparing");
-      viewer.classList.add("is-ready");
-      viewer.focus({ preventScroll: true });
+      window.clearTimeout(contentReadyTimer);
+      revealProjectContent(token);
       readyTimer = window.setTimeout(removeActiveClone, reducedMotion.matches ? 1 : 180);
     }
 
@@ -466,6 +483,7 @@
       openToken += 1;
       removeActiveClone();
       window.clearTimeout(readyTimer);
+      window.clearTimeout(contentReadyTimer);
 
       if (shiftFrame) {
         window.cancelAnimationFrame(shiftFrame);

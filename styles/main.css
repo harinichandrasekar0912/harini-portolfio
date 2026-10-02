@@ -533,11 +533,11 @@ body.is-project-open .viewport-edge-blur {
 }
 
 .archive-bar {
-  --bar-width: clamp(440px, 58vw, 860px);
+  --bar-width: clamp(520px, 64vw, 980px);
   position: relative;
   display: block;
   width: var(--bar-width);
-  height: clamp(96px, 13vh, 160px);
+  height: clamp(124px, 16vh, 210px);
   padding: 0;
   margin: 0;
   border: var(--line-thin) solid var(--color-line);
@@ -550,19 +550,19 @@ body.is-project-open .viewport-edge-blur {
 }
 
 .archive-bar-long {
-  --bar-width: clamp(500px, 66vw, 1080px);
+  --bar-width: clamp(600px, 74vw, 1240px);
 }
 
 .archive-bar-medium {
-  --bar-width: clamp(440px, 56vw, 920px);
+  --bar-width: clamp(520px, 62vw, 1050px);
 }
 
 .archive-bar-midshort {
-  --bar-width: clamp(390px, 50vw, 820px);
+  --bar-width: clamp(460px, 56vw, 940px);
 }
 
 .archive-bar-short {
-  --bar-width: clamp(340px, 42vw, 690px);
+  --bar-width: clamp(400px, 48vw, 780px);
 }
 
 .archive-bar img {
@@ -756,7 +756,7 @@ body.is-project-open .viewport-edge-blur {
 .contact-links {
   position: absolute;
   left: 50%;
-  bottom: clamp(5.5rem, 11vh, 8rem);
+  bottom: clamp(8rem, 15vh, 11rem);
   display: grid;
   grid-template-columns: repeat(4, var(--contact-icon-size));
   align-items: center;

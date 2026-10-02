@@ -1170,6 +1170,12 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
   opacity: 0;
 }
 
+.project-viewer.is-expanded.is-preparing .project-glass {
+  opacity: 0.96;
+  backdrop-filter: blur(18px) saturate(0.78);
+  -webkit-backdrop-filter: blur(18px) saturate(0.78);
+}
+
 .project-viewer.is-ready .project-hero-frame {
   opacity: 0;
 }

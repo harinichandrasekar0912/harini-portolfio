@@ -1394,7 +1394,11 @@
     }
 
     function landingApproachHeight() {
-      return clamp(window.innerHeight * 0.155, 112, 156);
+      return clamp(window.innerHeight * 0.12, 90, 170);
+    }
+
+    function upwardOvershootZ() {
+      return clamp(window.innerHeight * 0.09, 70, 140);
     }
 
     function enforceLandingVelocity(path, bounds) {
@@ -1413,12 +1417,8 @@
       var bounds = config.bounds;
       var dx = landing.x - start.x;
       var direction = dx < 0 ? -1 : 1;
-      var distanceX = Math.abs(dx);
-      var verticalSpan = Math.abs(landing.y - start.y);
       var minVisibleY = Math.max(bounds.minY, 36);
-      var upwardOvershoot = clamp(window.innerHeight * 0.13, 96, 168);
-      var apexLift = clamp(Math.max(window.innerHeight * 0.54, distanceX * 0.48, verticalSpan * 0.74) * 1.72 + upwardOvershoot, 520, 980);
-      var apexY = clamp(Math.min(start.y, landing.y) - apexLift, minVisibleY, bounds.maxY);
+      var apexY = clamp(landing.y - upwardOvershootZ(), minVisibleY, bounds.maxY);
       var path = {
         start: start,
         controlA: fitControlPointInsideBounds({
@@ -1790,10 +1790,10 @@
       var secondPrepDuration = config.upward ? scaleMotionDuration(baseSecondPrepDuration) : 0;
       var thirdPrepDuration = config.upward ? scaleMotionDuration(baseThirdPrepDuration) : 0;
       var flightDuration = scaleMotionDuration(clamp(config.duration * (config.upward ? 0.9 : 1), 1150, 2500));
-      var firstLandingHeight = clamp(Math.max(window.innerHeight * 0.055, impactVelocityY * 0.16) * (config.upward ? 1.06 : 1), 50, 74);
-      var secondLandingHeight = clamp(firstLandingHeight * 0.23, 13, 18);
-      var firstLandingDuration = scaleMotionDuration(clamp(window.innerHeight * 0.46, 330, 430));
-      var secondLandingDuration = scaleMotionDuration(clamp(window.innerHeight * 0.3, 200, 280));
+      var firstLandingHeight = clamp(Math.max(window.innerHeight * 0.062, impactVelocityY * 0.18) * (config.upward ? 1.04 : 1), 58, 82);
+      var secondLandingHeight = clamp(firstLandingHeight * 0.245, 14, 20);
+      var firstLandingDuration = scaleMotionDuration(clamp(window.innerHeight * 0.44, 340, 440));
+      var secondLandingDuration = scaleMotionDuration(clamp(window.innerHeight * 0.29, 210, 300));
       var rollDuration = scaleMotionDuration(2030);
       var prep1End = firstPrepDuration;
       var prep2End = prep1End + secondPrepDuration;
@@ -1838,9 +1838,12 @@
           thirdPrepBounceHeight: config.upward ? round(thirdPrepHeight) : 0,
           firstLandingBounceHeight: round(firstLandingHeight),
           secondLandingBounceHeight: round(secondLandingHeight),
+          firstLandingBounceDuration: round(firstLandingDuration),
+          secondLandingBounceDuration: round(secondLandingDuration),
           delayBetweenImpactAndBounceMs: 0,
           impactVelocityY: round(impactVelocityY),
           upwardArcLiftNew: config.upward ? round(config.path.start.y - config.path.apex.y) : 0,
+          upwardOvershootZ: config.upward ? round(upwardOvershootZ()) : 0,
           usesEaseOutNearLanding: false,
           morphDurationNew: BALL_MORPH_DURATION
         });
