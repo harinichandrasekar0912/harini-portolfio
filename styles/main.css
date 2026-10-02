@@ -167,7 +167,7 @@ textarea:focus-visible {
 
 .section-title {
   width: 100%;
-  margin: 0 0 clamp(2.5rem, 6vh, 5rem);
+  margin: 0 0 clamp(2.25rem, 4.8vh, 3.75rem);
   color: var(--color-ink);
   font-size: clamp(1rem, 0.86rem + 0.48vw, 1.32rem);
   font-weight: 380;
@@ -382,8 +382,8 @@ body.is-project-open .viewport-edge-blur {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding-block: clamp(9rem, 14vw, 15rem);
+  justify-content: flex-start;
+  padding-block: clamp(6.25rem, 9.5vw, 9.5rem);
 }
 
 .about-layout {
@@ -428,12 +428,12 @@ body.is-project-open .viewport-edge-blur {
 }
 
 .work-section {
-  padding-block: clamp(9rem, 16vw, 17rem);
+  padding-block: clamp(6.25rem, 10vw, 10.5rem);
 }
 
 .work-list {
   display: grid;
-  gap: clamp(4.5rem, 9vw, 9rem);
+  gap: clamp(2.75rem, 5vw, 5rem);
   width: 100vw;
   padding: 0;
   margin: 0 0 0 calc(50% - 50vw);
@@ -445,7 +445,7 @@ body.is-project-open .viewport-edge-blur {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   align-items: center;
   gap: 0;
-  min-height: clamp(280px, 31vw, 460px);
+  min-height: clamp(220px, 25vw, 360px);
 }
 
 .work-row-right {
@@ -455,8 +455,8 @@ body.is-project-open .viewport-edge-blur {
 .work-tile {
   position: relative;
   display: block;
-  width: clamp(300px, 42vw, 620px);
-  aspect-ratio: 5 / 4;
+  width: clamp(280px, 36vw, 540px);
+  aspect-ratio: 7 / 5;
   padding: 0;
   border: var(--line-thin) solid var(--color-line);
   border-radius: 0;
@@ -492,15 +492,15 @@ body.is-project-open .viewport-edge-blur {
 }
 
 .work-space {
-  min-height: clamp(8rem, 18vw, 16rem);
+  min-height: clamp(4rem, 12vw, 9rem);
 }
 
 .archive-section {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding-block: clamp(9rem, 15vw, 16rem);
+  justify-content: flex-start;
+  padding-block: clamp(6.25rem, 9.5vw, 10rem);
 }
 
 .archive-layout {
@@ -744,6 +744,7 @@ body.is-project-open .viewport-edge-blur {
   display: grid;
   grid-template-columns: repeat(4, var(--contact-icon-size));
   align-items: center;
+  justify-items: center;
   justify-content: center;
   width: max-content;
   gap: clamp(1.1rem, 2vw, 1.8rem);

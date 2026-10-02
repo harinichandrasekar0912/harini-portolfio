@@ -1116,6 +1116,42 @@
       return clamp(sectionTop, 0, maxScroll);
     }
 
+    function sectionVisualScroll(sectionId, endPoint) {
+      var maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+      var section = document.getElementById(sectionId);
+      var scrollY = window.scrollY || window.pageYOffset;
+      var title;
+      var titleTop;
+      var topBuffer;
+      var targetScroll;
+      var contentScreenY;
+      var maxContentScreenY;
+
+      if (sectionId === "contact") {
+        return sectionTopScroll("contact");
+      }
+
+      if (!section || ["about", "work", "archive"].indexOf(sectionId) === -1) {
+        return null;
+      }
+
+      title = section.querySelector(".section-title");
+      titleTop = title ? title.getBoundingClientRect().top + scrollY : section.getBoundingClientRect().top + scrollY;
+      topBuffer = clamp(window.innerHeight * 0.13, 78, 124);
+      targetScroll = titleTop - topBuffer;
+
+      if (endPoint && typeof endPoint.y === "number") {
+        contentScreenY = endPoint.y - targetScroll;
+        maxContentScreenY = window.innerHeight * 0.72;
+
+        if (contentScreenY > maxContentScreenY) {
+          targetScroll = endPoint.y - maxContentScreenY;
+        }
+      }
+
+      return clamp(targetScroll, 0, maxScroll);
+    }
+
     function contactFloor() {
       var contact = document.getElementById("contact");
       var scrollY = window.scrollY || window.pageYOffset;
@@ -1161,6 +1197,12 @@
     function targetScrollFor(point) {
       var maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
 
+      var visualScroll = sectionVisualScroll(point.section, point);
+
+      if (visualScroll !== null) {
+        return visualScroll;
+      }
+
       if (point.kind === "floor" && point.section === "contact") {
         return sectionTopScroll("contact");
       }
@@ -1202,6 +1244,12 @@
       var radius = ballRadius();
       var maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
       var desiredCenterY = 0;
+
+      var visualScroll = sectionVisualScroll(targetId, endPoint);
+
+      if (visualScroll !== null) {
+        return visualScroll;
+      }
 
       if (endPoint.kind === "floor" && endPoint.section === "contact") {
         return sectionTopScroll("contact");
@@ -1858,7 +1906,7 @@
         ball.classList.remove("is-forming");
         ball.classList.add("is-ready");
         flyBall(startPoint, targetId, token);
-      }, reducedMotion.matches ? 1 : 1120, token);
+      }, reducedMotion.matches ? 1 : 1360, token);
     }
 
     core.addEventListener("click", function () {

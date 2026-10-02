@@ -13,7 +13,7 @@ html.is-ball-animating {
 
 .nav-core {
   position: fixed;
-  left: 50vw;
+  left: 50%;
   bottom: var(--nav-bottom-buffer);
   z-index: 3;
   width: var(--plus-circle-size);
@@ -105,7 +105,7 @@ html.is-ball-animating {
 
 .radial-item {
   position: fixed;
-  left: 50vw;
+  left: 50%;
   bottom: calc(var(--nav-bottom-buffer) + (var(--plus-circle-size) / 2));
   opacity: 0;
   transform: translate(-50%, 0) scale(0.98);
@@ -498,19 +498,19 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
   box-shadow:
     inset -5px -6px 12px rgba(0, 0, 0, 0.16),
     inset 5px 5px 10px rgba(255, 255, 255, 0.08);
-  animation: ballForm 900ms var(--ease-standard) forwards;
+  animation: ballForm 1100ms var(--ease-standard) forwards;
 }
 
 .nav-travel-ball.is-forming::before {
   opacity: 0;
-  animation: ballLightBuild 900ms var(--ease-standard) forwards;
+  animation: ballLightBuild 1100ms var(--ease-standard) forwards;
 }
 
 .nav-travel-ball.is-forming::after {
   opacity: 1;
   background: var(--color-ink);
   box-shadow: none;
-  animation: ballFlatFade 900ms var(--ease-standard) forwards;
+  animation: ballFlatFade 1100ms var(--ease-standard) forwards;
 }
 
 .nav-travel-ball.is-ready,
@@ -759,7 +759,7 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
       calc(var(--ball-x) - (var(--ball-size) / 2)),
       calc(var(--ball-y) - (var(--ball-size) / 2)),
       0
-    ) scale(1.16);
+    ) scale(1.02);
   }
 
   52% {
@@ -767,7 +767,7 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
       calc(var(--ball-x) - (var(--ball-size) / 2)),
       calc(var(--ball-y) - (var(--ball-size) / 2)),
       0
-    ) scale(1.045);
+    ) scale(1.01);
   }
 
   100% {
