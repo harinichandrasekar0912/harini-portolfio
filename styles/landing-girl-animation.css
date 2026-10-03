@@ -17,119 +17,67 @@
 
 .landing-girl-animation {
   position: absolute;
-  left: 50%;
-  top: 50%;
+  inset: 0;
   width: 100vw;
-  height: clamp(280px, 42vh, 470px);
-  margin-left: calc(50% - 50vw);
-  transform: translate(-50%, -50%);
+  height: 100%;
+  margin: 0;
   z-index: 1;
   pointer-events: none;
   overflow: hidden;
+  color: var(--color-ink);
 }
 
-.landing-girl-animation svg {
+.landing-girl-actor-svg {
   display: block;
   width: 100%;
   height: 100%;
-  max-width: none;
-  color: var(--color-ink);
-  overflow: visible;
+  overflow: hidden;
 }
 
-.landing-girl-animation .thought-line,
-.landing-girl-animation .thought-icon-line,
-.landing-girl-animation .impact-line,
-.landing-girl-animation .girl-strand {
+.girl-profile-actor,
+.girl-front-actor,
+.actor-hit-ball,
+.actor-hit-burst {
+  transform-box: view-box;
+  transform-origin: 0 0;
+  will-change: transform, opacity;
+}
+
+.girl-silhouette,
+.actor-hit-ball-fill {
+  fill: currentColor;
+}
+
+.girl-hair-strand,
+.actor-hit-line {
   fill: none;
   stroke: currentColor;
   stroke-linecap: round;
   stroke-linejoin: round;
-  vector-effect: non-scaling-stroke;
 }
 
-.landing-girl-animation .thought-line {
-  stroke: var(--line-color, currentColor);
-  stroke-width: var(--line-width, 1.15px);
-}
-
-.landing-girl-animation .thought-line.is-ribbon {
-  mix-blend-mode: multiply;
-}
-
-.landing-girl-animation .thought-line.is-dotted {
-  stroke-linecap: round;
-}
-
-.landing-girl-animation .thought-icon-line {
-  stroke-width: 1.15;
-}
-
-.landing-girl-animation .impact-line {
+.girl-hair-strand {
   stroke-width: 1.8;
 }
 
-.landing-girl-animation .girl-profile,
-.landing-girl-animation .girl-front {
-  transform-box: view-box;
-  transform-origin: 0 0;
+.actor-hit-line {
+  stroke-width: 1.65;
 }
 
-.landing-girl-animation .girl-shadow {
+.actor-shadow {
   fill: currentColor;
-  opacity: 0;
-}
-
-.landing-girl-animation .girl-strand {
-  stroke-width: 1.45;
-}
-
-.landing-girl-animation .girl-fill,
-.landing-girl-animation .girl-limb,
-.landing-girl-animation .bonk-ball,
-.landing-girl-animation .thought-dot,
-.landing-girl-animation .background-dust,
-.landing-girl-animation .particle-square,
-.landing-girl-animation .particle-dot,
-.landing-girl-animation .particle-face-main {
-  fill: currentColor;
-}
-
-.landing-girl-animation .girl-foot {
-  fill: currentColor;
-}
-
-.landing-girl-animation .thought-icon,
-.landing-girl-animation .particle,
-.landing-girl-animation .particle-cube {
+  filter: blur(7px);
   transform-box: fill-box;
   transform-origin: center;
 }
 
-.landing-girl-animation .particle-face-side {
-  fill: rgba(0, 0, 0, 0.55);
-}
-
-.landing-girl-animation .particle-face-top {
-  fill: rgba(0, 0, 0, 0.78);
-}
-
-.landing-girl-animation .bonk-ball-group,
-.landing-girl-animation .impact-burst {
-  pointer-events: none;
-}
-
-.landing-girl-animation .background-dust {
-  fill: currentColor;
+.front-arm-right-relaxed,
+.front-arm-right-scratch {
+  will-change: opacity, transform;
 }
 
 @media (max-width: 760px) {
   .landing-media {
-    width: 100vw;
-    height: clamp(260px, 38vh, 390px);
-  }
-
-  .landing-girl-animation {
     height: clamp(260px, 38vh, 390px);
   }
 }
@@ -138,18 +86,19 @@
   .landing-media {
     height: clamp(240px, 36vh, 340px);
   }
-
-  .landing-girl-animation {
-    height: clamp(240px, 36vh, 340px);
-  }
 }
 
 @media (max-height: 620px) {
   .landing-media {
     height: clamp(240px, 48vh, 330px);
   }
+}
 
-  .landing-girl-animation {
-    height: clamp(240px, 48vh, 330px);
+@media (prefers-reduced-motion: reduce) {
+  .girl-profile-actor,
+  .girl-front-actor,
+  .actor-hit-ball,
+  .actor-hit-burst {
+    transition: none;
   }
 }
