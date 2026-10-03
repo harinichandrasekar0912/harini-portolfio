@@ -772,7 +772,9 @@
       var controlBias = clamp(0.46 + attempt * 0.16, 0.46, 0.78);
       var topClear = collision ? collision.rect.top - lift : config.path.apex.y - lift;
       var controlAX = config.upward ? config.path.controlA.x : mix(config.path.controlA.x, laneX, controlBias * 0.28);
-      var controlBX = finalApproachControlX(config.path.start, config.path.end);
+      var controlBX = hasFinitePoint(config.path.controlB) ?
+        config.path.controlB.x :
+        finalApproachControlX(config.path.start, config.path.end, config.upward);
 
       config.path.controlA = fitControlPointInsideBounds({
         x: controlAX,
@@ -1453,7 +1455,7 @@
     }
 
     function landingApproachHeight() {
-      return clamp(window.innerHeight * 0.14, 110, 200);
+      return clamp(window.innerHeight * 0.16, 120, 220);
     }
 
     function upwardOvershootZ() {
@@ -1461,23 +1463,28 @@
     }
 
     function upwardShootHeight() {
-      return clamp(window.innerHeight * 0.22, 170, 300);
+      return clamp(window.innerHeight * 0.23, 170, 300);
     }
 
     function downwardLaunchLift() {
-      return clamp(window.innerHeight * 0.085, 70, 135);
+      return clamp(window.innerHeight * 0.12, 90, 170);
     }
 
-    function finalApproachControlX(start, landing) {
-      return landing.x;
+    function finalApproachControlX(start, landing, upward) {
+      if (upward) {
+        return landing.x + (start.x < landing.x ? -10 : 10);
+      }
+
+      return landing.x + (landing.x - start.x) * 0.03;
     }
 
     function enforceLandingVelocity(path, bounds) {
       var minVisibleY = Math.max(bounds.minY, 36);
       var approachHeight = landingApproachHeight();
+      var controlBX = hasFinitePoint(path.controlB) ? path.controlB.x : path.end.x;
 
       path.controlB = fitControlPointInsideBounds({
-        x: finalApproachControlX(path.start, path.end),
+        x: controlBX,
         y: Math.max(minVisibleY, path.end.y - approachHeight)
       }, bounds);
 
@@ -1503,11 +1510,11 @@
       var path = {
         start: start,
         controlA: fitControlPointInsideBounds({
-          x: start.x + dx * 0.08,
+          x: start.x + dx * 0.06,
           y: Math.min(start.y - upwardShootHeight(), apexY)
         }, bounds),
         controlB: fitControlPointInsideBounds({
-          x: finalApproachControlX(start, landing),
+          x: finalApproachControlX(start, landing, true),
           y: Math.max(minVisibleY, landing.y - landingApproachHeight())
         }, bounds),
         end: landing
@@ -1525,11 +1532,11 @@
       var path = {
         start: start,
         controlA: fitControlPointInsideBounds({
-          x: start.x + dx * 0.08,
+          x: start.x + dx * 0.06,
           y: Math.min(start.y - upwardShootHeight(), apexY)
         }, bounds),
         controlB: fitControlPointInsideBounds({
-          x: finalApproachControlX(start, landing),
+          x: finalApproachControlX(start, landing, true),
           y: Math.max(minVisibleY, landing.y - landingApproachHeight())
         }, bounds),
         end: landing
@@ -1566,11 +1573,11 @@
       path = {
         start: start,
         controlA: fitControlPointInsideBounds({
-          x: start.x + dx * 0.22,
+          x: start.x + dx * 0.25,
           y: start.y - launchLift
         }, bounds),
         controlB: fitControlPointInsideBounds({
-          x: finalApproachControlX(start, landing),
+          x: finalApproachControlX(start, landing, false),
           y: Math.max(Math.max(bounds.minY, 36), landing.y - finalDrop)
         }, bounds),
         end: landing
