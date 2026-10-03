@@ -34,13 +34,17 @@
   overflow: hidden;
 }
 
-.girl-profile-actor,
-.girl-front-actor,
+.landing-girl-actor,
+.girl-pose,
 .actor-hit-ball,
 .actor-hit-burst {
   transform-box: view-box;
   transform-origin: 0 0;
   will-change: transform, opacity;
+}
+
+.girl-pose {
+  opacity: 0;
 }
 
 .girl-silhouette,
@@ -71,8 +75,8 @@
   transform-origin: center;
 }
 
-.front-arm-right-relaxed,
-.front-arm-right-scratch {
+.girl-hair-group,
+.girl-hair-strands {
   will-change: opacity, transform;
 }
 
@@ -95,8 +99,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .girl-profile-actor,
-  .girl-front-actor,
+  .landing-girl-actor,
+  .girl-pose,
   .actor-hit-ball,
   .actor-hit-burst {
     transition: none;
