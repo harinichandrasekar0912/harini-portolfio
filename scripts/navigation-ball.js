@@ -2,6 +2,7 @@
   const DEBUG_NAV_GEOMETRY = false;
   const DEBUG_NAV_BALL_PATH = false;
   const DEBUG_NAV_BALL_TRAJECTORY = false;
+  const DEBUG_NAV_BALL_EXACT_PATH = false;
 
   var SECTION_IDS = ["landing", "about", "work", "archive", "contact"];
   var SECTION_INDEX = {
@@ -26,16 +27,6 @@
   function easeOutCubic(t) {
     var safeT = clamp(t, 0, 1);
     return 1 - Math.pow(1 - safeT, 3);
-  }
-
-  function easeInOutSine(t) {
-    var safeT = clamp(t, 0, 1);
-    return 0.5 - 0.5 * Math.cos(Math.PI * safeT);
-  }
-
-  function easeInQuad(t) {
-    var safeT = clamp(t, 0, 1);
-    return safeT * safeT;
   }
 
   function easeRollOut(t) {
@@ -829,6 +820,10 @@
 
       config.obstacles = obstacles;
 
+      if (config.path && config.path.kind === "exact-nav-trajectory") {
+        return;
+      }
+
       while (attempts < 3) {
         var collision = detectPathCollision(config, obstacles);
 
@@ -1493,76 +1488,83 @@
       return cubicSegmentVelocityAt(safeT, path);
     }
 
-    function createCleanTrajectoryCap(start, landing, options) {
-      var viewportHeight = window.innerHeight || 800;
-      var radius = options && typeof options.ballRadius === "number" ? options.ballRadius : 14;
+    function exactBounceLift(raw, height) {
+      return height * Math.sin(Math.PI * clamp(raw, 0, 1));
+    }
+
+    function navBallMasterHeight(ballSize) {
+      return isMobileViewport() ?
+        clamp(ballSize * 1.55, 44, 78) :
+        clamp(ballSize * 2, 64, 120);
+    }
+
+    function createExactPathGeometry(start, landing, z) {
+      var targetAboveAmount = Math.max(0, start.y - landing.y);
+      var m = Math.max(z * 1.25, targetAboveAmount + z * 0.75);
       var dx = landing.x - start.x;
-      var absDx = Math.abs(dx);
-      var midX = (start.x + landing.x) / 2;
-      var halfSpan = dx / 2;
-      var isTargetAbove = landing.y < start.y;
-      var highestPointY = Math.min(start.y, landing.y);
-      var verticalClearance = isTargetAbove ?
-        clamp(viewportHeight * 0.18, 140, 260) :
-        clamp(viewportHeight * 0.12, 95, 190);
-      var archHeight = clamp(absDx * 0.22, 70, 180);
-      var shoulderY = highestPointY - verticalClearance;
-      var minVisibleY = radius + 28;
-
-      if (shoulderY - archHeight < minVisibleY) {
-        archHeight = Math.max(45, shoulderY - minVisibleY);
-      }
-
-      if (shoulderY < minVisibleY + archHeight) {
-        shoulderY = minVisibleY + archHeight;
-      }
+      var r = Math.abs(dx) / 2;
+      var centerX = (start.x + landing.x) / 2;
+      var centerY = start.y - m;
 
       return {
-        midX: midX,
-        halfSpan: halfSpan,
-        shoulderY: shoulderY,
-        archHeight: archHeight
+        z: z,
+        m: m,
+        D: {
+          x: start.x,
+          y: start.y - m
+        },
+        C: {
+          x: centerX,
+          y: centerY - r
+        },
+        E: {
+          x: landing.x,
+          y: start.y - m
+        },
+        r: r,
+        centerX: centerX,
+        centerY: centerY,
+        direction: Math.sign(dx) || 1,
+        startTheta: landing.x > start.x ? Math.PI : 0,
+        endTheta: landing.x > start.x ? 0 : Math.PI
       };
     }
 
-    function evaluateCleanNavTrajectory(raw, start, landing, options) {
+    function evaluateExactNavTrajectory(raw, start, landing, options) {
       var t = clamp(raw, 0, 1);
-      var launchEnd = options && typeof options.launchEnd === "number" ? options.launchEnd : 0.3;
-      var fallStart = options && typeof options.fallStart === "number" ? options.fallStart : 0.7;
-      var cap = options && options.cap ? options.cap : createCleanTrajectoryCap(start, landing, options || {});
+      var launchEnd = options && typeof options.launchEnd === "number" ? options.launchEnd : 0.28;
+      var arcEnd = options && typeof options.arcEnd === "number" ? options.arcEnd : 0.68;
+      var geometry = options && options.geometry ? options.geometry : createExactPathGeometry(start, landing, navBallMasterHeight(ballRadius() * 2));
       var p;
-      var eased;
       var theta;
 
       if (t < launchEnd) {
         p = t / launchEnd;
         return {
           x: start.x,
-          y: mix(start.y, cap.shoulderY, p)
+          y: mix(start.y, geometry.D.y, p)
         };
       }
 
-      if (t < fallStart) {
-        p = (t - launchEnd) / (fallStart - launchEnd);
-        eased = easeInOutSine(p);
-        theta = Math.PI - Math.PI * eased;
+      if (t < arcEnd) {
+        p = (t - launchEnd) / (arcEnd - launchEnd);
+        theta = geometry.startTheta + (geometry.endTheta - geometry.startTheta) * p;
         return {
-          x: cap.midX + cap.halfSpan * Math.cos(theta),
-          y: cap.shoulderY - cap.archHeight * Math.sin(theta)
+          x: geometry.centerX + geometry.r * Math.cos(theta),
+          y: geometry.centerY - geometry.r * Math.sin(theta)
         };
       }
 
-      p = (t - fallStart) / (1 - fallStart);
-      eased = easeInQuad(p);
+      p = (t - arcEnd) / (1 - arcEnd);
       return {
         x: landing.x,
-        y: mix(cap.shoulderY, landing.y, eased)
+        y: geometry.E.y + (landing.y - geometry.E.y) * (p * p)
       };
     }
 
     function pathPointAt(raw, path) {
-      if (path && path.kind === "clean-nav-trajectory") {
-        return evaluateCleanNavTrajectory(raw, path.start, path.end, path);
+      if (path && path.kind === "exact-nav-trajectory") {
+        return evaluateExactNavTrajectory(raw, path.start, path.end, path);
       }
 
       return cubicPointAt(clamp(raw, 0, 1), path);
@@ -1576,7 +1578,7 @@
       var before;
       var after;
 
-      if (path && path.kind === "clean-nav-trajectory") {
+      if (path && path.kind === "exact-nav-trajectory") {
         beforeT = Math.max(0, safeT - delta);
         afterT = Math.min(1, safeT + delta);
 
@@ -1630,6 +1632,11 @@
 
     function updatePathApex(path) {
       var apex = path.start;
+
+      if (path && path.kind === "exact-nav-trajectory" && path.geometry && hasFinitePoint(path.geometry.C)) {
+        path.apex = path.geometry.C;
+        return;
+      }
 
       for (var step = 1; step <= 48; step += 1) {
         var point = pathPointAt(step / 48, path);
@@ -1709,15 +1716,9 @@
       var approachHeight = landingApproachHeight();
       var finalControl;
 
-      if (path && path.kind === "clean-nav-trajectory") {
-        path.controlA = fitControlPointInsideBounds({
-          x: path.start.x,
-          y: path.cap.shoulderY
-        }, bounds);
-        path.controlB = fitControlPointInsideBounds({
-          x: path.end.x,
-          y: path.cap.shoulderY
-        }, bounds);
+      if (path && path.kind === "exact-nav-trajectory") {
+        path.controlA = path.geometry.D;
+        path.controlB = path.geometry.E;
         updatePathApex(path);
         return;
       }
@@ -1750,15 +1751,21 @@
         return false;
       }
 
-      if (path.kind === "clean-nav-trajectory") {
+      if (path.kind === "exact-nav-trajectory") {
         return hasFinitePoint(path.start) &&
           hasFinitePoint(path.end) &&
           hasFinitePoint(path.apex) &&
-          path.cap &&
-          Number.isFinite(path.cap.midX) &&
-          Number.isFinite(path.cap.halfSpan) &&
-          Number.isFinite(path.cap.shoulderY) &&
-          Number.isFinite(path.cap.archHeight);
+          hasFinitePoint(path.controlA) &&
+          hasFinitePoint(path.controlB) &&
+          path.geometry &&
+          hasFinitePoint(path.geometry.D) &&
+          hasFinitePoint(path.geometry.C) &&
+          hasFinitePoint(path.geometry.E) &&
+          Number.isFinite(path.geometry.z) &&
+          Number.isFinite(path.geometry.m) &&
+          Number.isFinite(path.geometry.r) &&
+          Number.isFinite(path.geometry.centerX) &&
+          Number.isFinite(path.geometry.centerY);
       }
 
       if (Array.isArray(path.segments)) {
@@ -1780,29 +1787,20 @@
         hasFinitePoint(path.end);
     }
 
-    function createCleanNavTrajectoryPath(start, landing, config, direction) {
-      var cap = createCleanTrajectoryCap(start, landing, {
-        ballRadius: ballRadius()
-      });
+    function createExactNavTrajectoryPath(start, landing, config, direction) {
+      var z = navBallMasterHeight(ballRadius() * 2);
+      var geometry = createExactPathGeometry(start, landing, z);
       var path = {
-        kind: "clean-nav-trajectory",
+        kind: "exact-nav-trajectory",
         start: start,
-        controlA: {
-          x: start.x,
-          y: cap.shoulderY
-        },
-        controlB: {
-          x: landing.x,
-          y: cap.shoulderY
-        },
+        controlA: geometry.D,
+        controlB: geometry.E,
         end: landing,
-        apex: {
-          x: cap.midX,
-          y: cap.shoulderY - cap.archHeight
-        },
-        cap: cap,
-        launchEnd: 0.3,
-        fallStart: 0.7,
+        apex: geometry.C,
+        geometry: geometry,
+        z: z,
+        launchEnd: 0.28,
+        arcEnd: 0.68,
         direction: direction
       };
 
@@ -1811,21 +1809,21 @@
     }
 
     function createDownwardFlightPath(start, landing, config) {
-      var path = createCleanNavTrajectoryPath(start, landing, config, "downward");
+      var path = createExactNavTrajectoryPath(start, landing, config, "downward");
 
       enforceLandingVelocity(path, config.bounds);
       return path;
     }
 
     function fallbackUpwardFlightPath(start, landing, config) {
-      var path = createCleanNavTrajectoryPath(start, landing, config, "upward");
+      var path = createExactNavTrajectoryPath(start, landing, config, "upward");
 
       enforceLandingVelocity(path, config.bounds);
       return path;
     }
 
     function createUpwardFlightPath(start, landing, config) {
-      var path = createCleanNavTrajectoryPath(start, landing, config, "upward");
+      var path = createExactNavTrajectoryPath(start, landing, config, "upward");
 
       if (!hasFinitePath(path)) {
         return fallbackUpwardFlightPath(start, landing, config);
@@ -1925,19 +1923,18 @@
     function debugNavBallPath(config) {
       var samples;
       var p0;
-      var p15;
-      var p30;
-      var p50;
-      var p70;
-      var p85;
+      var p28;
+      var p48;
+      var p68;
       var p100;
       var finalVelocity;
+      var geometry;
 
-      if (!(DEBUG_NAV_BALL_PATH || DEBUG_NAV_BALL_TRAJECTORY) || !config || !config.path) {
+      if (!(DEBUG_NAV_BALL_PATH || DEBUG_NAV_BALL_TRAJECTORY || DEBUG_NAV_BALL_EXACT_PATH) || !config || !config.path) {
         return;
       }
 
-      samples = [0, 0.15, 0.3, 0.5, 0.7, 0.85, 1].map(function (raw) {
+      samples = [0, 0.28, 0.48, 0.68, 1].map(function (raw) {
         var point = flightPointAt(raw, config);
 
         return {
@@ -1947,31 +1944,37 @@
         };
       });
       p0 = flightPointAt(0, config);
-      p15 = flightPointAt(0.15, config);
-      p30 = flightPointAt(0.3, config);
-      p50 = flightPointAt(0.5, config);
-      p70 = flightPointAt(0.7, config);
-      p85 = flightPointAt(0.85, config);
+      p28 = flightPointAt(0.28, config);
+      p48 = flightPointAt(0.48, config);
+      p68 = flightPointAt(0.68, config);
       p100 = flightPointAt(1, config);
       finalVelocity = flightVelocityAt(1, config);
+      geometry = config.path.geometry || {};
 
       console.table({
         targetId: config.targetId,
         direction: config.upward ? "upward" : "downward",
         pathKind: config.path.kind || "cubic",
         usesCompositePath: Array.isArray(config.path.segments),
-        launchPointX: round(p0.x),
-        launchPointY: round(p0.y),
-        shoulderY: round(config.path.cap ? config.path.cap.shoulderY : config.path.apex.y),
-        archHeight: round(config.path.cap ? config.path.cap.archHeight : 0),
-        apexY: round(config.path.apex.y),
-        landingPointX: round(p100.x),
-        landingPointY: round(p100.y),
-        risesAtT015: p15.y < p0.y - 12,
-        launchXFixed: Math.abs(p0.x - p15.x) < 0.5 && Math.abs(p0.x - p30.x) < 0.5,
-        capMovesX: Math.abs(p30.x - p50.x) > 0.5 || Math.abs(p50.x - p70.x) > 0.5,
-        capHasSingleArch: p50.y < p30.y && p50.y < p70.y,
-        fallXFixed: Math.abs(p70.x - p85.x) < 0.5 && Math.abs(p85.x - p100.x) < 0.5,
+        Ax: round(config.path.start.x),
+        Ay: round(config.path.start.y),
+        Bx: round(config.path.end.x),
+        By: round(config.path.end.y),
+        z: round(geometry.z),
+        m: round(geometry.m),
+        Dx: round(geometry.D && geometry.D.x),
+        Dy: round(geometry.D && geometry.D.y),
+        Cx: round(geometry.C && geometry.C.x),
+        Cy: round(geometry.C && geometry.C.y),
+        Ex: round(geometry.E && geometry.E.x),
+        Ey: round(geometry.E && geometry.E.y),
+        radius: round(geometry.r),
+        centerX: round(geometry.centerX),
+        centerY: round(geometry.centerY),
+        launchXFixed: Math.abs(p0.x - p28.x) < 0.5,
+        capMovesX: Math.abs(p28.x - p48.x) > 0.5 || Math.abs(p48.x - p68.x) > 0.5,
+        capHasSingleArch: p48.y < p28.y && p48.y < p68.y,
+        fallXFixed: Math.abs(p68.x - p100.x) < 0.5,
         finalVelocityNonZero: Math.abs(finalVelocity.x) + Math.abs(finalVelocity.y) > 0.5,
         finalVelocityX: round(finalVelocity.x),
         finalVelocityY: round(finalVelocity.y)
@@ -2227,9 +2230,10 @@
       var impactVelocity = flightVelocityAt(1, config);
       var impactVelocityY = Math.max(0, impactVelocity.y);
       var ballSize = ballRadius() * 2;
-      var firstPrepHeight = clamp(ballSize * 0.55, 20, 32);
-      var secondPrepHeight = clamp(ballSize * 1, 36, 54);
-      var thirdPrepHeight = clamp(ballSize * 1.45, 54, 78);
+      var z = navBallMasterHeight(ballSize);
+      var firstPrepHeight = z / 4;
+      var secondPrepHeight = z / 2;
+      var thirdPrepHeight = (3 * z) / 4;
       var baseFirstPrepDuration = 300;
       var baseSecondPrepDuration = 360;
       var baseThirdPrepDuration = 430;
@@ -2237,9 +2241,9 @@
       var secondPrepDuration = scaleMotionDuration(baseSecondPrepDuration);
       var thirdPrepDuration = scaleMotionDuration(baseThirdPrepDuration);
       var flightDuration = scaleMotionDuration(clamp(config.duration * 1.02, 1350, 2800));
-      var firstLandingHeight = clamp(Math.max(ballSize * 1.45, impactVelocityY * 0.12), 56, 86);
-      var secondLandingHeight = clamp(ballSize * 0.72, 28, 46);
-      var thirdLandingHeight = clamp(ballSize * 0.3, 12, 22);
+      var firstLandingHeight = (3 * z) / 4;
+      var secondLandingHeight = z / 2;
+      var thirdLandingHeight = z / 4;
       var firstLandingDuration = scaleMotionDuration(440);
       var secondLandingDuration = scaleMotionDuration(340);
       var thirdLandingDuration = scaleMotionDuration(240);
@@ -2278,11 +2282,12 @@
 
       if (DEBUG_NAV_GEOMETRY) {
         var debugP0 = flightPointAt(0, config);
-        var debugP15 = flightPointAt(0.15, config);
-        var debugP30 = flightPointAt(0.3, config);
-        var debugP70 = flightPointAt(0.7, config);
-        var debugP85 = flightPointAt(0.85, config);
+        var debugP28 = flightPointAt(0.28, config);
+        var debugP48 = flightPointAt(0.48, config);
+        var debugP68 = flightPointAt(0.68, config);
         var debugP100 = flightPointAt(1, config);
+        var debugGeometry = config.path.geometry || {};
+        var debugFinalVelocity = flightVelocityAt(1, config);
 
         console.table({
           isUpwardNavigation: config.upward,
@@ -2291,10 +2296,23 @@
           transformTransitionDuringFlight: false,
           usedEaseOutIntoLanding: false,
           trajectoryKind: config.path.kind || "cubic",
-          launchXFixed: Math.abs(debugP0.x - debugP15.x) < 0.5 && Math.abs(debugP0.x - debugP30.x) < 0.5,
-          fallXFixed: Math.abs(debugP70.x - debugP85.x) < 0.5 && Math.abs(debugP85.x - debugP100.x) < 0.5,
-          capShoulderY: config.path.cap ? round(config.path.cap.shoulderY) : null,
-          capArchHeight: config.path.cap ? round(config.path.cap.archHeight) : null,
+          launchXFixed: Math.abs(debugP0.x - debugP28.x) < 0.5,
+          capMovesX: Math.abs(debugP28.x - debugP48.x) > 0.5 || Math.abs(debugP48.x - debugP68.x) > 0.5,
+          fallXFixed: Math.abs(debugP68.x - debugP100.x) < 0.5,
+          z: round(z),
+          m: round(debugGeometry.m),
+          pointD: debugGeometry.D ? {
+            x: round(debugGeometry.D.x),
+            y: round(debugGeometry.D.y)
+          } : null,
+          pointC: debugGeometry.C ? {
+            x: round(debugGeometry.C.x),
+            y: round(debugGeometry.C.y)
+          } : null,
+          pointE: debugGeometry.E ? {
+            x: round(debugGeometry.E.x),
+            y: round(debugGeometry.E.y)
+          } : null,
           firstPrepBounceHeight: round(firstPrepHeight),
           secondPrepBounceHeight: round(secondPrepHeight),
           thirdPrepBounceHeight: round(thirdPrepHeight),
@@ -2314,14 +2332,9 @@
           usesEaseOutNearLanding: false,
           morphDurationNew: BALL_MORPH_DURATION
         });
-        console.debug("landing velocity check", {
+        console.debug("exact landing velocity check", {
           usedEaseOutNearLanding: false,
-          p2: config.path.controlB,
-          p3: config.path.end,
-          endpointVelocity: {
-            x: 3 * (config.path.end.x - config.path.controlB.x),
-            y: 3 * (config.path.end.y - config.path.controlB.y)
-          }
+          finalVelocity: debugFinalVelocity
         });
         console.debug("roll duration active", rollDuration);
       }
@@ -2412,25 +2425,27 @@
           raw = elapsed / firstPrepDuration;
           setState(STATES.BALL_TAKEOFF);
           ball.classList.add("is-launching", "is-lifting");
-          setBallPosition(config.startScreen.x, config.startScreen.y - bounceLift(raw, firstPrepHeight));
+          setBallPosition(config.startScreen.x, config.startScreen.y - exactBounceLift(raw, firstPrepHeight));
           setTimelineShadow(0, 0.72);
         } else if (elapsed < prep2End) {
           raw = (elapsed - prep1End) / secondPrepDuration;
           setState(STATES.BALL_TAKEOFF);
           ball.classList.add("is-launching", "is-lifting");
-          setBallPosition(config.startScreen.x, config.startScreen.y - bounceLift(raw, secondPrepHeight));
+          setBallPosition(config.startScreen.x, config.startScreen.y - exactBounceLift(raw, secondPrepHeight));
           setTimelineShadow(0, 0.72);
         } else if (elapsed < prep3End) {
           raw = (elapsed - prep2End) / thirdPrepDuration;
           setState(STATES.BALL_TAKEOFF);
           ball.classList.add("is-launching", "is-lifting");
-          setBallPosition(config.startScreen.x, config.startScreen.y - bounceLift(raw, thirdPrepHeight));
+          setBallPosition(config.startScreen.x, config.startScreen.y - exactBounceLift(raw, thirdPrepHeight));
           setTimelineShadow(0, 0.72);
         } else if (elapsed < flightEnd) {
           raw = (elapsed - prep3End) / flightDuration;
           point = flightPointAt(raw, config);
           actualScroll = flightScrollAt(raw, config);
-          screen = emergencyClampToViewport(point, config, raw);
+          screen = config.path && config.path.kind === "exact-nav-trajectory" ?
+            point :
+            emergencyClampToViewport(point, config, raw);
 
           setState(STATES.BALL_FLYING);
           ball.classList.remove("is-launching", "is-lifting", "is-landing", "is-landed", "is-arrived");
@@ -2442,19 +2457,19 @@
         } else if (elapsed < rebound1End) {
           applyImpact();
           raw = (elapsed - flightEnd) / firstLandingDuration;
-          lift = bounceLift(raw, firstLandingHeight);
+          lift = exactBounceLift(raw, firstLandingHeight);
           setBallPosition(config.endScreen.x, config.endScreen.y - lift);
           applyBounceShadow(raw, 1);
         } else if (elapsed < rebound2End) {
           applyImpact();
           raw = (elapsed - rebound1End) / secondLandingDuration;
-          lift = bounceLift(raw, secondLandingHeight);
+          lift = exactBounceLift(raw, secondLandingHeight);
           setBallPosition(config.endScreen.x, config.endScreen.y - lift);
           applyBounceShadow(raw, 2);
         } else if (elapsed < rebound3End) {
           applyImpact();
           raw = (elapsed - rebound2End) / thirdLandingDuration;
-          lift = bounceLift(raw, thirdLandingHeight);
+          lift = exactBounceLift(raw, thirdLandingHeight);
           setBallPosition(config.endScreen.x, config.endScreen.y - lift);
           applyBounceShadow(raw, 3);
         } else if (elapsed < rollEnd) {
