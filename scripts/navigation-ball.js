@@ -1,5 +1,6 @@
 (function () {
   const DEBUG_NAV_GEOMETRY = false;
+  const DEBUG_NAV_BALL_PATH = false;
 
   var SECTION_IDS = ["landing", "about", "work", "archive", "contact"];
   var SECTION_INDEX = {
@@ -776,6 +777,28 @@
         config.path.controlB.x :
         finalApproachControlX(config.path.start, config.path.end, config.upward);
 
+      if (Array.isArray(config.path.segments) && config.path.segments.length === 2) {
+        config.path.segments[0].controlA = fitControlPointInsideBounds({
+          x: controlAX,
+          y: Math.min(config.path.segments[0].controlA.y, topClear)
+        }, config.bounds);
+        config.path.segments[0].controlB = fitControlPointInsideBounds({
+          x: config.path.segments[0].controlB.x,
+          y: Math.min(config.path.segments[0].controlB.y, topClear)
+        }, config.bounds);
+        config.path.segments[1].controlA = fitControlPointInsideBounds({
+          x: config.path.segments[1].controlA.x,
+          y: Math.min(config.path.segments[1].controlA.y, topClear + lift * 0.16)
+        }, config.bounds);
+        config.path.segments[1].controlB = fitControlPointInsideBounds({
+          x: controlBX,
+          y: Math.min(config.path.segments[1].controlB.y, topClear + lift * 0.24)
+        }, config.bounds);
+        syncCompositePath(config.path);
+        updatePathApex(config.path);
+        return;
+      }
+
       config.path.controlA = fitControlPointInsideBounds({
         x: controlAX,
         y: Math.min(config.path.controlA.y, topClear)
@@ -1384,7 +1407,7 @@
       return clamp(point.y - window.innerHeight * 0.48, 0, maxScroll);
     }
 
-    function cubicPointAt(t, path) {
+    function cubicSegmentPointAt(t, path) {
       var inverse = 1 - t;
       var p0 = path.start;
       var p1 = path.controlA;
@@ -1397,7 +1420,27 @@
       };
     }
 
-    function cubicVelocityAt(t, path) {
+    function cubicPointAt(t, path) {
+      var safeT = clamp(t, 0, 1);
+      var split;
+      var segmentT;
+
+      if (path && Array.isArray(path.segments) && path.segments.length === 2) {
+        split = clamp(path.split || 0.42, 0.22, 0.72);
+
+        if (safeT <= split) {
+          segmentT = split === 0 ? 1 : safeT / split;
+          return cubicSegmentPointAt(segmentT, path.segments[0]);
+        }
+
+        segmentT = (safeT - split) / (1 - split);
+        return cubicSegmentPointAt(segmentT, path.segments[1]);
+      }
+
+      return cubicSegmentPointAt(safeT, path);
+    }
+
+    function cubicSegmentVelocityAt(t, path) {
       var inverse = 1 - t;
       var p0 = path.start;
       var p1 = path.controlA;
@@ -1408,6 +1451,35 @@
         x: 3 * inverse * inverse * (p1.x - p0.x) + 6 * inverse * t * (p2.x - p1.x) + 3 * t * t * (p3.x - p2.x),
         y: 3 * inverse * inverse * (p1.y - p0.y) + 6 * inverse * t * (p2.y - p1.y) + 3 * t * t * (p3.y - p2.y)
       };
+    }
+
+    function cubicVelocityAt(t, path) {
+      var safeT = clamp(t, 0, 1);
+      var split;
+      var segmentT;
+      var velocity;
+
+      if (path && Array.isArray(path.segments) && path.segments.length === 2) {
+        split = clamp(path.split || 0.42, 0.22, 0.72);
+
+        if (safeT <= split) {
+          segmentT = split === 0 ? 1 : safeT / split;
+          velocity = cubicSegmentVelocityAt(segmentT, path.segments[0]);
+          return {
+            x: velocity.x / split,
+            y: velocity.y / split
+          };
+        }
+
+        segmentT = (safeT - split) / (1 - split);
+        velocity = cubicSegmentVelocityAt(segmentT, path.segments[1]);
+        return {
+          x: velocity.x / (1 - split),
+          y: velocity.y / (1 - split)
+        };
+      }
+
+      return cubicSegmentVelocityAt(safeT, path);
     }
 
     function resolveFinalScroll(endPoint, startScreen, downward, targetId, bounds) {
@@ -1455,36 +1527,101 @@
     }
 
     function landingApproachHeight() {
-      return clamp(window.innerHeight * 0.16, 120, 220);
-    }
-
-    function upwardOvershootZ() {
-      return clamp(window.innerHeight * 0.14, 110, 210);
-    }
-
-    function upwardShootHeight() {
-      return clamp(window.innerHeight * 0.23, 170, 300);
+      return clamp(window.innerHeight * 0.18, 130, 230);
     }
 
     function downwardLaunchLift() {
-      return clamp(window.innerHeight * 0.12, 90, 170);
+      return clamp(window.innerHeight * 0.14, 100, 190);
+    }
+
+    function upwardVerticalShoot() {
+      return clamp(window.innerHeight * 0.3, 230, 390);
+    }
+
+    function upwardControlShoot() {
+      return clamp(window.innerHeight * 0.32, 230, 390);
+    }
+
+    function destinationOvershoot() {
+      return clamp(window.innerHeight * 0.16, 120, 240);
+    }
+
+    function directionXFor(start, landing) {
+      var dx = landing.x - start.x;
+
+      return dx === 0 ? 1 : dx / Math.abs(dx);
     }
 
     function finalApproachControlX(start, landing, upward) {
+      var directionX = directionXFor(start, landing);
+      var absDeltaX = Math.abs(landing.x - start.x);
+
       if (upward) {
-        return landing.x + (start.x < landing.x ? -10 : 10);
+        return landing.x + directionX * clamp(absDeltaX * 0.02, 0, 20);
       }
 
-      return landing.x + (landing.x - start.x) * 0.03;
+      return landing.x + directionX * clamp(absDeltaX * 0.02, 0, 24);
+    }
+
+    function createCompositePath(start, firstA, firstB, apex, secondA, secondB, landing, bounds, split, direction) {
+      var fittedApex = fitControlPointInsideBounds(apex, bounds);
+      var segmentA = {
+        start: start,
+        controlA: fitControlPointInsideBounds(firstA, bounds),
+        controlB: fitControlPointInsideBounds(firstB, bounds),
+        end: fittedApex
+      };
+      var segmentB = {
+        start: fittedApex,
+        controlA: fitControlPointInsideBounds(secondA, bounds),
+        controlB: fitControlPointInsideBounds(secondB, bounds),
+        end: landing
+      };
+      var path = {
+        start: start,
+        controlA: segmentA.controlA,
+        controlB: segmentB.controlB,
+        end: landing,
+        split: split,
+        direction: direction,
+        joinPoint: fittedApex,
+        segments: [segmentA, segmentB]
+      };
+
+      updatePathApex(path);
+      return path;
+    }
+
+    function syncCompositePath(path) {
+      if (!path || !Array.isArray(path.segments) || path.segments.length !== 2) {
+        return;
+      }
+
+      path.start = path.segments[0].start;
+      path.controlA = path.segments[0].controlA;
+      path.controlB = path.segments[1].controlB;
+      path.end = path.segments[1].end;
+      path.joinPoint = path.segments[0].end;
     }
 
     function enforceLandingVelocity(path, bounds) {
       var minVisibleY = Math.max(bounds.minY, 36);
       var approachHeight = landingApproachHeight();
-      var controlBX = hasFinitePoint(path.controlB) ? path.controlB.x : path.end.x;
+      var finalControl;
+
+      if (path && Array.isArray(path.segments) && path.segments.length === 2) {
+        finalControl = path.segments[1].controlB;
+        path.segments[1].controlB = fitControlPointInsideBounds({
+          x: hasFinitePoint(finalControl) ? finalControl.x : path.end.x,
+          y: Math.max(minVisibleY, path.end.y - approachHeight)
+        }, bounds);
+        syncCompositePath(path);
+        updatePathApex(path);
+        return;
+      }
 
       path.controlB = fitControlPointInsideBounds({
-        x: controlBX,
+        x: hasFinitePoint(path.controlB) ? path.controlB.x : path.end.x,
         y: Math.max(minVisibleY, path.end.y - approachHeight)
       }, bounds);
 
@@ -1496,6 +1633,22 @@
     }
 
     function hasFinitePath(path) {
+      if (!path) {
+        return false;
+      }
+
+      if (Array.isArray(path.segments)) {
+        return path.segments.length === 2 &&
+          path.segments.every(function (segment) {
+            return hasFinitePoint(segment.start) &&
+              hasFinitePoint(segment.controlA) &&
+              hasFinitePoint(segment.controlB) &&
+              hasFinitePoint(segment.end);
+          }) &&
+          hasFinitePoint(path.start) &&
+          hasFinitePoint(path.end);
+      }
+
       return Boolean(path) &&
         hasFinitePoint(path.start) &&
         hasFinitePoint(path.controlA) &&
@@ -1503,22 +1656,80 @@
         hasFinitePoint(path.end);
     }
 
-    function fallbackUpwardFlightPath(start, landing, bounds) {
-      var minVisibleY = Math.max(bounds.minY, ballRadius() + 32, 36);
+    function createDownwardFlightPath(start, landing, config) {
+      var bounds = config.bounds;
       var dx = landing.x - start.x;
-      var apexY = clamp(Math.max(minVisibleY, landing.y - upwardOvershootZ()), bounds.minY, bounds.maxY);
-      var path = {
-        start: start,
-        controlA: fitControlPointInsideBounds({
-          x: start.x + dx * 0.06,
-          y: Math.min(start.y - upwardShootHeight(), apexY)
-        }, bounds),
-        controlB: fitControlPointInsideBounds({
-          x: finalApproachControlX(start, landing, true),
-          y: Math.max(minVisibleY, landing.y - landingApproachHeight())
-        }, bounds),
-        end: landing
+      var directionX = directionXFor(start, landing);
+      var absDeltaX = Math.abs(dx);
+      var launchLift = downwardLaunchLift();
+      var finalDrop = landingApproachHeight();
+      var apexPoint = {
+        x: start.x + directionX * clamp(absDeltaX * 0.42, 160, 360),
+        y: Math.min(start.y - launchLift, landing.y - finalDrop - 40)
       };
+      var path = createCompositePath(
+        start,
+        {
+          x: start.x + directionX * clamp(absDeltaX * 0.1, 35, 90),
+          y: start.y - launchLift
+        },
+        {
+          x: start.x + directionX * clamp(absDeltaX * 0.25, 90, 190),
+          y: start.y - clamp(window.innerHeight * 0.18, 130, 230)
+        },
+        apexPoint,
+        {
+          x: apexPoint.x + directionX * clamp(absDeltaX * 0.2, 90, 210),
+          y: apexPoint.y + clamp(window.innerHeight * 0.02, 15, 45)
+        },
+        {
+          x: finalApproachControlX(start, landing, false),
+          y: landing.y - finalDrop
+        },
+        landing,
+        bounds,
+        0.38,
+        "downward"
+      );
+
+      enforceLandingVelocity(path, bounds);
+      return path;
+    }
+
+    function fallbackUpwardFlightPath(start, landing, config) {
+      var bounds = config.bounds;
+      var directionX = directionXFor(start, landing);
+      var absDeltaX = Math.abs(landing.x - start.x);
+      var radius = ballRadius();
+      var finalDrop = landingApproachHeight();
+      var apexPoint = {
+        x: start.x + directionX * clamp(absDeltaX * 0.28, 100, 260),
+        y: Math.max(radius + 28, Math.min(start.y - clamp(window.innerHeight * 0.26, 200, 340), landing.y - destinationOvershoot()))
+      };
+      var path = createCompositePath(
+        start,
+        {
+          x: start.x + directionX * clamp(absDeltaX * 0.03, 0, 28),
+          y: start.y - clamp(window.innerHeight * 0.26, 200, 340)
+        },
+        {
+          x: start.x + directionX * clamp(absDeltaX * 0.08, 28, 72),
+          y: start.y - clamp(window.innerHeight * 0.3, 220, 360)
+        },
+        apexPoint,
+        {
+          x: apexPoint.x + directionX * clamp(absDeltaX * 0.16, 60, 160),
+          y: apexPoint.y
+        },
+        {
+          x: finalApproachControlX(start, landing, true),
+          y: landing.y - finalDrop
+        },
+        landing,
+        bounds,
+        0.42,
+        "upward"
+      );
 
       enforceLandingVelocity(path, bounds);
       return path;
@@ -1527,28 +1738,47 @@
     function createUpwardFlightPath(start, landing, config) {
       var bounds = config.bounds;
       var dx = landing.x - start.x;
-      var minVisibleY = Math.max(bounds.minY, ballRadius() + 32, 36);
-      var apexY = clamp(Math.max(minVisibleY, landing.y - upwardOvershootZ()), bounds.minY, bounds.maxY);
-      var path = {
-        start: start,
-        controlA: fitControlPointInsideBounds({
-          x: start.x + dx * 0.06,
-          y: Math.min(start.y - upwardShootHeight(), apexY)
-        }, bounds),
-        controlB: fitControlPointInsideBounds({
-          x: finalApproachControlX(start, landing, true),
-          y: Math.max(minVisibleY, landing.y - landingApproachHeight())
-        }, bounds),
-        end: landing
+      var directionX = directionXFor(start, landing);
+      var absDeltaX = Math.abs(dx);
+      var radius = ballRadius();
+      var verticalShoot = upwardVerticalShoot();
+      var finalDrop = landingApproachHeight();
+      var apexPoint = {
+        x: start.x + directionX * clamp(absDeltaX * 0.32, 120, 320),
+        y: Math.max(radius + 28, Math.min(start.y - verticalShoot, landing.y - destinationOvershoot()))
       };
+      var path = createCompositePath(
+        start,
+        {
+          x: start.x + directionX * clamp(absDeltaX * 0.03, 0, 35),
+          y: start.y - verticalShoot
+        },
+        {
+          x: start.x + directionX * clamp(absDeltaX * 0.1, 35, 90),
+          y: start.y - upwardControlShoot()
+        },
+        apexPoint,
+        {
+          x: apexPoint.x + directionX * clamp(absDeltaX * 0.18, 70, 190),
+          y: apexPoint.y
+        },
+        {
+          x: finalApproachControlX(start, landing, true),
+          y: landing.y - finalDrop
+        },
+        landing,
+        bounds,
+        0.42,
+        "upward"
+      );
 
       if (!hasFinitePath(path)) {
-        return fallbackUpwardFlightPath(start, landing, bounds);
+        return fallbackUpwardFlightPath(start, landing, config);
       }
 
       enforceLandingVelocity(path, bounds);
       if (!hasFinitePath(path)) {
-        return fallbackUpwardFlightPath(start, landing, bounds);
+        return fallbackUpwardFlightPath(start, landing, config);
       }
 
       return path;
@@ -1561,30 +1791,12 @@
         x: clamp(endScreen.x, bounds.minX, bounds.maxX),
         y: bounds.floorY
       } : fitControlPointInsideBounds(endScreen, bounds);
-      var dx = landing.x - start.x;
-      var launchLift = downwardLaunchLift();
-      var finalDrop = landingApproachHeight();
-      var path;
 
       if (config.upward) {
         return createUpwardFlightPath(start, landing, config);
       }
 
-      path = {
-        start: start,
-        controlA: fitControlPointInsideBounds({
-          x: start.x + dx * 0.25,
-          y: start.y - launchLift
-        }, bounds),
-        controlB: fitControlPointInsideBounds({
-          x: finalApproachControlX(start, landing, false),
-          y: Math.max(Math.max(bounds.minY, 36), landing.y - finalDrop)
-        }, bounds),
-        end: landing
-      };
-
-      enforceLandingVelocity(path, bounds);
-      return path;
+      return createDownwardFlightPath(start, landing, config);
     }
 
     function createFlightConfig(startPoint, endPoint, targetId, startScroll) {
@@ -1635,8 +1847,9 @@
       adjustPathForObstacles(config);
       enforceLandingVelocity(config.path, bounds);
       if (!hasFinitePath(config.path)) {
-        config.path = config.upward ? fallbackUpwardFlightPath(startScreen, endScreen, bounds) : createSmoothFlightPath(startScreen, endScreen, config);
+        config.path = config.upward ? fallbackUpwardFlightPath(startScreen, endScreen, config) : createSmoothFlightPath(startScreen, endScreen, config);
       }
+      debugNavBallPath(config);
       return config;
     }
 
@@ -1652,6 +1865,61 @@
       var progress = raw;
 
       return mix(config.startScroll, config.finalScroll, clamp(progress, 0, 1));
+    }
+
+    function debugNavBallPath(config) {
+      var p0;
+      var p15;
+      var p40;
+      var p80;
+      var p100;
+      var straight40;
+      var finalVelocity;
+      var finalControl;
+      var segmentControls;
+
+      if (!DEBUG_NAV_BALL_PATH || !config || !config.path) {
+        return;
+      }
+
+      p0 = flightPointAt(0, config);
+      p15 = flightPointAt(0.15, config);
+      p40 = flightPointAt(0.4, config);
+      p80 = flightPointAt(0.8, config);
+      p100 = flightPointAt(1, config);
+      straight40 = {
+        x: mix(p0.x, p100.x, 0.4),
+        y: mix(p0.y, p100.y, 0.4)
+      };
+      finalVelocity = flightVelocityAt(1, config);
+      finalControl = Array.isArray(config.path.segments) ? config.path.segments[1].controlB : config.path.controlB;
+      segmentControls = Array.isArray(config.path.segments) ? {
+        segmentOne: config.path.segments[0],
+        segmentTwo: config.path.segments[1]
+      } : {
+        singleCubic: config.path
+      };
+
+      console.table({
+        targetId: config.targetId,
+        direction: config.upward ? "upward" : "downward",
+        usesCompositePath: Array.isArray(config.path.segments),
+        split: round(config.path.split || 1),
+        launchPointX: round(p0.x),
+        launchPointY: round(p0.y),
+        apexPointX: round(config.path.apex.x),
+        apexPointY: round(config.path.apex.y),
+        landingPointX: round(p100.x),
+        landingPointY: round(p100.y),
+        risesAtT015: p15.y < p0.y - 12,
+        distanceFromStraightAtT040: round(Math.hypot(p40.x - straight40.x, p40.y - straight40.y)),
+        finalDropMostlyVertical: Math.abs(p100.x - p80.x) < Math.abs(p100.y - p80.y),
+        finalVelocityNonZero: Math.abs(finalVelocity.x) + Math.abs(finalVelocity.y) > 0.5,
+        finalControlNotLanding: Math.abs(finalControl.x - p100.x) + Math.abs(finalControl.y - p100.y) > 0.5,
+        finalVelocityX: round(finalVelocity.x),
+        finalVelocityY: round(finalVelocity.y)
+      });
+      console.debug("nav ball path controls", segmentControls);
     }
 
     function debugRenderTrajectory(startPoint, endPoint, targetId, startScroll) {
@@ -1904,10 +2172,10 @@
       var ballSize = ballRadius() * 2;
       var firstPrepHeight = clamp(ballSize * 0.55, 20, 32);
       var secondPrepHeight = clamp(ballSize * 1, 36, 54);
-      var thirdPrepHeight = clamp(ballSize * 1.55, 58, 82);
-      var baseFirstPrepDuration = 320;
-      var baseSecondPrepDuration = 380;
-      var baseThirdPrepDuration = 460;
+      var thirdPrepHeight = clamp(ballSize * 1.45, 54, 78);
+      var baseFirstPrepDuration = 300;
+      var baseSecondPrepDuration = 360;
+      var baseThirdPrepDuration = 430;
       var firstPrepDuration = scaleMotionDuration(baseFirstPrepDuration);
       var secondPrepDuration = scaleMotionDuration(baseSecondPrepDuration);
       var thirdPrepDuration = scaleMotionDuration(baseThirdPrepDuration);
@@ -1973,9 +2241,10 @@
           delayBetweenImpactAndBounceMs: 0,
           impactVelocityY: round(impactVelocityY),
           upwardArcLiftNew: config.upward ? round(config.path.start.y - config.path.apex.y) : 0,
-          upwardOvershootZ: config.upward ? round(upwardOvershootZ()) : 0,
-          upwardShootHeight: config.upward ? round(upwardShootHeight()) : 0,
+          upwardVerticalShoot: config.upward ? round(upwardVerticalShoot()) : 0,
+          upwardControlShoot: config.upward ? round(upwardControlShoot()) : 0,
           downwardLaunchLift: config.downward ? round(downwardLaunchLift()) : 0,
+          compositeTrajectorySegments: Array.isArray(config.path.segments) ? config.path.segments.length : 1,
           usesEaseOutNearLanding: false,
           morphDurationNew: BALL_MORPH_DURATION
         });
