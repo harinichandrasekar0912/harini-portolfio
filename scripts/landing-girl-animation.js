@@ -8,8 +8,8 @@
   }
 
   var NS = "http://www.w3.org/2000/svg";
-  var PROFILE_BOUNDS = { minX: -82, maxX: 132 };
-  var BASE_HEIGHT = 260;
+  var PROFILE_BOUNDS = { minX: -58, maxX: 92 };
+  var BASE_HEIGHT = 226;
   var STATES = {
     ENTER_WALK: "ENTER_WALK",
     CENTER_TURN: "CENTER_TURN",
@@ -120,64 +120,66 @@
     var backLeg = svgEl("g", { class: "profile-leg profile-leg-back" }, legs);
     svgEl("path", {
       class: "girl-silhouette",
-      d: "M-8 -82 C-27 -61 -36 -31 -31 -9 C-25 -2 -12 -3 -8 -12 C-8 -35 -1 -57 15 -76 C11 -83 -2 -88 -8 -82 Z"
+      d: "M-10 -78 C-21 -56 -23 -29 -18 -8 C-15 -3 -8 -3 -5 -9 C-7 -31 -3 -56 7 -76 C3 -82 -6 -83 -10 -78 Z"
     }, backLeg);
     svgEl("path", {
       class: "girl-silhouette",
-      d: "M-34 -8 C-53 -2 -56 7 -37 9 L-8 8 C-2 4 -6 -3 -17 -7 C-23 -9 -29 -10 -34 -8 Z"
+      d: "M-18 -8 C-33 -5 -39 2 -28 6 L-5 6 C2 3 0 -3 -9 -6 C-12 -7 -15 -8 -18 -8 Z"
     }, backLeg);
 
     var frontLeg = svgEl("g", { class: "profile-leg profile-leg-front" }, legs);
     svgEl("path", {
       class: "girl-silhouette",
-      d: "M17 -80 C38 -58 49 -31 48 -9 C54 -2 69 -3 73 -13 C69 -39 55 -65 31 -82 C25 -86 18 -85 17 -80 Z"
+      d: "M12 -78 C23 -55 30 -30 31 -9 C35 -5 43 -7 44 -14 C39 -38 31 -62 21 -79 C18 -84 12 -83 12 -78 Z"
     }, frontLeg);
     svgEl("path", {
       class: "girl-silhouette",
-      d: "M62 -13 C80 -15 91 -10 92 -1 C78 6 59 8 44 4 C39 0 43 -8 53 -11 C56 -12 59 -13 62 -13 Z"
+      d: "M36 -13 C50 -14 58 -10 59 -3 C48 3 34 5 22 2 C18 -1 21 -8 29 -11 C31 -12 34 -13 36 -13 Z"
     }, frontLeg);
 
     var backArm = svgEl("g", { class: "profile-arm profile-arm-back" }, body);
     svgEl("path", {
       class: "girl-silhouette",
-      d: "M-20 -149 C-36 -130 -44 -104 -41 -82 C-36 -75 -24 -76 -22 -86 C-22 -105 -12 -129 6 -143 C2 -151 -13 -154 -20 -149 Z"
+      d: "M-18 -148 C-31 -128 -37 -103 -34 -83 C-30 -78 -23 -79 -21 -87 C-22 -106 -12 -128 3 -143 C0 -150 -12 -153 -18 -148 Z"
     }, backArm);
 
     var frontArm = svgEl("g", { class: "profile-arm profile-arm-front" }, body);
     svgEl("path", {
       class: "girl-silhouette",
-      d: "M21 -148 C42 -128 53 -103 52 -84 C58 -76 70 -78 72 -89 C67 -113 54 -137 34 -153 C28 -155 21 -153 21 -148 Z"
+      d: "M19 -148 C34 -128 43 -105 44 -86 C48 -81 57 -82 58 -90 C54 -113 43 -136 28 -152 C23 -154 18 -153 19 -148 Z"
     }, frontArm);
 
     svgEl("path", {
       class: "girl-silhouette profile-dress",
-      d: "M-22 -163 C-38 -139 -47 -101 -55 -63 C-30 -45 9 -42 53 -60 C48 -103 35 -140 12 -162 C3 -170 -13 -170 -22 -163 Z"
+      d: "M-16 -156 C-28 -134 -34 -101 -36 -72 C-17 -62 14 -62 38 -74 C34 -106 26 -137 12 -156 C5 -162 -9 -162 -16 -156 Z"
     }, body);
     svgEl("path", {
       class: "girl-silhouette",
-      d: "M-8 -184 L14 -183 L16 -154 C8 -149 -4 -149 -12 -154 Z"
+      d: "M-7 -184 L8 -184 L10 -154 C5 -151 -4 -151 -9 -154 Z"
     }, body);
     svgEl("path", {
       class: "girl-silhouette",
-      d: "M-23 -226 C-6 -243 24 -240 42 -218 C59 -198 50 -172 24 -161 C2 -152 -24 -163 -32 -183 C-45 -184 -48 -191 -35 -196 C-37 -209 -32 -220 -23 -226 Z"
+      d: "M-14 -218 C0 -231 22 -227 30 -208 C37 -190 27 -172 9 -166 C-8 -161 -23 -170 -28 -185 C-37 -186 -40 -192 -30 -196 C-29 -206 -24 -214 -14 -218 Z"
     }, head);
     svgEl("path", {
       class: "girl-silhouette",
-      d: "M-34 -200 C-46 -197 -49 -189 -34 -184 C-31 -174 -20 -163 -5 -159 C-21 -159 -37 -169 -42 -185 C-52 -187 -55 -195 -43 -201 Z"
+      d: "M-27 -198 C-36 -196 -39 -191 -30 -187 C-27 -176 -18 -167 -6 -164 C-18 -164 -30 -172 -35 -185 C-43 -187 -45 -194 -36 -200 Z"
     }, head);
     var ponytail = svgEl("path", {
       class: "girl-silhouette profile-ponytail",
-      d: "M36 -210 C80 -237 130 -209 120 -176 C111 -146 75 -136 41 -159 C25 -171 27 -193 39 -203 C43 -207 42 -210 36 -210 Z"
+      d: "M28 -205 C48 -219 72 -211 75 -193 C78 -176 60 -163 38 -167 C50 -175 57 -187 53 -198 C49 -208 38 -211 28 -205 Z"
     }, head);
 
     [
-      "M-30 -225 C-45 -213 -40 -194 -53 -179",
-      "M-12 -235 C-27 -215 -20 -192 -33 -174",
-      "M20 -233 C34 -218 25 -195 38 -177",
-      "M48 -218 C64 -207 58 -187 71 -170",
-      "M72 -221 C101 -209 96 -174 68 -151",
-      "M96 -205 C132 -184 113 -147 80 -137",
-      "M105 -191 C122 -174 112 -154 91 -143"
+      "M-20 -221 C-31 -211 -29 -195 -40 -183",
+      "M-7 -229 C-18 -213 -12 -193 -23 -176",
+      "M24 -213 C35 -205 33 -190 43 -178",
+      "M35 -210 C50 -205 51 -190 43 -177",
+      "M46 -214 C68 -207 68 -181 51 -161",
+      "M58 -207 C80 -194 69 -168 51 -154",
+      "M68 -195 C82 -181 71 -162 57 -153",
+      "M34 -201 C45 -198 47 -189 43 -181",
+      "M-27 -204 C-37 -199 -37 -190 -45 -184"
     ].forEach(function (d) {
       strands.push(svgEl("path", { class: "girl-hair-strand", d: d }, head));
     });
@@ -207,67 +209,69 @@
 
     svgEl("path", {
       class: "girl-silhouette",
-      d: "M-30 -76 C-40 -51 -43 -26 -39 -8 C-33 -3 -21 -4 -17 -12 C-18 -35 -13 -56 -5 -75 C-12 -82 -25 -82 -30 -76 Z"
+      d: "M-22 -76 C-29 -52 -31 -28 -28 -8 C-24 -3 -16 -4 -13 -11 C-14 -34 -11 -56 -4 -75 C-9 -81 -18 -81 -22 -76 Z"
     }, legs);
     svgEl("path", {
       class: "girl-silhouette",
-      d: "M8 -75 C18 -53 22 -29 20 -9 C27 -3 39 -5 43 -14 C41 -36 34 -58 24 -77 C18 -83 9 -82 8 -75 Z"
+      d: "M7 -75 C15 -53 18 -29 16 -9 C20 -4 29 -5 32 -12 C31 -35 26 -57 18 -76 C14 -82 7 -81 7 -75 Z"
     }, legs);
     svgEl("path", {
       class: "girl-silhouette",
-      d: "M-34 -8 C-53 -3 -57 6 -38 8 L-15 7 C-8 3 -13 -4 -23 -7 C-27 -8 -31 -9 -34 -8 Z"
+      d: "M-26 -8 C-41 -5 -45 3 -32 6 L-13 6 C-7 3 -10 -3 -18 -6 C-21 -7 -24 -8 -26 -8 Z"
     }, legs);
     svgEl("path", {
       class: "girl-silhouette",
-      d: "M36 -12 C55 -13 65 -8 65 1 C50 7 32 8 18 4 C14 0 18 -8 28 -11 C31 -12 34 -12 36 -12 Z"
+      d: "M25 -11 C40 -12 47 -8 48 -1 C38 5 24 6 13 3 C10 0 13 -7 20 -10 C22 -11 24 -11 25 -11 Z"
     }, legs);
 
     var leftArm = svgEl("g", { class: "front-arm front-arm-left" }, body);
     svgEl("path", {
       class: "girl-silhouette",
-      d: "M-37 -146 C-50 -125 -55 -101 -51 -82 C-45 -76 -35 -78 -33 -88 C-35 -107 -30 -126 -19 -142 C-23 -150 -32 -152 -37 -146 Z"
+      d: "M-30 -146 C-40 -124 -44 -101 -40 -84 C-36 -79 -29 -80 -28 -88 C-31 -106 -27 -126 -17 -142 C-20 -149 -27 -151 -30 -146 Z"
     }, leftArm);
 
     var rightArmRelaxed = svgEl("g", { class: "front-arm front-arm-right-relaxed" }, body);
     svgEl("path", {
       class: "girl-silhouette",
-      d: "M35 -146 C49 -125 56 -101 52 -82 C46 -75 35 -78 33 -88 C35 -108 29 -127 18 -143 C22 -150 31 -152 35 -146 Z"
+      d: "M29 -146 C40 -124 45 -101 41 -84 C37 -78 29 -80 28 -88 C31 -107 26 -126 17 -142 C20 -149 27 -151 29 -146 Z"
     }, rightArmRelaxed);
 
     var rightArmScratch = svgEl("g", { class: "front-arm front-arm-right-scratch" }, body);
     svgEl("path", {
       class: "girl-silhouette",
-      d: "M33 -146 C57 -154 60 -179 43 -197 C35 -199 29 -191 32 -184 C41 -178 39 -166 25 -157 C24 -151 28 -146 33 -146 Z"
+      d: "M29 -146 C48 -154 50 -178 36 -194 C29 -196 25 -189 27 -183 C34 -176 34 -165 22 -157 C21 -151 25 -146 29 -146 Z"
     }, rightArmScratch);
-    svgEl("circle", { class: "girl-silhouette", cx: "42", cy: "-198", r: "5.4" }, rightArmScratch);
+    svgEl("circle", { class: "girl-silhouette", cx: "36", cy: "-195", r: "4.2" }, rightArmScratch);
 
     svgEl("path", {
       class: "girl-silhouette",
-      d: "M-28 -162 C-46 -133 -56 -96 -60 -62 C-27 -44 20 -43 60 -63 C54 -103 44 -136 26 -162 C12 -173 -15 -172 -28 -162 Z"
+      d: "M-22 -158 C-36 -132 -44 -97 -46 -66 C-24 -53 15 -53 45 -67 C42 -104 34 -136 20 -158 C9 -166 -12 -166 -22 -158 Z"
     }, body);
     svgEl("path", {
       class: "girl-silhouette",
-      d: "M-12 -184 L15 -184 L17 -155 C7 -150 -5 -150 -14 -155 Z"
+      d: "M-9 -184 L10 -184 L12 -156 C5 -153 -5 -153 -11 -156 Z"
     }, body);
     svgEl("path", {
       class: "girl-silhouette",
-      d: "M-37 -215 C-28 -247 20 -255 47 -227 C66 -207 56 -171 25 -158 C-9 -144 -45 -165 -49 -195 C-50 -203 -45 -211 -37 -215 Z"
+      d: "M-24 -214 C-17 -238 18 -243 34 -221 C48 -203 41 -176 20 -164 C-5 -152 -31 -168 -34 -194 C-35 -203 -31 -210 -24 -214 Z"
     }, head);
     var ponytail = svgEl("path", {
       class: "girl-silhouette front-ponytail",
-      d: "M39 -215 C82 -237 118 -207 108 -177 C99 -151 69 -140 40 -158 C29 -167 28 -190 40 -201 Z"
+      d: "M30 -209 C52 -222 70 -209 68 -191 C66 -174 53 -163 35 -166 C44 -175 46 -190 38 -200 C35 -204 32 -207 30 -209 Z"
     }, head);
     svgEl("path", {
       class: "girl-silhouette",
-      d: "M-29 -222 C-7 -242 32 -235 46 -207 C57 -181 35 -156 4 -156 C-24 -156 -47 -174 -47 -195 C-47 -206 -39 -216 -29 -222 Z"
+      d: "M-20 -218 C-2 -234 25 -228 34 -205 C42 -183 27 -162 3 -162 C-19 -162 -35 -177 -35 -196 C-35 -206 -29 -214 -20 -218 Z"
     }, head);
 
     [
-      "M-33 -232 C-50 -218 -42 -198 -55 -184",
-      "M-12 -241 C-29 -221 -19 -196 -33 -178",
-      "M35 -228 C52 -214 46 -190 60 -174",
-      "M70 -216 C99 -198 91 -166 63 -149",
-      "M95 -200 C122 -181 106 -148 78 -137"
+      "M-24 -226 C-38 -214 -33 -197 -44 -183",
+      "M-7 -235 C-20 -218 -12 -197 -24 -180",
+      "M26 -222 C39 -212 35 -193 45 -179",
+      "M45 -212 C66 -201 60 -175 43 -159",
+      "M58 -201 C74 -186 64 -166 49 -154",
+      "M34 -204 C44 -198 43 -187 38 -178",
+      "M-31 -207 C-39 -200 -37 -190 -45 -184"
     ].forEach(function (d) {
       strands.push(svgEl("path", { class: "girl-hair-strand", d: d }, head));
     });
@@ -858,7 +862,7 @@
     var rect = root.getBoundingClientRect();
     var width = Math.max(320, rect.width || window.innerWidth || 320);
     var height = Math.max(220, rect.height || 360);
-    var actorHeight = clamp(height * 0.73, 190, Math.min(354, height * 0.86));
+    var actorHeight = clamp(height * 0.46, 155, Math.min(226, height * 0.5));
     var scale = actorHeight / BASE_HEIGHT;
     var groundY = clamp(height * 0.82, actorHeight + 10, height - 20);
     var offRight = width - PROFILE_BOUNDS.minX * scale;
