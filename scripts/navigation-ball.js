@@ -6,6 +6,10 @@
   const DEBUG_BALL_PATH = false;
   const DEBUG_NAV_BALL_CAMERA = false;
   const DEBUG_NAV_BALL_TIMING = false;
+  const DEBUG_NAV_BALL_SPEED = false;
+  const MAIN_PATH_SPEED = 520;
+  const NAV_BALL_LINE_SAMPLE_COUNT = 24;
+  const NAV_BALL_ARC_SAMPLE_COUNT = 80;
 
   var SECTION_IDS = ["landing", "about", "work", "archive", "contact"];
   var SECTION_INDEX = {
@@ -20,11 +24,6 @@
   var BALL_MORPH_DURATION = 1300;
   var NAV_BALL_BOUNCE_HEIGHT_SCALE = 1.08;
   var NAV_BALL_PREP_DURATIONS = [360, 430, 500];
-  var NAV_BALL_TRAJECTORY_DURATIONS = {
-    launch: 430,
-    arc: 480,
-    fall: 560
-  };
   var NAV_BALL_LANDING_DURATIONS = [480, 360, 260];
 
   function clamp(value, min, max) {
@@ -40,26 +39,9 @@
     return 1 - Math.pow(1 - safeT, 3);
   }
 
-  function easeInOutSine(t) {
-    var safeT = clamp(t, 0, 1);
-    return -(Math.cos(Math.PI * safeT) - 1) / 2;
-  }
-
   function easeRollOut(t) {
     var safeT = clamp(t, 0, 1);
     return 1 - Math.pow(1 - safeT, 2.2);
-  }
-
-  function launchProgress(t) {
-    var p = clamp(t, 0, 1);
-
-    return 0.82 * p + 0.18 * (1 - Math.pow(1 - p, 2));
-  }
-
-  function fallProgress(t) {
-    var p = clamp(t, 0, 1);
-
-    return 0.55 * p + 0.45 * p * p;
   }
 
   function smoothstep(t) {
@@ -1551,59 +1533,156 @@
       };
     }
 
-    function createExactTrackMetrics(start, landing, geometry) {
-      var length1 = geometry && geometry.D ? Math.abs(start.y - geometry.D.y) : 0;
-      var length2 = geometry && Number.isFinite(geometry.horizontalSpan) && Number.isFinite(geometry.arcHeight) ?
-        Math.max(1, geometry.horizontalSpan + geometry.arcHeight * 2) :
-        0;
-      var length3 = geometry && geometry.E ? Math.abs(landing.y - geometry.E.y) : 0;
-      var totalLength = Math.max(1, length1 + length2 + length3);
-      var descentStartDistance = length1 + length2;
+    function appendPathSample(samples, x, y) {
+      var last = samples[samples.length - 1];
+
+      if (last && Math.abs(last.x - x) < 0.001 && Math.abs(last.y - y) < 0.001) {
+        return;
+      }
+
+      samples.push({
+        x: x,
+        y: y,
+        distance: 0
+      });
+    }
+
+    function buildNavBallPathSamples(A, D, E, B, arcHeight) {
+      var samples = [];
+      var ascentEndIndex = NAV_BALL_LINE_SAMPLE_COUNT;
+      var descentStartIndex = NAV_BALL_LINE_SAMPLE_COUNT + NAV_BALL_ARC_SAMPLE_COUNT;
+      var ascentEndDistance = 0;
+      var descentStartDistance = 0;
+      var totalLength = 0;
+      var i;
+      var p;
+      var t;
+      var sx;
+      var prev;
+      var curr;
+
+      for (i = 0; i <= NAV_BALL_LINE_SAMPLE_COUNT; i += 1) {
+        p = i / NAV_BALL_LINE_SAMPLE_COUNT;
+        appendPathSample(samples, A.x, mix(A.y, D.y, p));
+      }
+
+      for (i = 1; i <= NAV_BALL_ARC_SAMPLE_COUNT; i += 1) {
+        t = i / NAV_BALL_ARC_SAMPLE_COUNT;
+        sx = smoothstep(t);
+        appendPathSample(
+          samples,
+          D.x + (E.x - D.x) * sx,
+          D.y - arcHeight * 4 * t * (1 - t)
+        );
+      }
+
+      for (i = 1; i <= NAV_BALL_LINE_SAMPLE_COUNT; i += 1) {
+        p = i / NAV_BALL_LINE_SAMPLE_COUNT;
+        appendPathSample(samples, B.x, mix(E.y, B.y, p));
+      }
+
+      if (samples.length === 0) {
+        appendPathSample(samples, A.x, A.y);
+      }
+
+      samples[0].distance = 0;
+
+      for (i = 1; i < samples.length; i += 1) {
+        prev = samples[i - 1];
+        curr = samples[i];
+        totalLength += Math.hypot(curr.x - prev.x, curr.y - prev.y);
+        curr.distance = totalLength;
+
+        if (i === ascentEndIndex) {
+          ascentEndDistance = totalLength;
+        }
+
+        if (i === descentStartIndex) {
+          descentStartDistance = totalLength;
+        }
+      }
+
+      totalLength = Math.max(0, totalLength);
+      descentStartDistance = descentStartDistance || totalLength;
 
       return {
-        length1: length1,
-        length2: length2,
-        length3: length3,
+        samples: samples,
         totalLength: totalLength,
-        ascentEndDistance: length1,
+        length1: ascentEndDistance,
+        length2: Math.max(0, descentStartDistance - ascentEndDistance),
+        length3: Math.max(0, totalLength - descentStartDistance),
+        ascentEndDistance: ascentEndDistance,
         descentStartDistance: descentStartDistance,
-        ascentEndProgress: length1 / totalLength,
-        descentStartProgress: descentStartDistance / totalLength
+        ascentEndProgress: totalLength > 0 ? ascentEndDistance / totalLength : 0,
+        descentStartProgress: totalLength > 0 ? descentStartDistance / totalLength : 1,
+        lineSampleCount: NAV_BALL_LINE_SAMPLE_COUNT,
+        arcSampleCount: NAV_BALL_ARC_SAMPLE_COUNT
+      };
+    }
+
+    function createExactTrackMetrics(start, landing, geometry) {
+      return buildNavBallPathSamples(start, geometry.D, geometry.E, landing, geometry.arcHeight);
+    }
+
+    function getPointAtDistance(path, targetDistance) {
+      var samples = path && path.samples ? path.samples : [];
+      var totalLength = path && Number.isFinite(path.totalLength) ? path.totalLength : 0;
+      var d = clamp(targetDistance, 0, totalLength);
+      var low = 0;
+      var high = samples.length - 1;
+      var middle;
+      var before;
+      var after;
+      var segmentLength;
+      var local;
+
+      if (samples.length === 0) {
+        return {
+          x: 0,
+          y: 0
+        };
+      }
+
+      if (samples.length === 1 || d <= 0 || totalLength <= 0) {
+        return {
+          x: samples[0].x,
+          y: samples[0].y
+        };
+      }
+
+      if (d >= totalLength) {
+        return {
+          x: samples[samples.length - 1].x,
+          y: samples[samples.length - 1].y
+        };
+      }
+
+      while (low < high) {
+        middle = Math.floor((low + high) / 2);
+
+        if (samples[middle].distance < d) {
+          low = middle + 1;
+        } else {
+          high = middle;
+        }
+      }
+
+      after = samples[low];
+      before = samples[Math.max(0, low - 1)];
+      segmentLength = after.distance - before.distance;
+      local = segmentLength > 0 ? (d - before.distance) / segmentLength : 0;
+
+      return {
+        x: mix(before.x, after.x, local),
+        y: mix(before.y, after.y, local)
       };
     }
 
     function evaluateTrackAtDistance(distance, path) {
       var geometry = path.geometry;
       var track = path.track || createExactTrackMetrics(path.start, path.end, geometry);
-      var s = clamp(distance, 0, track.totalLength);
-      var arcS;
-      var arcProgress;
-      var sx;
-      var fallS;
 
-      if (s <= track.length1) {
-        return {
-          x: path.start.x,
-          y: path.start.y - s
-        };
-      }
-
-      if (track.length2 > 0 && s <= track.descentStartDistance) {
-        arcS = s - track.length1;
-        arcProgress = clamp(arcS / track.length2, 0, 1);
-        sx = smoothstep(arcProgress);
-
-        return {
-          x: geometry.D.x + (geometry.E.x - geometry.D.x) * sx,
-          y: geometry.arcBaseY - geometry.arcHeight * 4 * arcProgress * (1 - arcProgress)
-        };
-      }
-
-      fallS = s - track.length1 - track.length2;
-      return {
-        x: path.end.x,
-        y: geometry.E.y + fallS
-      };
+      return getPointAtDistance(track, distance);
     }
 
     function navBallMasterHeight(ballSize) {
@@ -1648,14 +1727,14 @@
       var centerY;
 
       z = Math.min(z, bounceVisibleZMax);
-      requestedOvershoot = clamp(z * 0.75, 42, 92);
+      requestedOvershoot = clamp(z * 0.72, 40, 88);
       availableRise = topY - safeTop;
       minimumOvershoot = Math.min(Math.max(z * 0.35, 18), Math.max(1, availableRise));
       overshoot = availableRise > 0 ?
         Math.min(requestedOvershoot, Math.max(minimumOvershoot, availableRise * 0.72)) :
         1;
       arcBaseY = topY - overshoot;
-      arcHeight = clamp(horizontalSpan * 0.18, 36, 96);
+      arcHeight = clamp(horizontalSpan * 0.24, 48, 130);
       arcHeight = Math.min(arcHeight, Math.max(1, arcBaseY - safeTop));
       apexY = arcBaseY - arcHeight;
       m = start.y - arcBaseY;
@@ -1784,9 +1863,9 @@
       var maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
       var safeTop = visiblePathTopMargin({ bounds: bounds });
       var z = navBallMasterHeight(radius * 2);
-      var overshoot = clamp(z * 0.75, 42, 92);
+      var overshoot = clamp(z * 0.72, 40, 88);
       var horizontalSpan = Math.abs(endPoint.x - startScreen.x);
-      var arcHeight = clamp(horizontalSpan * 0.18, 36, 96);
+      var arcHeight = clamp(horizontalSpan * 0.24, 48, 130);
       var minLandingY = safeTop + arcHeight + overshoot + 8;
       var preferredLandingY = Math.max(window.innerHeight * 0.58, minLandingY);
       var desiredLandingY = clamp(preferredLandingY, bounds.minY, bounds.maxY);
@@ -2070,7 +2149,7 @@
         downward: downward,
         duration: duration,
         scrollDelay: 0,
-        cameraMode: upward ? "pre-scroll-before-flight" : "delayed-descent-scroll",
+        cameraMode: upward ? "distance-synced-scroll" : "delayed-descent-scroll",
         initialScroll: startScroll,
         hasShadow: endPoint.kind !== "floor",
         emergencyClampLogged: false,
@@ -2100,19 +2179,15 @@
       var arcEnd = config.path && config.path.track && Number.isFinite(config.path.track.descentStartProgress) ?
         config.path.track.descentStartProgress :
         0.68;
-      var fallProgress;
-
-      if (config.cameraMode === "pre-scrolled-freeze") {
-        return config.finalScroll;
-      }
+      var descentProgress;
 
       if (config.cameraMode === "delayed-descent-scroll") {
         if (progress < arcEnd) {
           return config.startScroll;
         }
 
-        fallProgress = (progress - arcEnd) / (1 - arcEnd);
-        return mix(config.startScroll, config.finalScroll, clamp(fallProgress, 0, 1));
+        descentProgress = (progress - arcEnd) / (1 - arcEnd);
+        return mix(config.startScroll, config.finalScroll, clamp(descentProgress, 0, 1));
       }
 
       return mix(config.startScroll, config.finalScroll, progress);
@@ -2454,18 +2529,11 @@
       var secondPrepHeight = bounceZ / 2;
       var thirdPrepHeight = (3 * bounceZ) / 4;
       var track = config.path && config.path.track ? config.path.track : createExactTrackMetrics(config.path.start, config.path.end, config.path.geometry);
-      var trajectoryDurationScale = clamp(track.totalLength / 720, 0.85, 1.08);
       var firstPrepDuration = scaleMotionDuration(NAV_BALL_PREP_DURATIONS[0]);
       var secondPrepDuration = scaleMotionDuration(NAV_BALL_PREP_DURATIONS[1]);
       var thirdPrepDuration = scaleMotionDuration(NAV_BALL_PREP_DURATIONS[2]);
-      var preScrollDistance = Math.abs(config.finalScroll - config.startScroll);
-      var shouldPreScrollBeforeFlight = config.upward && preScrollDistance > 1;
-      var preScrollMotionDuration = shouldPreScrollBeforeFlight ?
-        scaleMotionDuration(clamp(preScrollDistance * 0.45, 520, 700)) :
-        0;
-      var launchDuration = scaleMotionDuration(NAV_BALL_TRAJECTORY_DURATIONS.launch * trajectoryDurationScale);
-      var arcDuration = scaleMotionDuration(NAV_BALL_TRAJECTORY_DURATIONS.arc * trajectoryDurationScale);
-      var fallDuration = scaleMotionDuration(NAV_BALL_TRAJECTORY_DURATIONS.fall * trajectoryDurationScale);
+      var preScrollMotionDuration = 0;
+      var mainTrajectoryDuration = Math.max(1, (track.totalLength / MAIN_PATH_SPEED) * 1000);
       var firstLandingHeight = (3 * bounceZ) / 4;
       var secondLandingHeight = bounceZ / 2;
       var thirdLandingHeight = bounceZ / 4;
@@ -2476,10 +2544,8 @@
       var prep1End = firstPrepDuration;
       var prep2End = prep1End + secondPrepDuration;
       var prep3End = prep2End + thirdPrepDuration;
-      var launchEnd = prep3End + launchDuration;
-      var arcEnd = launchEnd + arcDuration;
-      var fallEnd = arcEnd + fallDuration;
-      var rebound1End = fallEnd + firstLandingDuration;
+      var mainEnd = prep3End + mainTrajectoryDuration;
+      var rebound1End = mainEnd + firstLandingDuration;
       var rebound2End = rebound1End + secondLandingDuration;
       var rebound3End = rebound2End + thirdLandingDuration;
       var rollEnd = rebound3End + rollDuration;
@@ -2491,13 +2557,16 @@
       var cleanUrl = window.location.pathname + window.location.search;
       var impactHandled = false;
       var rollStarted = false;
-      var preScrollPrepared = !shouldPreScrollBeforeFlight;
       var cameraDebugPhase = "";
       var timingLogged = false;
-
-      if (config.upward && !shouldPreScrollBeforeFlight) {
-        config.cameraMode = "pre-scrolled-freeze";
-      }
+      var speedDebugState = {
+        previousNow: 0,
+        previousX: 0,
+        previousY: 0,
+        minSpeed: Infinity,
+        maxSpeed: 0,
+        logged: false
+      };
 
       if (!isCurrentAnimation(token)) {
         debugNavBall("stale nav ball frame cancelled");
@@ -2564,15 +2633,15 @@
           secondPrepBounceDuration: round(secondPrepDuration),
           thirdPrepBounceDuration: round(thirdPrepDuration),
           bounceHeightScale: NAV_BALL_BOUNCE_HEIGHT_SCALE,
-          trajectoryDurationScale: round(trajectoryDurationScale),
-          launchDuration: round(launchDuration),
-          arcDuration: round(arcDuration),
-          fallDuration: round(fallDuration),
+          mainPathSpeed: MAIN_PATH_SPEED,
+          mainTrajectoryDuration: round(mainTrajectoryDuration),
           preScrollMotionDuration: round(preScrollMotionDuration),
           trackLengthAscent: round(track.length1),
           trackLengthArc: round(track.length2),
           trackLengthDescent: round(track.length3),
           trackLengthTotal: round(track.totalLength),
+          lineSampleCount: track.lineSampleCount,
+          arcSampleCount: track.arcSampleCount,
           ascentEndProgress: round(track.ascentEndProgress),
           descentStartProgress: round(track.descentStartProgress),
           firstLandingBounceHeight: round(firstLandingHeight),
@@ -2598,34 +2667,6 @@
       ball.classList.remove("is-forming", "is-landed", "is-ready", "is-landing", "is-contact-landing");
       ball.classList.add("is-visible", "is-moving");
       resetTimelineShadow();
-
-      function markPreScrollComplete() {
-        if (preScrollPrepared) {
-          return;
-        }
-
-        preScrollPrepared = true;
-        config.cameraMode = "pre-scrolled-freeze";
-        window.scrollTo(0, config.finalScroll);
-      }
-
-      function syncPrepScroll(elapsedMs) {
-        var prepScrollRaw;
-        var prepScrollY;
-
-        if (!shouldPreScrollBeforeFlight || preScrollPrepared) {
-          return;
-        }
-
-        prepScrollRaw = clamp(preScrollMotionDuration > 0 ? elapsedMs / preScrollMotionDuration : 1, 0, 1);
-        prepScrollY = mix(config.startScroll, config.finalScroll, easeInOutSine(prepScrollRaw));
-        window.scrollTo(0, prepScrollY);
-
-        if (prepScrollRaw >= 1) {
-          preScrollPrepared = true;
-          config.cameraMode = "pre-scrolled-freeze";
-        }
-      }
 
       function debugCamera(phase, raw, scrollY, screenPoint) {
         if (!DEBUG_NAV_BALL_CAMERA || cameraDebugPhase === phase) {
@@ -2660,12 +2701,55 @@
         });
       }
 
+      function trackMainPathSpeed(now, screenPoint) {
+        var dt;
+        var frameDistance;
+        var frameSpeed;
+
+        if (!DEBUG_NAV_BALL_SPEED || !screenPoint) {
+          return;
+        }
+
+        if (speedDebugState.previousNow) {
+          dt = (now - speedDebugState.previousNow) / 1000;
+
+          if (dt > 0) {
+            frameDistance = Math.hypot(
+              screenPoint.x - speedDebugState.previousX,
+              screenPoint.y - speedDebugState.previousY
+            );
+            frameSpeed = frameDistance / dt;
+            speedDebugState.minSpeed = Math.min(speedDebugState.minSpeed, frameSpeed);
+            speedDebugState.maxSpeed = Math.max(speedDebugState.maxSpeed, frameSpeed);
+          }
+        }
+
+        speedDebugState.previousNow = now;
+        speedDebugState.previousX = screenPoint.x;
+        speedDebugState.previousY = screenPoint.y;
+      }
+
+      function logMainPathSpeedSummary() {
+        if (!DEBUG_NAV_BALL_SPEED || speedDebugState.logged) {
+          return;
+        }
+
+        speedDebugState.logged = true;
+        console.table({
+          targetId: targetId,
+          speedPxPerSecond: MAIN_PATH_SPEED,
+          observedMinSpeed: Number.isFinite(speedDebugState.minSpeed) ? round(speedDebugState.minSpeed) : null,
+          observedMaxSpeed: round(speedDebugState.maxSpeed)
+        });
+      }
+
       function applyImpact() {
         if (impactHandled) {
           return;
         }
 
         impactHandled = true;
+        logMainPathSpeedSummary();
         window.scrollTo(0, config.finalScroll);
         setBallPosition(config.endScreen.x, config.endScreen.y);
         debugRenderLandingTarget(endPoint, config.finalScroll);
@@ -2717,45 +2801,6 @@
         setTimelineShadow(mix(compressedOpacity, airborneOpacity, liftRatio), mix(compressedScale, airborneScale, liftRatio));
       }
 
-      function launchPointAt(raw) {
-        var geometry = config.path.geometry;
-        var progress = launchProgress(raw);
-
-        return {
-          x: config.path.start.x,
-          y: mix(config.path.start.y, geometry.D.y, progress)
-        };
-      }
-
-      function arcPointAt(raw) {
-        var geometry = config.path.geometry;
-        var progress = clamp(raw, 0, 1);
-        var sx = smoothstep(progress);
-
-        return {
-          x: geometry.D.x + (geometry.E.x - geometry.D.x) * sx,
-          y: geometry.arcBaseY - geometry.arcHeight * 4 * progress * (1 - progress)
-        };
-      }
-
-      function fallPointAt(raw) {
-        var geometry = config.path.geometry;
-        var progress = fallProgress(raw);
-
-        return {
-          x: config.path.end.x,
-          y: mix(geometry.E.y, config.path.end.y, progress)
-        };
-      }
-
-      function scrollDuringFall(raw) {
-        if (!config.downward) {
-          return config.finalScroll;
-        }
-
-        return mix(config.startScroll, config.finalScroll, fallProgress(raw));
-      }
-
       function logTimingSummary() {
         if (!DEBUG_NAV_BALL_TIMING || timingLogged) {
           return;
@@ -2765,10 +2810,8 @@
         console.table({
           targetId: targetId,
           prepBounceTotalDuration: round(prep3End),
-          launchDuration: round(launchDuration),
-          arcDuration: round(arcDuration),
-          fallDuration: round(fallDuration),
-          mainTrajectoryDuration: round(launchDuration + arcDuration + fallDuration),
+          mainPathSpeed: MAIN_PATH_SPEED,
+          mainTrajectoryDuration: round(mainTrajectoryDuration),
           landingBounceTotalDuration: round(firstLandingDuration + secondLandingDuration + thirdLandingDuration),
           scrollDuration: round(preScrollMotionDuration),
           rollDuration: round(rollDuration),
@@ -2805,7 +2848,6 @@
           ball.classList.add("is-launching", "is-lifting");
           setBallPosition(bouncePoint.x, bouncePoint.y);
           applyBounceScale(raw, 0.68);
-          syncPrepScroll(elapsed);
           setTimelineShadow(0, 0.72);
         } else if (elapsed < prep2End) {
           raw = (elapsed - prep1End) / secondPrepDuration;
@@ -2814,7 +2856,6 @@
           ball.classList.add("is-launching", "is-lifting");
           setBallPosition(bouncePoint.x, bouncePoint.y);
           applyBounceScale(raw, 0.78);
-          syncPrepScroll(elapsed);
           setTimelineShadow(0, 0.72);
         } else if (elapsed < prep3End) {
           raw = (elapsed - prep2End) / thirdPrepDuration;
@@ -2823,13 +2864,14 @@
           ball.classList.add("is-launching", "is-lifting");
           setBallPosition(bouncePoint.x, bouncePoint.y);
           applyBounceScale(raw, 0.9);
-          syncPrepScroll(elapsed);
           setTimelineShadow(0, 0.72);
-        } else if (elapsed < launchEnd) {
-          markPreScrollComplete();
-          raw = (elapsed - prep3End) / launchDuration;
-          point = launchPointAt(raw);
-          actualScroll = config.downward ? config.startScroll : config.finalScroll;
+        } else if (elapsed < mainEnd) {
+          var mainElapsedSeconds = (elapsed - prep3End) / 1000;
+          var distanceTravelled = Math.min(track.totalLength, mainElapsedSeconds * MAIN_PATH_SPEED);
+
+          raw = track.totalLength > 0 ? distanceTravelled / track.totalLength : 1;
+          point = getPointAtDistance(track, distanceTravelled);
+          actualScroll = flightScrollAt(raw, config);
           screen = point;
 
           setState(STATES.BALL_FLYING);
@@ -2837,46 +2879,17 @@
           ball.classList.add("is-flying");
           window.scrollTo(0, actualScroll);
           setBallPosition(screen.x, screen.y);
-          setBallScale(1, 1);
+          setBallScale(raw >= track.descentStartProgress ? 0.985 : 1, raw >= track.descentStartProgress ? 1.025 : 1);
+          trackMainPathSpeed(now, screen);
           debugRenderLandingTarget(endPoint, config.finalScroll);
-          setTimelineShadow(0, 0.72);
-          debugCamera("main-flight-launch", raw, actualScroll, screen);
-        } else if (elapsed < arcEnd) {
-          raw = (elapsed - launchEnd) / arcDuration;
-          point = arcPointAt(raw);
-          actualScroll = config.downward ? config.startScroll : config.finalScroll;
-          screen = point;
-
-          setState(STATES.BALL_FLYING);
-          ball.classList.remove("is-launching", "is-lifting", "is-landing", "is-landed", "is-arrived");
-          ball.classList.add("is-flying");
-          window.scrollTo(0, actualScroll);
-          setBallPosition(screen.x, screen.y);
-          setBallScale(1, 1);
-          debugRenderLandingTarget(endPoint, config.finalScroll);
-          setTimelineShadow(0, 0.72);
-          debugCamera("main-flight-arc", raw, actualScroll, screen);
-        } else if (elapsed < fallEnd) {
-          raw = (elapsed - arcEnd) / fallDuration;
-          point = fallPointAt(raw);
-          actualScroll = scrollDuringFall(raw);
-          screen = point;
-
-          setState(STATES.BALL_FLYING);
-          ball.classList.remove("is-launching", "is-lifting", "is-landing", "is-landed", "is-arrived");
-          ball.classList.add("is-flying");
-          window.scrollTo(0, actualScroll);
-          setBallPosition(screen.x, screen.y);
-          setBallScale(0.985, 1.025);
-          debugRenderLandingTarget(endPoint, config.finalScroll);
-          applyApproachShadow(0.78 + 0.22 * fallProgress(raw));
-          debugCamera("main-flight-descent", raw, actualScroll, screen);
+          applyApproachShadow(raw);
+          debugCamera("main-flight", raw, actualScroll, screen);
         } else {
           applyImpact();
 
           if (elapsed < rebound1End) {
-            raw = (elapsed - fallEnd) / firstLandingDuration;
-            bouncePoint = evaluateBounce(config.endScreen.x, config.endScreen.y, firstLandingHeight, elapsed - fallEnd, firstLandingDuration);
+            raw = (elapsed - mainEnd) / firstLandingDuration;
+            bouncePoint = evaluateBounce(config.endScreen.x, config.endScreen.y, firstLandingHeight, elapsed - mainEnd, firstLandingDuration);
             setBallPosition(bouncePoint.x, bouncePoint.y);
             applyBounceScale(raw, 1);
             applyBounceShadow(raw, 1);
