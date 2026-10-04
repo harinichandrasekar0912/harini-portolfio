@@ -62,6 +62,12 @@
     return 0.55 * p + 0.45 * p * p;
   }
 
+  function smoothstep(t) {
+    var p = clamp(t, 0, 1);
+
+    return p * p * (3 - 2 * p);
+  }
+
   function mix(from, to, t) {
     return from + (to - from) * t;
   }
@@ -1547,7 +1553,9 @@
 
     function createExactTrackMetrics(start, landing, geometry) {
       var length1 = geometry && geometry.D ? Math.abs(start.y - geometry.D.y) : 0;
-      var length2 = geometry && Number.isFinite(geometry.r) ? Math.PI * Math.max(0, geometry.r) : 0;
+      var length2 = geometry && Number.isFinite(geometry.horizontalSpan) && Number.isFinite(geometry.arcHeight) ?
+        Math.max(1, geometry.horizontalSpan + geometry.arcHeight * 2) :
+        0;
       var length3 = geometry && geometry.E ? Math.abs(landing.y - geometry.E.y) : 0;
       var totalLength = Math.max(1, length1 + length2 + length3);
       var descentStartDistance = length1 + length2;
@@ -1570,7 +1578,7 @@
       var s = clamp(distance, 0, track.totalLength);
       var arcS;
       var arcProgress;
-      var theta;
+      var sx;
       var fallS;
 
       if (s <= track.length1) {
@@ -1583,11 +1591,11 @@
       if (track.length2 > 0 && s <= track.descentStartDistance) {
         arcS = s - track.length1;
         arcProgress = clamp(arcS / track.length2, 0, 1);
-        theta = geometry.startTheta + (geometry.endTheta - geometry.startTheta) * arcProgress;
+        sx = smoothstep(arcProgress);
 
         return {
-          x: geometry.centerX + geometry.r * Math.cos(theta),
-          y: geometry.centerY - geometry.r * Math.sin(theta)
+          x: geometry.D.x + (geometry.E.x - geometry.D.x) * sx,
+          y: geometry.arcBaseY - geometry.arcHeight * 4 * arcProgress * (1 - arcProgress)
         };
       }
 
@@ -1621,7 +1629,8 @@
     function createExactPathGeometry(start, landing, baseZ, options) {
       var safeTop = visiblePathTopMargin(options);
       var dx = landing.x - start.x;
-      var r = Math.abs(dx) / 2;
+      var horizontalSpan = Math.abs(dx);
+      var r = horizontalSpan / 2;
       var topY = Math.min(start.y, landing.y);
       var z = Math.max(0, baseZ);
       var prepBounceZMax = Math.max(0, (start.y - safeTop) / 0.75);
@@ -1632,20 +1641,23 @@
       var minimumOvershoot;
       var overshoot;
       var arcBaseY;
+      var arcHeight;
       var apexY;
       var m;
       var centerX = (start.x + landing.x) / 2;
       var centerY;
 
       z = Math.min(z, bounceVisibleZMax);
-      requestedOvershoot = clamp(z * 0.86, 52, 108);
+      requestedOvershoot = clamp(z * 0.75, 42, 92);
       availableRise = topY - safeTop;
       minimumOvershoot = Math.min(Math.max(z * 0.35, 18), Math.max(1, availableRise));
       overshoot = availableRise > 0 ?
         Math.min(requestedOvershoot, Math.max(minimumOvershoot, availableRise * 0.72)) :
         1;
       arcBaseY = topY - overshoot;
-      apexY = arcBaseY - r;
+      arcHeight = clamp(horizontalSpan * 0.18, 36, 96);
+      arcHeight = Math.min(arcHeight, Math.max(1, arcBaseY - safeTop));
+      apexY = arcBaseY - arcHeight;
       m = start.y - arcBaseY;
       centerY = arcBaseY;
 
@@ -1657,6 +1669,8 @@
         overshoot: overshoot,
         requestedOvershoot: requestedOvershoot,
         arcBaseY: arcBaseY,
+        arcHeight: arcHeight,
+        horizontalSpan: horizontalSpan,
         safeTop: safeTop,
         bounceVisibleZMax: bounceVisibleZMax,
         apexY: apexY,
@@ -1770,9 +1784,10 @@
       var maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
       var safeTop = visiblePathTopMargin({ bounds: bounds });
       var z = navBallMasterHeight(radius * 2);
-      var overshoot = clamp(z * 0.86, 52, 108);
-      var arcRadius = Math.abs(endPoint.x - startScreen.x) / 2;
-      var minLandingY = safeTop + arcRadius + overshoot + 8;
+      var overshoot = clamp(z * 0.75, 42, 92);
+      var horizontalSpan = Math.abs(endPoint.x - startScreen.x);
+      var arcHeight = clamp(horizontalSpan * 0.18, 36, 96);
+      var minLandingY = safeTop + arcHeight + overshoot + 8;
       var preferredLandingY = Math.max(window.innerHeight * 0.58, minLandingY);
       var desiredLandingY = clamp(preferredLandingY, bounds.minY, bounds.maxY);
 
@@ -1924,6 +1939,8 @@
           Number.isFinite(path.geometry.apexY) &&
           Number.isFinite(path.geometry.topY) &&
           Number.isFinite(path.geometry.arcBaseY) &&
+          Number.isFinite(path.geometry.arcHeight) &&
+          Number.isFinite(path.geometry.horizontalSpan) &&
           Number.isFinite(path.geometry.overshoot) &&
           Number.isFinite(path.geometry.centerX) &&
           Number.isFinite(path.geometry.centerY);
@@ -2153,6 +2170,7 @@
         m: round(geometry.m),
         topY: round(geometry.topY),
         arcBaseY: round(geometry.arcBaseY),
+        arcHeight: round(geometry.arcHeight),
         overshoot: round(geometry.overshoot),
         requestedOvershoot: round(geometry.requestedOvershoot),
         safeTop: round(geometry.safeTop),
@@ -2166,6 +2184,7 @@
         Ex: round(geometry.E && geometry.E.x),
         Ey: round(geometry.E && geometry.E.y),
         radius: round(geometry.r),
+        horizontalSpan: round(geometry.horizontalSpan),
         centerX: round(geometry.centerX),
         centerY: round(geometry.centerY),
         launchXFixed: Math.abs(p0.x - p28.x) < 0.5,
@@ -2710,11 +2729,12 @@
 
       function arcPointAt(raw) {
         var geometry = config.path.geometry;
-        var theta = geometry.startTheta + (geometry.endTheta - geometry.startTheta) * clamp(raw, 0, 1);
+        var progress = clamp(raw, 0, 1);
+        var sx = smoothstep(progress);
 
         return {
-          x: geometry.centerX + geometry.r * Math.cos(theta),
-          y: geometry.centerY - geometry.r * Math.sin(theta)
+          x: geometry.D.x + (geometry.E.x - geometry.D.x) * sx,
+          y: geometry.arcBaseY - geometry.arcHeight * 4 * progress * (1 - progress)
         };
       }
 
