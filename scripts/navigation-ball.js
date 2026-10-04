@@ -1500,14 +1500,14 @@
     }
 
     function visiblePathTopMargin(options) {
-      var fallback = Math.max(24, ballRadius() + 4);
+      var fallback = ballRadius() + 24;
 
       if (options && Number.isFinite(options.safeTop)) {
         return Math.max(0, options.safeTop);
       }
 
       if (options && options.bounds && Number.isFinite(options.bounds.minY)) {
-        return Math.max(24, options.bounds.minY);
+        return Math.max(fallback, options.bounds.minY);
       }
 
       return fallback;
@@ -1517,63 +1517,72 @@
       var safeTop = visiblePathTopMargin(options);
       var dx = landing.x - start.x;
       var r = Math.abs(dx) / 2;
-      var mMaxVisible = start.y - safeTop - r;
+      var topY = Math.min(start.y, landing.y);
       var z = Math.max(0, baseZ);
       var prepBounceZMax = Math.max(0, (start.y - safeTop) / 0.75);
       var landingBounceZMax = Math.max(0, (landing.y - safeTop) / 0.75);
       var bounceVisibleZMax = Math.min(prepBounceZMax, landingBounceZMax);
-      var mPreferred = Math.max(z * 1.25, Math.abs(landing.y - start.y) * 0.35 + z);
+      var requestedOvershoot;
+      var availableRise;
+      var minimumOvershoot;
+      var overshoot;
+      var arcBaseY;
+      var arcRadiusY;
+      var shallowArcFallback;
       var m;
       var centerX = (start.x + landing.x) / 2;
       var centerY;
 
       z = Math.min(z, bounceVisibleZMax);
-      mPreferred = Math.max(z * 1.25, Math.abs(landing.y - start.y) * 0.35 + z);
+      requestedOvershoot = clamp(z * 1.25, 72, 150);
+      availableRise = topY - safeTop;
+      minimumOvershoot = Math.min(Math.max(z * 0.35, 18), Math.max(1, availableRise));
+      overshoot = availableRise > 0 ?
+        Math.min(requestedOvershoot, Math.max(minimumOvershoot, availableRise * 0.82)) :
+        1;
+      arcBaseY = topY - overshoot;
+      arcRadiusY = r;
+      shallowArcFallback = false;
 
-      if (mMaxVisible <= 0) {
-        z = 0;
-        m = 0;
-      } else if (mMaxVisible <= z) {
-        z = Math.max(0, mMaxVisible * 0.78);
-        mPreferred = Math.max(z * 1.25, Math.abs(landing.y - start.y) * 0.35 + z);
-        m = Math.min(mPreferred, mMaxVisible);
-      } else {
-        m = Math.min(mPreferred, mMaxVisible);
+      if (arcBaseY - arcRadiusY < safeTop) {
+        arcRadiusY = Math.max(0, arcBaseY - safeTop);
+        shallowArcFallback = true;
       }
 
-      if (mMaxVisible > 0 && m <= z) {
-        z = Math.max(0, Math.min(z, mMaxVisible * 0.78));
-        m = mMaxVisible;
-      }
-
-      centerY = start.y - m;
+      m = start.y - arcBaseY;
+      centerY = arcBaseY;
 
       return {
         z: z,
         a: m,
         m: m,
-        mMaxVisible: mMaxVisible,
+        topY: topY,
+        overshoot: overshoot,
+        requestedOvershoot: requestedOvershoot,
+        arcBaseY: arcBaseY,
         safeTop: safeTop,
         bounceVisibleZMax: bounceVisibleZMax,
-        visibilityLimited: m < mPreferred,
+        arcRadiusY: arcRadiusY,
+        shallowArcFallback: shallowArcFallback,
+        visibilityLimited: overshoot < requestedOvershoot || shallowArcFallback,
         D: {
           x: start.x,
-          y: start.y - m
+          y: arcBaseY
         },
         C: {
           x: centerX,
-          y: centerY - r
+          y: arcBaseY - arcRadiusY
         },
         E: {
           x: landing.x,
-          y: start.y - m
+          y: arcBaseY
         },
         r: r,
         centerX: centerX,
         centerY: centerY,
         direction: Math.sign(dx) || 1,
-        startTheta: landing.x > start.x ? Math.PI : 0,
-        endTheta: landing.x > start.x ? 0 : Math.PI
+        startTheta: landing.x < start.x ? 0 : Math.PI,
+        endTheta: landing.x < start.x ? Math.PI : 0
       };
     }
 
@@ -1600,7 +1609,7 @@
         theta = geometry.startTheta + (geometry.endTheta - geometry.startTheta) * p;
         return {
           x: geometry.centerX + geometry.r * Math.cos(theta),
-          y: geometry.centerY - geometry.r * Math.sin(theta)
+          y: geometry.centerY - geometry.arcRadiusY * Math.sin(theta)
         };
       }
 
@@ -1813,6 +1822,10 @@
           Number.isFinite(path.geometry.z) &&
           Number.isFinite(path.geometry.m) &&
           Number.isFinite(path.geometry.r) &&
+          Number.isFinite(path.geometry.arcRadiusY) &&
+          Number.isFinite(path.geometry.topY) &&
+          Number.isFinite(path.geometry.arcBaseY) &&
+          Number.isFinite(path.geometry.overshoot) &&
           Number.isFinite(path.geometry.centerX) &&
           Number.isFinite(path.geometry.centerY);
       }
@@ -2002,6 +2015,13 @@
       finalVelocity = flightVelocityAt(1, config);
       geometry = config.path.geometry || {};
 
+      if (geometry.D && geometry.E) {
+        console.assert(geometry.D.y < config.path.start.y, "D must be above A");
+        console.assert(geometry.E.y < config.path.end.y, "E must be above B");
+        console.assert(Math.abs(geometry.D.x - config.path.start.x) < 0.001, "A-D must be vertical");
+        console.assert(Math.abs(geometry.E.x - config.path.end.x) < 0.001, "E-B must be vertical");
+      }
+
       console.table({
         targetId: config.targetId,
         direction: config.upward ? "upward" : "downward",
@@ -2014,9 +2034,14 @@
         z: round(geometry.z),
         a: round(geometry.a),
         m: round(geometry.m),
-        mMaxVisible: round(geometry.mMaxVisible),
+        topY: round(geometry.topY),
+        arcBaseY: round(geometry.arcBaseY),
+        overshoot: round(geometry.overshoot),
+        requestedOvershoot: round(geometry.requestedOvershoot),
         safeTop: round(geometry.safeTop),
         bounceVisibleZMax: round(geometry.bounceVisibleZMax),
+        arcRadiusY: round(geometry.arcRadiusY),
+        shallowArcFallback: Boolean(geometry.shallowArcFallback),
         visibilityLimited: Boolean(geometry.visibilityLimited),
         Dx: round(geometry.D && geometry.D.x),
         Dy: round(geometry.D && geometry.D.y),
@@ -2360,9 +2385,14 @@
           z: round(z),
           a: round(debugGeometry.a),
           m: round(debugGeometry.m),
-          mMaxVisible: round(debugGeometry.mMaxVisible),
+          topY: round(debugGeometry.topY),
+          arcBaseY: round(debugGeometry.arcBaseY),
+          overshoot: round(debugGeometry.overshoot),
+          requestedOvershoot: round(debugGeometry.requestedOvershoot),
           safeTop: round(debugGeometry.safeTop),
           bounceVisibleZMax: round(debugGeometry.bounceVisibleZMax),
+          arcRadiusY: round(debugGeometry.arcRadiusY),
+          shallowArcFallback: Boolean(debugGeometry.shallowArcFallback),
           visibilityLimited: Boolean(debugGeometry.visibilityLimited),
           pointD: debugGeometry.D ? {
             x: round(debugGeometry.D.x),
