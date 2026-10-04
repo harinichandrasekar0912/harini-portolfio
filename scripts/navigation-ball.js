@@ -7,9 +7,9 @@
   const DEBUG_NAV_BALL_CAMERA = false;
   const DEBUG_NAV_BALL_TIMING = false;
   const DEBUG_NAV_BALL_SPEED = false;
-  const MAIN_PATH_SPEED = 430;
-  const NAV_BALL_LINE_SAMPLE_COUNT = 40;
-  const NAV_BALL_ARC_SAMPLE_COUNT = 120;
+  const DEBUG_NAV_BALL_BEZIER = false;
+  const MAIN_PATH_SPEED = 420;
+  const BEZIER_SAMPLE_COUNT = 160;
 
   var SECTION_IDS = ["landing", "about", "work", "archive", "contact"];
   var SECTION_INDEX = {
@@ -42,12 +42,6 @@
   function easeRollOut(t) {
     var safeT = clamp(t, 0, 1);
     return 1 - Math.pow(1 - safeT, 2.2);
-  }
-
-  function smootherstep(t) {
-    var p = clamp(t, 0, 1);
-
-    return p * p * p * (p * (p * 6 - 15) + 10);
   }
 
   function mix(from, to, t) {
@@ -1533,7 +1527,7 @@
       };
     }
 
-    function appendPathSample(samples, x, y) {
+    function appendPathSample(samples, x, y, t) {
       var last = samples[samples.length - 1];
 
       if (last && Math.abs(last.x - x) < 0.001 && Math.abs(last.y - y) < 0.001) {
@@ -1543,46 +1537,46 @@
       samples.push({
         x: x,
         y: y,
+        t: typeof t === "number" ? t : 0,
         distance: 0
       });
     }
 
-    function buildNavBallPathSamples(A, D, E, B, arcHeight) {
+    function cubicBezier(P0, P1, P2, P3, t) {
+      var safeT = clamp(t, 0, 1);
+      var u = 1 - safeT;
+
+      return {
+        x:
+          u * u * u * P0.x +
+          3 * u * u * safeT * P1.x +
+          3 * u * safeT * safeT * P2.x +
+          safeT * safeT * safeT * P3.x,
+        y:
+          u * u * u * P0.y +
+          3 * u * u * safeT * P1.y +
+          3 * u * safeT * safeT * P2.y +
+          safeT * safeT * safeT * P3.y
+      };
+    }
+
+    function buildNavBallBezierPathSamples(P0, P1, P2, P3) {
       var samples = [];
-      var ascentEndIndex = NAV_BALL_LINE_SAMPLE_COUNT;
-      var descentStartIndex = NAV_BALL_LINE_SAMPLE_COUNT + NAV_BALL_ARC_SAMPLE_COUNT;
-      var ascentEndDistance = 0;
-      var descentStartDistance = 0;
       var totalLength = 0;
       var i;
-      var p;
       var t;
-      var sx;
+      var point;
       var prev;
       var curr;
 
-      for (i = 0; i <= NAV_BALL_LINE_SAMPLE_COUNT; i += 1) {
-        p = i / NAV_BALL_LINE_SAMPLE_COUNT;
-        appendPathSample(samples, A.x, mix(A.y, D.y, p));
-      }
-
-      for (i = 1; i <= NAV_BALL_ARC_SAMPLE_COUNT; i += 1) {
-        t = i / NAV_BALL_ARC_SAMPLE_COUNT;
-        sx = smootherstep(t);
-        appendPathSample(
-          samples,
-          D.x + (E.x - D.x) * sx,
-          D.y - arcHeight * 4 * t * (1 - t)
-        );
-      }
-
-      for (i = 1; i <= NAV_BALL_LINE_SAMPLE_COUNT; i += 1) {
-        p = i / NAV_BALL_LINE_SAMPLE_COUNT;
-        appendPathSample(samples, B.x, mix(E.y, B.y, p));
+      for (i = 0; i <= BEZIER_SAMPLE_COUNT; i += 1) {
+        t = i / BEZIER_SAMPLE_COUNT;
+        point = cubicBezier(P0, P1, P2, P3, t);
+        appendPathSample(samples, point.x, point.y, t);
       }
 
       if (samples.length === 0) {
-        appendPathSample(samples, A.x, A.y);
+        appendPathSample(samples, P0.x, P0.y, 0);
       }
 
       samples[0].distance = 0;
@@ -1592,36 +1586,19 @@
         curr = samples[i];
         totalLength += Math.hypot(curr.x - prev.x, curr.y - prev.y);
         curr.distance = totalLength;
-
-        if (i === ascentEndIndex) {
-          ascentEndDistance = totalLength;
-        }
-
-        if (i === descentStartIndex) {
-          descentStartDistance = totalLength;
-        }
       }
 
       totalLength = Math.max(0, totalLength);
-      descentStartDistance = descentStartDistance || totalLength;
 
       return {
         samples: samples,
         totalLength: totalLength,
-        length1: ascentEndDistance,
-        length2: Math.max(0, descentStartDistance - ascentEndDistance),
-        length3: Math.max(0, totalLength - descentStartDistance),
-        ascentEndDistance: ascentEndDistance,
-        descentStartDistance: descentStartDistance,
-        ascentEndProgress: totalLength > 0 ? ascentEndDistance / totalLength : 0,
-        descentStartProgress: totalLength > 0 ? descentStartDistance / totalLength : 1,
-        lineSampleCount: NAV_BALL_LINE_SAMPLE_COUNT,
-        arcSampleCount: NAV_BALL_ARC_SAMPLE_COUNT
+        bezierSampleCount: BEZIER_SAMPLE_COUNT
       };
     }
 
     function createExactTrackMetrics(start, landing, geometry) {
-      return buildNavBallPathSamples(start, geometry.D, geometry.E, landing, geometry.arcHeight);
+      return buildNavBallBezierPathSamples(geometry.P0 || start, geometry.P1, geometry.P2, geometry.P3 || landing);
     }
 
     function getPointAtDistance(path, targetDistance) {
@@ -1717,7 +1694,6 @@
       var safeTop = visiblePathTopMargin(options);
       var dx = landing.x - start.x;
       var horizontalSpan = Math.abs(dx);
-      var r = horizontalSpan / 2;
       var topY = Math.min(start.y, landing.y);
       var z = Math.max(0, baseZ);
       var prepBounceZMax = Math.max(0, (start.y - safeTop) / 0.75);
@@ -1725,28 +1701,29 @@
       var bounceVisibleZMax = Math.min(prepBounceZMax, landingBounceZMax);
       var requestedOvershoot;
       var availableRise;
-      var minimumOvershoot;
       var overshoot;
-      var arcBaseY;
-      var arcHeight;
+      var controlY;
       var apexY;
       var m;
       var centerX = (start.x + landing.x) / 2;
-      var centerY;
+      var midpoint;
 
       z = Math.min(z, bounceVisibleZMax);
-      requestedOvershoot = clamp(z * 0.65, 36, 76);
+      requestedOvershoot = clamp(z * 0.65, 36, 84);
       availableRise = topY - safeTop;
-      minimumOvershoot = Math.min(Math.max(z * 0.35, 18), Math.max(1, availableRise));
       overshoot = availableRise > 0 ?
-        Math.min(requestedOvershoot, Math.max(minimumOvershoot, availableRise * 0.72)) :
-        1;
-      arcBaseY = topY - overshoot;
-      arcHeight = clamp(horizontalSpan * 0.26, 56, 140);
-      arcHeight = Math.min(arcHeight, Math.max(1, arcBaseY - safeTop));
-      apexY = arcBaseY - arcHeight;
-      m = start.y - arcBaseY;
-      centerY = arcBaseY;
+        Math.min(requestedOvershoot, Math.max(1, availableRise)) :
+        0;
+      controlY = topY - overshoot;
+      midpoint = cubicBezier(
+        start,
+        { x: start.x, y: controlY },
+        { x: landing.x, y: controlY },
+        landing,
+        0.5
+      );
+      apexY = midpoint.y;
+      m = start.y - controlY;
 
       return {
         z: z,
@@ -1755,31 +1732,35 @@
         topY: topY,
         overshoot: overshoot,
         requestedOvershoot: requestedOvershoot,
-        arcBaseY: arcBaseY,
-        arcHeight: arcHeight,
+        controlY: controlY,
         horizontalSpan: horizontalSpan,
         safeTop: safeTop,
         bounceVisibleZMax: bounceVisibleZMax,
         apexY: apexY,
-        visibilityLimited: overshoot < requestedOvershoot || apexY < safeTop,
-        D: {
+        visibilityLimited: overshoot < requestedOvershoot || controlY < safeTop,
+        P0: {
           x: start.x,
-          y: arcBaseY
+          y: start.y
+        },
+        P1: {
+          x: start.x,
+          y: controlY
+        },
+        P2: {
+          x: landing.x,
+          y: controlY
+        },
+        P3: {
+          x: landing.x,
+          y: landing.y
         },
         C: {
           x: centerX,
           y: apexY
         },
-        E: {
-          x: landing.x,
-          y: arcBaseY
-        },
-        r: r,
         centerX: centerX,
-        centerY: centerY,
-        direction: Math.sign(dx) || 1,
-        startTheta: landing.x < start.x ? 0 : Math.PI,
-        endTheta: landing.x < start.x ? Math.PI : 0
+        centerY: controlY,
+        direction: Math.sign(dx) || 1
       };
     }
 
@@ -1871,10 +1852,8 @@
       var maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
       var safeTop = visiblePathTopMargin({ bounds: bounds });
       var z = navBallMasterHeight(radius * 2);
-      var overshoot = clamp(z * 0.65, 36, 76);
-      var horizontalSpan = Math.abs(endPoint.x - startScreen.x);
-      var arcHeight = clamp(horizontalSpan * 0.26, 56, 140);
-      var minLandingY = safeTop + arcHeight + overshoot + 8;
+      var overshoot = clamp(z * 0.65, 36, 84);
+      var minLandingY = safeTop + overshoot + 8;
       var preferredLandingY = Math.max(window.innerHeight * 0.58, minLandingY);
       var desiredLandingY = clamp(preferredLandingY, bounds.minY, bounds.maxY);
 
@@ -1891,9 +1870,22 @@
 
     function updatePathApex(path) {
       var apex = path.start;
+      var sampleIndex;
+      var sample;
 
-      if (path && path.kind === "exact-nav-trajectory" && path.geometry && hasFinitePoint(path.geometry.C)) {
-        path.apex = path.geometry.C;
+      if (path && path.kind === "exact-nav-trajectory" && path.track && Array.isArray(path.track.samples)) {
+        for (sampleIndex = 0; sampleIndex < path.track.samples.length; sampleIndex += 1) {
+          sample = path.track.samples[sampleIndex];
+
+          if (sample.y < apex.y) {
+            apex = sample;
+          }
+        }
+
+        path.apex = {
+          x: apex.x,
+          y: apex.y
+        };
         return;
       }
 
@@ -1976,8 +1968,8 @@
       var finalControl;
 
       if (path && path.kind === "exact-nav-trajectory") {
-        path.controlA = path.geometry.D;
-        path.controlB = path.geometry.E;
+        path.controlA = path.geometry.P1;
+        path.controlB = path.geometry.P2;
         updatePathApex(path);
         return;
       }
@@ -2017,20 +2009,18 @@
           hasFinitePoint(path.controlA) &&
           hasFinitePoint(path.controlB) &&
           path.geometry &&
-          hasFinitePoint(path.geometry.D) &&
-          hasFinitePoint(path.geometry.C) &&
-          hasFinitePoint(path.geometry.E) &&
+          hasFinitePoint(path.geometry.P0) &&
+          hasFinitePoint(path.geometry.P1) &&
+          hasFinitePoint(path.geometry.P2) &&
+          hasFinitePoint(path.geometry.P3) &&
           Number.isFinite(path.geometry.z) &&
           Number.isFinite(path.geometry.m) &&
-          Number.isFinite(path.geometry.r) &&
           Number.isFinite(path.geometry.apexY) &&
           Number.isFinite(path.geometry.topY) &&
-          Number.isFinite(path.geometry.arcBaseY) &&
-          Number.isFinite(path.geometry.arcHeight) &&
+          Number.isFinite(path.geometry.controlY) &&
           Number.isFinite(path.geometry.horizontalSpan) &&
           Number.isFinite(path.geometry.overshoot) &&
-          Number.isFinite(path.geometry.centerX) &&
-          Number.isFinite(path.geometry.centerY);
+          Number.isFinite(path.geometry.centerX);
       }
 
       if (Array.isArray(path.segments)) {
@@ -2060,8 +2050,8 @@
       var path = {
         kind: "exact-nav-trajectory",
         start: start,
-        controlA: geometry.D,
-        controlB: geometry.E,
+        controlA: geometry.P1,
+        controlB: geometry.P2,
         end: landing,
         apex: geometry.C,
         geometry: geometry,
@@ -2184,22 +2174,15 @@
 
     function flightScrollAt(raw, config) {
       var progress = clamp(raw, 0, 1);
-      var arcEnd = config.path && config.path.track && Number.isFinite(config.path.track.descentStartProgress) ?
-        config.path.track.descentStartProgress :
-        0.68;
-      var descentProgress;
+      var scrollProgress;
 
       if (config.cameraMode === "locked-final-scroll") {
         return config.finalScroll;
       }
 
       if (config.cameraMode === "delayed-descent-scroll") {
-        if (progress < arcEnd) {
-          return config.startScroll;
-        }
-
-        descentProgress = (progress - arcEnd) / (1 - arcEnd);
-        return mix(config.startScroll, config.finalScroll, clamp(descentProgress, 0, 1));
+        scrollProgress = clamp((progress - 0.18) / 0.82, 0, 1);
+        return mix(config.startScroll, config.finalScroll, scrollProgress);
       }
 
       return mix(config.startScroll, config.finalScroll, progress);
@@ -2207,15 +2190,13 @@
 
     function debugNavBallPath(config) {
       var samples;
-      var p0;
       var p28;
       var p48;
       var p68;
-      var p100;
       var finalVelocity;
       var geometry;
 
-      if (!(DEBUG_BALL_PATH || DEBUG_NAV_BALL_PATH || DEBUG_NAV_BALL_TRAJECTORY || DEBUG_NAV_BALL_EXACT_PATH) || !config || !config.path) {
+      if (!(DEBUG_BALL_PATH || DEBUG_NAV_BALL_PATH || DEBUG_NAV_BALL_BEZIER || DEBUG_NAV_BALL_TRAJECTORY || DEBUG_NAV_BALL_EXACT_PATH) || !config || !config.path) {
         return;
       }
 
@@ -2228,19 +2209,15 @@
           y: round(point.y)
         };
       });
-      p0 = flightPointAt(0, config);
       p28 = flightPointAt(0.28, config);
       p48 = flightPointAt(0.48, config);
       p68 = flightPointAt(0.68, config);
-      p100 = flightPointAt(1, config);
       finalVelocity = flightVelocityAt(1, config);
       geometry = config.path.geometry || {};
 
-      if (geometry.D && geometry.E) {
-        console.assert(geometry.D.y < config.path.start.y, "D must be above A");
-        console.assert(geometry.E.y < config.path.end.y, "E must be above B");
-        console.assert(Math.abs(geometry.D.x - config.path.start.x) < 0.001, "A-D must be vertical");
-        console.assert(Math.abs(geometry.E.x - config.path.end.x) < 0.001, "E-B must be vertical");
+      if (geometry.P1 && geometry.P2) {
+        console.assert(Math.abs(geometry.P1.x - config.path.start.x) < 0.001, "Bezier P1 must be vertically above A");
+        console.assert(Math.abs(geometry.P2.x - config.path.end.x) < 0.001, "Bezier P2 must be vertically above B");
       }
 
       console.table({
@@ -2256,28 +2233,26 @@
         a: round(geometry.a),
         m: round(geometry.m),
         topY: round(geometry.topY),
-        arcBaseY: round(geometry.arcBaseY),
-        arcHeight: round(geometry.arcHeight),
+        controlY: round(geometry.controlY),
         overshoot: round(geometry.overshoot),
         requestedOvershoot: round(geometry.requestedOvershoot),
         safeTop: round(geometry.safeTop),
         bounceVisibleZMax: round(geometry.bounceVisibleZMax),
         apexY: round(geometry.apexY),
         visibilityLimited: Boolean(geometry.visibilityLimited),
-        Dx: round(geometry.D && geometry.D.x),
-        Dy: round(geometry.D && geometry.D.y),
-        Cx: round(geometry.C && geometry.C.x),
-        Cy: round(geometry.C && geometry.C.y),
-        Ex: round(geometry.E && geometry.E.x),
-        Ey: round(geometry.E && geometry.E.y),
-        radius: round(geometry.r),
+        P0x: round(geometry.P0 && geometry.P0.x),
+        P0y: round(geometry.P0 && geometry.P0.y),
+        P1x: round(geometry.P1 && geometry.P1.x),
+        P1y: round(geometry.P1 && geometry.P1.y),
+        P2x: round(geometry.P2 && geometry.P2.x),
+        P2y: round(geometry.P2 && geometry.P2.y),
+        P3x: round(geometry.P3 && geometry.P3.x),
+        P3y: round(geometry.P3 && geometry.P3.y),
         horizontalSpan: round(geometry.horizontalSpan),
         centerX: round(geometry.centerX),
-        centerY: round(geometry.centerY),
-        launchXFixed: Math.abs(p0.x - p28.x) < 0.5,
-        capMovesX: Math.abs(p28.x - p48.x) > 0.5 || Math.abs(p48.x - p68.x) > 0.5,
-        capHasSingleArch: p48.y < p28.y && p48.y < p68.y,
-        fallXFixed: Math.abs(p68.x - p100.x) < 0.5,
+        startsVertical: Math.abs((geometry.P1 && geometry.P1.x) - config.path.start.x) < 0.5,
+        middleMovesX: Math.abs(p28.x - p48.x) > 0.5 || Math.abs(p48.x - p68.x) > 0.5,
+        endsVertical: Math.abs((geometry.P2 && geometry.P2.x) - config.path.end.x) < 0.5,
         finalVelocityNonZero: Math.abs(finalVelocity.x) + Math.abs(finalVelocity.y) > 0.5,
         finalVelocityX: round(finalVelocity.x),
         finalVelocityY: round(finalVelocity.y)
@@ -2624,32 +2599,36 @@
           transformTransitionDuringFlight: false,
           usedEaseOutIntoLanding: false,
           trajectoryKind: config.path.kind || "cubic",
-          launchXFixed: Math.abs(debugP0.x - debugP28.x) < 0.5,
-          capMovesX: Math.abs(debugP28.x - debugP48.x) > 0.5 || Math.abs(debugP48.x - debugP68.x) > 0.5,
-          fallXFixed: Math.abs(debugP68.x - debugP100.x) < 0.5,
+          startsVertical: Math.abs((debugGeometry.P1 && debugGeometry.P1.x) - debugP0.x) < 0.5,
+          middleMovesX: Math.abs(debugP28.x - debugP48.x) > 0.5 || Math.abs(debugP48.x - debugP68.x) > 0.5,
+          endsVertical: Math.abs((debugGeometry.P2 && debugGeometry.P2.x) - debugP100.x) < 0.5,
           z: round(z),
           bounceZ: round(bounceZ),
           a: round(debugGeometry.a),
           m: round(debugGeometry.m),
           topY: round(debugGeometry.topY),
-          arcBaseY: round(debugGeometry.arcBaseY),
+          controlY: round(debugGeometry.controlY),
           overshoot: round(debugGeometry.overshoot),
           requestedOvershoot: round(debugGeometry.requestedOvershoot),
           safeTop: round(debugGeometry.safeTop),
           bounceVisibleZMax: round(debugGeometry.bounceVisibleZMax),
           apexY: round(debugGeometry.apexY),
           visibilityLimited: Boolean(debugGeometry.visibilityLimited),
-          pointD: debugGeometry.D ? {
-            x: round(debugGeometry.D.x),
-            y: round(debugGeometry.D.y)
+          P0: debugGeometry.P0 ? {
+            x: round(debugGeometry.P0.x),
+            y: round(debugGeometry.P0.y)
           } : null,
-          pointC: debugGeometry.C ? {
-            x: round(debugGeometry.C.x),
-            y: round(debugGeometry.C.y)
+          P1: debugGeometry.P1 ? {
+            x: round(debugGeometry.P1.x),
+            y: round(debugGeometry.P1.y)
           } : null,
-          pointE: debugGeometry.E ? {
-            x: round(debugGeometry.E.x),
-            y: round(debugGeometry.E.y)
+          P2: debugGeometry.P2 ? {
+            x: round(debugGeometry.P2.x),
+            y: round(debugGeometry.P2.y)
+          } : null,
+          P3: debugGeometry.P3 ? {
+            x: round(debugGeometry.P3.x),
+            y: round(debugGeometry.P3.y)
           } : null,
           firstPrepBounceHeight: round(firstPrepHeight),
           secondPrepBounceHeight: round(secondPrepHeight),
@@ -2661,14 +2640,8 @@
           mainPathSpeed: MAIN_PATH_SPEED,
           mainTrajectoryDuration: round(mainTrajectoryDuration),
           preScrollMotionDuration: round(preScrollMotionDuration),
-          trackLengthAscent: round(track.length1),
-          trackLengthArc: round(track.length2),
-          trackLengthDescent: round(track.length3),
           trackLengthTotal: round(track.totalLength),
-          lineSampleCount: track.lineSampleCount,
-          arcSampleCount: track.arcSampleCount,
-          ascentEndProgress: round(track.ascentEndProgress),
-          descentStartProgress: round(track.descentStartProgress),
+          bezierSampleCount: track.bezierSampleCount,
           firstLandingBounceHeight: round(firstLandingHeight),
           secondLandingBounceHeight: round(secondLandingHeight),
           thirdLandingBounceHeight: round(thirdLandingHeight),
@@ -2723,7 +2696,7 @@
         var base2;
         var base3;
 
-        if (!DEBUG_NAV_BALL_PATH || prepDebugLogged) {
+        if (!(DEBUG_NAV_BALL_PATH || DEBUG_NAV_BALL_BEZIER) || prepDebugLogged) {
           return;
         }
 
@@ -2748,15 +2721,16 @@
         console.table({
           targetId: targetId,
           A: A0,
-          D: geometry.D || null,
-          E: geometry.E || null,
           B: config.endScreen,
-          arcHeight: round(geometry.arcHeight),
+          P0: geometry.P0 || null,
+          P1: geometry.P1 || null,
+          P2: geometry.P2 || null,
+          P3: geometry.P3 || null,
           overshoot: round(geometry.overshoot),
+          controlY: round(geometry.controlY),
           totalPathLength: round(track.totalLength),
           mainPathSpeed: MAIN_PATH_SPEED,
-          distanceAtD: round(track.ascentEndDistance),
-          distanceAtE: round(track.descentStartDistance),
+          bezierSampleCount: track.bezierSampleCount,
           scrollChangedDuringPrep: scrollChangedDuringPrep,
           prepBounceBase1: base1,
           prepBounceBase2: base2,
@@ -2786,12 +2760,10 @@
           Ay: round(config.startScreen.y),
           Bx: round(config.endScreen.x),
           By: round(config.endScreen.y),
-          Dx: round(config.path.geometry && config.path.geometry.D && config.path.geometry.D.x),
-          Dy: round(config.path.geometry && config.path.geometry.D && config.path.geometry.D.y),
-          Cx: round(config.path.geometry && config.path.geometry.C && config.path.geometry.C.x),
-          Cy: round(config.path.geometry && config.path.geometry.C && config.path.geometry.C.y),
-          Ex: round(config.path.geometry && config.path.geometry.E && config.path.geometry.E.x),
-          Ey: round(config.path.geometry && config.path.geometry.E && config.path.geometry.E.y),
+          P1x: round(config.path.geometry && config.path.geometry.P1 && config.path.geometry.P1.x),
+          P1y: round(config.path.geometry && config.path.geometry.P1 && config.path.geometry.P1.y),
+          P2x: round(config.path.geometry && config.path.geometry.P2 && config.path.geometry.P2.x),
+          P2y: round(config.path.geometry && config.path.geometry.P2 && config.path.geometry.P2.y),
           screenX: round(screenPoint && screenPoint.x),
           screenY: round(screenPoint && screenPoint.y)
         });
@@ -2995,7 +2967,7 @@
           ball.classList.add("is-flying");
           window.scrollTo(0, actualScroll);
           setBallPosition(screen.x, screen.y);
-          setBallScale(raw >= track.descentStartProgress ? 0.985 : 1, raw >= track.descentStartProgress ? 1.025 : 1);
+          setBallScale(raw >= 0.72 ? 0.985 : 1, raw >= 0.72 ? 1.025 : 1);
           trackMainPathSpeed(now, screen);
           debugRenderLandingTarget(endPoint, config.finalScroll);
           applyApproachShadow(raw);
