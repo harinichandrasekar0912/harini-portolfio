@@ -9,8 +9,16 @@
   const DEBUG_NAV_BALL_SPEED = false;
   const DEBUG_NAV_BALL_BEZIER = false;
   const DEBUG_NAV_BALL_UPWARD_SEQUENCE = false;
-  const MAIN_PATH_SPEED = 420;
+  const DEBUG_NAV_BALL_SPLINE = false;
+  const MAIN_PATH_SPEED = 430;
   const BEZIER_SAMPLE_COUNT = 160;
+  const SPLINE_ALPHA = 0.5;
+  const SAMPLES_PER_SEGMENT = 36;
+  // Reversible trajectory switch.
+  // "spline" = new six-point Catmull-Rom trajectory.
+  // "bezier" = previous single Bezier arch.
+  // "segmented" = old line/curve/line path.
+  const NAV_BALL_PATH_MODE = "spline";
 
   var SECTION_IDS = ["landing", "about", "work", "archive", "contact"];
   var SECTION_INDEX = {
@@ -831,7 +839,7 @@
 
       config.obstacles = obstacles;
 
-      if (config.path && config.path.kind === "exact-nav-trajectory") {
+      if (config.path && (config.path.kind === "exact-nav-trajectory" || config.path.kind === "spline-nav-trajectory")) {
         return;
       }
 
@@ -1598,6 +1606,147 @@
       };
     }
 
+    function normalizeNavBallPathMode() {
+      return NAV_BALL_PATH_MODE === "bezier" || NAV_BALL_PATH_MODE === "segmented" ?
+        NAV_BALL_PATH_MODE :
+        "spline";
+    }
+
+    function copyPoint(point) {
+      return {
+        x: point.x,
+        y: point.y
+      };
+    }
+
+    function extrapolateEndpoint(edge, neighbor) {
+      return {
+        x: edge.x + (edge.x - neighbor.x),
+        y: edge.y + (edge.y - neighbor.y)
+      };
+    }
+
+    function catmullKnot(previous, current, startKnot) {
+      var distance = Math.hypot(current.x - previous.x, current.y - previous.y);
+
+      return startKnot + Math.pow(Math.max(distance, 0.0001), SPLINE_ALPHA);
+    }
+
+    function interpolateCatmullPoint(pointA, pointB, knotA, knotB, knot) {
+      var span = knotB - knotA;
+      var weightA;
+      var weightB;
+
+      if (Math.abs(span) < 0.0001) {
+        return copyPoint(pointB);
+      }
+
+      weightA = (knotB - knot) / span;
+      weightB = (knot - knotA) / span;
+
+      return {
+        x: pointA.x * weightA + pointB.x * weightB,
+        y: pointA.y * weightA + pointB.y * weightB
+      };
+    }
+
+    function sampleCentripetalCatmullRomPoint(p0, p1, p2, p3, raw) {
+      var t0 = 0;
+      var t1 = catmullKnot(p0, p1, t0);
+      var t2 = catmullKnot(p1, p2, t1);
+      var t3 = catmullKnot(p2, p3, t2);
+      var t = mix(t1, t2, clamp(raw, 0, 1));
+      var a1 = interpolateCatmullPoint(p0, p1, t0, t1, t);
+      var a2 = interpolateCatmullPoint(p1, p2, t1, t2, t);
+      var a3 = interpolateCatmullPoint(p2, p3, t2, t3, t);
+      var b1 = interpolateCatmullPoint(a1, a2, t0, t2, t);
+      var b2 = interpolateCatmullPoint(a2, a3, t1, t3, t);
+
+      return interpolateCatmullPoint(b1, b2, t1, t2, t);
+    }
+
+    function finalizeSampleDistances(samples) {
+      var totalLength = 0;
+      var index;
+      var prev;
+      var curr;
+
+      if (samples.length === 0) {
+        return 0;
+      }
+
+      samples[0].distance = 0;
+
+      for (index = 1; index < samples.length; index += 1) {
+        prev = samples[index - 1];
+        curr = samples[index];
+        totalLength += Math.hypot(curr.x - prev.x, curr.y - prev.y);
+        curr.distance = totalLength;
+      }
+
+      return Math.max(0, totalLength);
+    }
+
+    function sampleCentripetalCatmullRom(points, samplesPerSegment) {
+      var safeSamplesPerSegment = Math.max(4, samplesPerSegment || SAMPLES_PER_SEGMENT);
+      var segmentCount = Math.max(0, points.length - 1);
+      var extended;
+      var samples = [];
+      var segmentIndex;
+      var sampleIndex;
+      var localT;
+      var point;
+      var totalLength;
+
+      if (points.length < 2) {
+        return {
+          samples: samples,
+          totalLength: 0,
+          samplesPerSegment: safeSamplesPerSegment,
+          splineAlpha: SPLINE_ALPHA
+        };
+      }
+
+      extended = [extrapolateEndpoint(points[0], points[1])]
+        .concat(points)
+        .concat([extrapolateEndpoint(points[points.length - 1], points[points.length - 2])]);
+
+      for (segmentIndex = 0; segmentIndex < segmentCount; segmentIndex += 1) {
+        for (sampleIndex = 0; sampleIndex <= safeSamplesPerSegment; sampleIndex += 1) {
+          if (segmentIndex > 0 && sampleIndex === 0) {
+            continue;
+          }
+
+          localT = sampleIndex / safeSamplesPerSegment;
+          point = sampleCentripetalCatmullRomPoint(
+            extended[segmentIndex],
+            extended[segmentIndex + 1],
+            extended[segmentIndex + 2],
+            extended[segmentIndex + 3],
+            localT
+          );
+          appendPathSample(samples, point.x, point.y, (segmentIndex + localT) / segmentCount);
+        }
+      }
+
+      if (samples.length === 0) {
+        appendPathSample(samples, points[0].x, points[0].y, 0);
+      }
+
+      totalLength = finalizeSampleDistances(samples);
+
+      return {
+        samples: samples,
+        totalLength: totalLength,
+        samplesPerSegment: safeSamplesPerSegment,
+        splineAlpha: SPLINE_ALPHA
+      };
+    }
+
+    function buildSplineNavBallPath(points) {
+      return sampleCentripetalCatmullRom(points, SAMPLES_PER_SEGMENT);
+    }
+
     function createExactTrackMetrics(start, landing, geometry) {
       return buildNavBallBezierPathSamples(geometry.P0 || start, geometry.P1, geometry.P2, geometry.P3 || landing);
     }
@@ -1665,10 +1814,17 @@
     }
 
     function evaluateTrackAtDistance(distance, path) {
-      var geometry = path.geometry;
+      var geometry = path.geometry || {};
       var track = path.track || createExactTrackMetrics(path.start, path.end, geometry);
 
       return getPointAtDistance(track, distance);
+    }
+
+    function sampledTrajectoryPointAt(raw, path) {
+      var safeT = clamp(raw, 0, 1);
+      var track = path.track || createExactTrackMetrics(path.start, path.end, path.geometry || {});
+
+      return getPointAtDistance(track, track.totalLength * safeT);
     }
 
     function navBallMasterHeight(ballSize) {
@@ -1765,6 +1921,103 @@
       };
     }
 
+    function splineScenarioFor(start, landing) {
+      var horizontal = landing.x < start.x ? "left" : "right";
+      var vertical = landing.y > start.y ? "lower" : "higher";
+
+      return horizontal + "-" + vertical;
+    }
+
+    function createSplinePathGeometry(start, landing, baseZ, options) {
+      var safeTop = visiblePathTopMargin(options);
+      var dx = landing.x - start.x;
+      var absDx = Math.abs(dx);
+      var topY = Math.min(start.y, landing.y);
+      var z = Math.max(0, baseZ);
+      var prepBounceZMax = Math.max(0, (start.y - safeTop) / 0.75);
+      var landingBounceZMax = Math.max(0, (landing.y - safeTop) / 0.75);
+      var bounceVisibleZMax = Math.min(prepBounceZMax, landingBounceZMax);
+      var lift;
+      var baseY;
+      var arcHeight;
+      var cNudge;
+      var visibilityAdjustment = 0;
+      var A = copyPoint(start);
+      var F = copyPoint(landing);
+      var B;
+      var C;
+      var D;
+      var E;
+      var points;
+
+      z = Math.min(z, bounceVisibleZMax);
+      lift = clamp(z * 0.62, 34, 72);
+      baseY = topY - lift;
+      arcHeight = clamp(absDx * 0.16, 36, 88);
+      cNudge = clamp(arcHeight * 0.12, 5, 14);
+      B = {
+        x: A.x,
+        y: baseY
+      };
+      C = {
+        x: A.x + dx * 0.34,
+        y: baseY - arcHeight - cNudge
+      };
+      D = {
+        x: A.x + dx * 0.66,
+        y: baseY - arcHeight * 0.55
+      };
+      E = {
+        x: F.x,
+        y: baseY
+      };
+
+      if (C.y < safeTop) {
+        visibilityAdjustment = safeTop - C.y;
+        B.y += visibilityAdjustment;
+        C.y += visibilityAdjustment;
+        D.y += visibilityAdjustment;
+        E.y += visibilityAdjustment;
+      }
+
+      points = [A, B, C, D, E, F];
+
+      return {
+        pathMode: "spline",
+        scenario: splineScenarioFor(A, F),
+        splineAlpha: SPLINE_ALPHA,
+        samplesPerSegment: SAMPLES_PER_SEGMENT,
+        z: z,
+        dx: dx,
+        absDx: absDx,
+        topY: topY,
+        lift: lift,
+        baseY: baseY,
+        arcHeight: arcHeight,
+        cNudge: cNudge,
+        safeTop: safeTop,
+        bounceVisibleZMax: bounceVisibleZMax,
+        visibilityAdjustment: visibilityAdjustment,
+        visibilityLimited: visibilityAdjustment > 0,
+        horizontalSpan: absDx,
+        apexY: C.y,
+        centerX: (A.x + F.x) / 2,
+        centerY: baseY,
+        direction: Math.sign(dx) || 1,
+        A: A,
+        B: B,
+        C: C,
+        D: D,
+        E: E,
+        F: F,
+        P0: A,
+        P1: B,
+        P2: E,
+        P3: F,
+        points: points
+      };
+    }
+
     function evaluateExactNavTrajectory(raw, start, landing, options) {
       var t = clamp(raw, 0, 1);
       var geometry = options && options.geometry ?
@@ -1781,6 +2034,10 @@
     }
 
     function pathPointAt(raw, path) {
+      if (path && path.kind === "spline-nav-trajectory") {
+        return sampledTrajectoryPointAt(raw, path);
+      }
+
       if (path && path.kind === "exact-nav-trajectory") {
         return evaluateExactNavTrajectory(raw, path.start, path.end, path);
       }
@@ -1796,7 +2053,7 @@
       var before;
       var after;
 
-      if (path && path.kind === "exact-nav-trajectory") {
+      if (path && (path.kind === "exact-nav-trajectory" || path.kind === "spline-nav-trajectory")) {
         beforeT = Math.max(0, safeT - delta);
         afterT = Math.min(1, safeT + delta);
 
@@ -1874,7 +2131,7 @@
       var sampleIndex;
       var sample;
 
-      if (path && path.kind === "exact-nav-trajectory" && path.track && Array.isArray(path.track.samples)) {
+      if (path && path.track && Array.isArray(path.track.samples)) {
         for (sampleIndex = 0; sampleIndex < path.track.samples.length; sampleIndex += 1) {
           sample = path.track.samples[sampleIndex];
 
@@ -1968,6 +2225,11 @@
       var approachHeight = landingApproachHeight();
       var finalControl;
 
+      if (path && path.kind === "spline-nav-trajectory") {
+        updatePathApex(path);
+        return;
+      }
+
       if (path && path.kind === "exact-nav-trajectory") {
         path.controlA = path.geometry.P1;
         path.controlB = path.geometry.P2;
@@ -2024,6 +2286,27 @@
           Number.isFinite(path.geometry.centerX);
       }
 
+      if (path.kind === "spline-nav-trajectory") {
+        return hasFinitePoint(path.start) &&
+          hasFinitePoint(path.end) &&
+          hasFinitePoint(path.apex) &&
+          path.geometry &&
+          Array.isArray(path.geometry.points) &&
+          path.geometry.points.length === 6 &&
+          path.geometry.points.every(hasFinitePoint) &&
+          path.track &&
+          Array.isArray(path.track.samples) &&
+          path.track.samples.length > 1 &&
+          Number.isFinite(path.track.totalLength) &&
+          path.track.totalLength > 0 &&
+          Number.isFinite(path.geometry.dx) &&
+          Number.isFinite(path.geometry.topY) &&
+          Number.isFinite(path.geometry.lift) &&
+          Number.isFinite(path.geometry.arcHeight) &&
+          Number.isFinite(path.geometry.cNudge) &&
+          Number.isFinite(path.geometry.z);
+      }
+
       if (Array.isArray(path.segments)) {
         return path.segments.length === 2 &&
           path.segments.every(function (segment) {
@@ -2065,8 +2348,83 @@
       return path;
     }
 
+    function createSplineNavTrajectoryPath(start, landing, config, direction) {
+      var z = navBallMasterHeight(ballRadius() * 2);
+      var geometry = createSplinePathGeometry(start, landing, z, {
+        bounds: config.bounds
+      });
+      var track = buildSplineNavBallPath(geometry.points);
+      var path = {
+        kind: "spline-nav-trajectory",
+        pathMode: "spline",
+        start: geometry.A,
+        controlA: geometry.B,
+        controlB: geometry.E,
+        end: geometry.F,
+        apex: geometry.C,
+        geometry: geometry,
+        z: geometry.z,
+        track: track,
+        direction: direction
+      };
+
+      updatePathApex(path);
+      return path;
+    }
+
+    function createSegmentedNavTrajectoryPath(start, landing, config, direction) {
+      var z = navBallMasterHeight(ballRadius() * 2);
+      var geometry = createExactPathGeometry(start, landing, z, {
+        bounds: config.bounds
+      });
+      var middleControlA = {
+        x: mix(geometry.P1.x, geometry.C.x, 0.5),
+        y: Math.min(geometry.P1.y, geometry.C.y)
+      };
+      var middleControlB = {
+        x: mix(geometry.C.x, geometry.P2.x, 0.5),
+        y: Math.min(geometry.P2.y, geometry.C.y)
+      };
+      var path = createCompositePath(
+        geometry.P0,
+        geometry.P1,
+        middleControlA,
+        geometry.C,
+        middleControlB,
+        geometry.P2,
+        geometry.P3,
+        config.bounds,
+        0.5,
+        direction
+      );
+
+      path.kind = "segmented-nav-trajectory";
+      path.pathMode = "segmented";
+      path.geometry = geometry;
+      path.z = geometry.z;
+      return path;
+    }
+
+    function createModeNavTrajectoryPath(start, landing, config, direction) {
+      var mode = normalizeNavBallPathMode();
+
+      if (mode === "spline") {
+        return createSplineNavTrajectoryPath(start, landing, config, direction);
+      }
+
+      if (mode === "segmented") {
+        return createSegmentedNavTrajectoryPath(start, landing, config, direction);
+      }
+
+      return createExactNavTrajectoryPath(start, landing, config, direction);
+    }
+
     function createDownwardFlightPath(start, landing, config) {
-      var path = createExactNavTrajectoryPath(start, landing, config, "downward");
+      var path = createModeNavTrajectoryPath(start, landing, config, "downward");
+
+      if (!hasFinitePath(path)) {
+        path = createExactNavTrajectoryPath(start, landing, config, "downward");
+      }
 
       enforceLandingVelocity(path, config.bounds);
       return path;
@@ -2080,7 +2438,7 @@
     }
 
     function createUpwardFlightPath(start, landing, config) {
-      var path = createExactNavTrajectoryPath(start, landing, config, "upward");
+      var path = createModeNavTrajectoryPath(start, landing, config, "upward");
 
       if (!hasFinitePath(path)) {
         return fallbackUpwardFlightPath(start, landing, config);
@@ -2149,6 +2507,7 @@
         duration: duration,
         scrollDelay: 0,
         cameraMode: upward ? "path-synced-scroll" : "delayed-descent-scroll",
+        pathMode: normalizeNavBallPathMode(),
         initialScroll: startScroll,
         hasShadow: endPoint.kind !== "floor",
         emergencyClampLogged: false,
@@ -2159,7 +2518,9 @@
       adjustPathForObstacles(config);
       enforceLandingVelocity(config.path, bounds);
       if (!hasFinitePath(config.path)) {
-        config.path = config.upward ? fallbackUpwardFlightPath(startScreen, endScreen, config) : createSmoothFlightPath(startScreen, endScreen, config);
+        config.path = config.upward ?
+          fallbackUpwardFlightPath(startScreen, endScreen, config) :
+          createExactNavTrajectoryPath(startScreen, endScreen, config, "downward");
       }
       debugNavBallPath(config);
       return config;
@@ -2181,6 +2542,10 @@
         return config.finalScroll;
       }
 
+      if (config.path && config.path.pathMode === "spline") {
+        return mix(config.startScroll, config.finalScroll, progress);
+      }
+
       if (config.cameraMode === "delayed-descent-scroll") {
         scrollProgress = clamp((progress - 0.18) / 0.82, 0, 1);
         return mix(config.startScroll, config.finalScroll, scrollProgress);
@@ -2197,7 +2562,7 @@
       var finalVelocity;
       var geometry;
 
-      if (!(DEBUG_BALL_PATH || DEBUG_NAV_BALL_PATH || DEBUG_NAV_BALL_BEZIER || DEBUG_NAV_BALL_TRAJECTORY || DEBUG_NAV_BALL_EXACT_PATH) || !config || !config.path) {
+      if (!(DEBUG_BALL_PATH || DEBUG_NAV_BALL_PATH || DEBUG_NAV_BALL_BEZIER || DEBUG_NAV_BALL_TRAJECTORY || DEBUG_NAV_BALL_EXACT_PATH || DEBUG_NAV_BALL_SPLINE) || !config || !config.path) {
         return;
       }
 
@@ -2224,7 +2589,9 @@
       console.table({
         targetId: config.targetId,
         direction: config.upward ? "upward" : "downward",
+        pathMode: config.path.pathMode || config.pathMode || "bezier",
         pathKind: config.path.kind || "cubic",
+        scenario: geometry.scenario || null,
         usesCompositePath: Array.isArray(config.path.segments),
         Ax: round(config.path.start.x),
         Ay: round(config.path.start.y),
@@ -2251,6 +2618,12 @@
         P3y: round(geometry.P3 && geometry.P3.y),
         horizontalSpan: round(geometry.horizontalSpan),
         centerX: round(geometry.centerX),
+        splineAlpha: round(geometry.splineAlpha),
+        samplesPerSegment: geometry.samplesPerSegment || null,
+        lift: round(geometry.lift),
+        arcHeight: round(geometry.arcHeight),
+        cNudge: round(geometry.cNudge),
+        visibilityAdjustment: round(geometry.visibilityAdjustment),
         startsVertical: Math.abs((geometry.P1 && geometry.P1.x) - config.path.start.x) < 0.5,
         middleMovesX: Math.abs(p28.x - p48.x) > 0.5 || Math.abs(p48.x - p68.x) > 0.5,
         endsVertical: Math.abs((geometry.P2 && geometry.P2.x) - config.path.end.x) < 0.5,
@@ -2258,6 +2631,16 @@
         finalVelocityX: round(finalVelocity.x),
         finalVelocityY: round(finalVelocity.y)
       });
+      if (DEBUG_NAV_BALL_SPLINE && config.path.kind === "spline-nav-trajectory") {
+        console.debug("nav ball spline points", {
+          A: geometry.A,
+          B: geometry.B,
+          C: geometry.C,
+          D: geometry.D,
+          E: geometry.E,
+          F: geometry.F
+        });
+      }
       console.debug("nav ball path samples", samples);
     }
 
@@ -2279,6 +2662,12 @@
       debugOverlay.marker("start point", config.path.start.x, config.path.start.y, "rgb(132, 0, 255)");
       debugOverlay.marker("ascent control", config.path.controlA.x, config.path.controlA.y, "rgb(0, 98, 190)");
       debugOverlay.marker("descent control", config.path.controlB.x, config.path.controlB.y, "rgb(0, 130, 96)");
+      if (DEBUG_NAV_BALL_SPLINE && config.path.kind === "spline-nav-trajectory") {
+        debugOverlay.marker("spline B", config.path.geometry.B.x, config.path.geometry.B.y, "rgb(0, 98, 190)");
+        debugOverlay.marker("spline C", config.path.geometry.C.x, config.path.geometry.C.y, "rgb(194, 0, 160)");
+        debugOverlay.marker("spline D", config.path.geometry.D.x, config.path.geometry.D.y, "rgb(220, 132, 0)");
+        debugOverlay.marker("spline E", config.path.geometry.E.x, config.path.geometry.E.y, "rgb(0, 130, 96)");
+      }
       debugOverlay.marker("apex point", config.path.apex.x, config.path.apex.y, "rgb(194, 0, 160)");
       debugOverlay.marker("landing point", config.path.end.x, config.path.end.y, "rgb(210, 0, 0)");
     }
@@ -2601,7 +2990,9 @@
           usedSetTimeoutForBounce: false,
           transformTransitionDuringFlight: false,
           usedEaseOutIntoLanding: false,
+          pathMode: config.path.pathMode || config.pathMode,
           trajectoryKind: config.path.kind || "cubic",
+          scenario: debugGeometry.scenario || null,
           startsVertical: Math.abs((debugGeometry.P1 && debugGeometry.P1.x) - debugP0.x) < 0.5,
           middleMovesX: Math.abs(debugP28.x - debugP48.x) > 0.5 || Math.abs(debugP48.x - debugP68.x) > 0.5,
           endsVertical: Math.abs((debugGeometry.P2 && debugGeometry.P2.x) - debugP100.x) < 0.5,
@@ -2616,6 +3007,11 @@
           safeTop: round(debugGeometry.safeTop),
           bounceVisibleZMax: round(debugGeometry.bounceVisibleZMax),
           apexY: round(debugGeometry.apexY),
+          lift: round(debugGeometry.lift),
+          arcHeight: round(debugGeometry.arcHeight),
+          cNudge: round(debugGeometry.cNudge),
+          splineAlpha: round(debugGeometry.splineAlpha),
+          samplesPerSegment: debugGeometry.samplesPerSegment || null,
           visibilityLimited: Boolean(debugGeometry.visibilityLimited),
           P0: debugGeometry.P0 ? {
             x: round(debugGeometry.P0.x),
@@ -2647,6 +3043,7 @@
           scrollMode: config.cameraMode,
           trackLengthTotal: round(track.totalLength),
           bezierSampleCount: track.bezierSampleCount,
+          splineSamplesPerSegment: track.samplesPerSegment || null,
           firstLandingBounceHeight: round(firstLandingHeight),
           secondLandingBounceHeight: round(secondLandingHeight),
           thirdLandingBounceHeight: round(thirdLandingHeight),
@@ -2729,7 +3126,7 @@
         var base2;
         var base3;
 
-        if (!(DEBUG_NAV_BALL_PATH || DEBUG_NAV_BALL_BEZIER || DEBUG_NAV_BALL_UPWARD_SEQUENCE) || prepDebugLogged) {
+        if (!(DEBUG_NAV_BALL_PATH || DEBUG_NAV_BALL_BEZIER || DEBUG_NAV_BALL_UPWARD_SEQUENCE || DEBUG_NAV_BALL_SPLINE) || prepDebugLogged) {
           return;
         }
 
@@ -2755,13 +3152,26 @@
           stage: "before-main-flight",
           targetId: targetId,
           upward: config.upward,
+          pathMode: config.path.pathMode || config.pathMode,
+          scenario: geometry.scenario || null,
           A0: A0,
+          A: geometry.A || geometry.P0 || A0,
+          B: geometry.B || null,
+          C: geometry.C || null,
+          D: geometry.D || null,
+          E: geometry.E || null,
+          F: geometry.F || geometry.P3 || B0,
           BFinalViewport: B0,
           B0: B0,
+          dx: round(geometry.dx),
           P0: geometry.P0 || null,
           P1: geometry.P1 || null,
           P2: geometry.P2 || null,
           P3: geometry.P3 || null,
+          topY: round(geometry.topY),
+          lift: round(geometry.lift),
+          arcHeight: round(geometry.arcHeight),
+          cNudge: round(geometry.cNudge),
           overshoot: round(geometry.overshoot),
           controlY: round(geometry.controlY),
           scrollStart: round(config.startScroll),
@@ -2771,6 +3181,8 @@
           totalPathLength: round(track.totalLength),
           mainPathSpeed: MAIN_PATH_SPEED,
           bezierSampleCount: track.bezierSampleCount,
+          splineAlpha: round(geometry.splineAlpha),
+          samplesPerSegment: geometry.samplesPerSegment || track.samplesPerSegment || null,
           scrollChangedDuringPrep: scrollChangedDuringPrep,
           prepScroll1: round(prepScrollSamples[0]),
           prepScroll2: round(prepScrollSamples[1]),
@@ -2786,7 +3198,7 @@
         var base2;
         var base3;
 
-        if (!(DEBUG_NAV_BALL_PATH || DEBUG_NAV_BALL_BEZIER || DEBUG_NAV_BALL_UPWARD_SEQUENCE) || landingDebugLogged) {
+        if (!(DEBUG_NAV_BALL_PATH || DEBUG_NAV_BALL_BEZIER || DEBUG_NAV_BALL_UPWARD_SEQUENCE || DEBUG_NAV_BALL_SPLINE) || landingDebugLogged) {
           return;
         }
 
@@ -2811,6 +3223,8 @@
           stage: "after-landing-bounces",
           targetId: targetId,
           upward: config.upward,
+          pathMode: config.path.pathMode || config.pathMode,
+          scenario: config.path.geometry && config.path.geometry.scenario,
           A0: A0,
           BFinalViewport: B0,
           B0: B0,

@@ -22,6 +22,13 @@
   --space-9: 9rem;
   --space-10: 12rem;
   --page-x: clamp(1.25rem, 5.4vw, 6.25rem);
+  --section-padding-y: clamp(4.7rem, 7.2vw, 7.25rem);
+  --section-padding-y-loose: clamp(4.7rem, 7.5vw, 7.9rem);
+  --section-layout-gap: clamp(2.5rem, 6vw, 7rem);
+  --work-list-gap: clamp(2.05rem, 3.75vw, 3.75rem);
+  --work-space-y: clamp(3rem, 9vw, 6.75rem);
+  --section-min-height: 88svh;
+  --contact-section-min-height: 88svh;
 
   --text-xs: clamp(0.66rem, 0.64rem + 0.06vw, 0.72rem);
   --text-sm: clamp(0.78rem, 0.75rem + 0.1vw, 0.88rem);
@@ -157,8 +164,8 @@ textarea:focus-visible {
 
 .section {
   position: relative;
-  min-height: 100svh;
-  padding: var(--space-10) var(--page-x);
+  min-height: var(--section-min-height);
+  padding: var(--section-padding-y) var(--page-x);
 }
 
 .section:focus {
@@ -277,7 +284,7 @@ body.is-project-open .viewport-edge-blur {
   align-items: stretch;
   min-height: 100svh;
   padding-top: clamp(1rem, 2.4vh, 1.55rem);
-  padding-bottom: calc(var(--space-8) + var(--nav-size));
+  padding-bottom: calc(var(--space-7) + var(--nav-size));
 }
 
 .site-name {
@@ -383,7 +390,7 @@ body.is-project-open .viewport-edge-blur {
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  padding-block: clamp(6.25rem, 9.5vw, 9.5rem);
+  padding-block: var(--section-padding-y);
 }
 
 .about-layout {
@@ -392,7 +399,7 @@ body.is-project-open .viewport-edge-blur {
   align-items: center;
   width: 100vw;
   margin-left: calc(50% - 50vw);
-  gap: clamp(5rem, 12vw, 12rem);
+  gap: var(--section-layout-gap);
 }
 
 .about-portrait {
@@ -428,12 +435,12 @@ body.is-project-open .viewport-edge-blur {
 }
 
 .work-section {
-  padding-block: clamp(6.25rem, 10vw, 10.5rem);
+  padding-block: var(--section-padding-y-loose);
 }
 
 .work-list {
   display: grid;
-  gap: clamp(2.75rem, 5vw, 5rem);
+  gap: var(--work-list-gap);
   width: 100vw;
   padding: 0;
   margin: 0 0 0 calc(50% - 50vw);
@@ -492,7 +499,7 @@ body.is-project-open .viewport-edge-blur {
 }
 
 .work-space {
-  min-height: clamp(4rem, 12vw, 9rem);
+  min-height: var(--work-space-y);
 }
 
 .archive-section {
@@ -500,7 +507,7 @@ body.is-project-open .viewport-edge-blur {
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  padding-block: clamp(6.25rem, 9.5vw, 10rem);
+  padding-block: var(--section-padding-y-loose);
 }
 
 .archive-layout {
@@ -509,7 +516,7 @@ body.is-project-open .viewport-edge-blur {
   align-items: center;
   width: 100vw;
   margin-left: calc(50% - 50vw);
-  gap: clamp(3rem, 8vw, 9rem);
+  gap: var(--section-layout-gap);
 }
 
 .archive-empty {
@@ -596,8 +603,8 @@ body.is-project-open .viewport-edge-blur {
   position: relative;
   display: grid;
   place-items: center;
-  min-height: 100vh;
-  min-height: 100svh;
+  min-height: 88vh;
+  min-height: var(--contact-section-min-height);
   padding: 0 var(--page-x);
   overflow: hidden;
 }
@@ -607,8 +614,8 @@ body.is-project-open .viewport-edge-blur {
   display: grid;
   place-items: center;
   width: min(88vw, 560px);
-  min-height: 100vh;
-  min-height: 100svh;
+  min-height: 88vh;
+  min-height: var(--contact-section-min-height);
   justify-self: center;
   align-self: center;
   margin-inline: auto;
