@@ -8,6 +8,7 @@
   const DEBUG_NAV_BALL_TIMING = false;
   const DEBUG_NAV_BALL_SPEED = false;
   const DEBUG_NAV_BALL_BEZIER = false;
+  const DEBUG_NAV_BALL_UPWARD_SEQUENCE = false;
   const MAIN_PATH_SPEED = 420;
   const BEZIER_SAMPLE_COUNT = 160;
 
@@ -2147,7 +2148,7 @@
         downward: downward,
         duration: duration,
         scrollDelay: 0,
-        cameraMode: upward ? "locked-final-scroll" : "delayed-descent-scroll",
+        cameraMode: upward ? "path-synced-scroll" : "delayed-descent-scroll",
         initialScroll: startScroll,
         hasShadow: endPoint.kind !== "floor",
         emergencyClampLogged: false,
@@ -2508,6 +2509,10 @@
         x: config.startScreen.x,
         y: config.startScreen.y
       };
+      var B0 = {
+        x: config.endScreen.x,
+        y: config.endScreen.y
+      };
       var startTime = 0;
       var impactVelocity = flightVelocityAt(1, config);
       var impactVelocityY = Math.max(0, impactVelocity.y);
@@ -2523,11 +2528,6 @@
       var firstPrepDuration = scaleMotionDuration(NAV_BALL_PREP_DURATIONS[0]);
       var secondPrepDuration = scaleMotionDuration(NAV_BALL_PREP_DURATIONS[1]);
       var thirdPrepDuration = scaleMotionDuration(NAV_BALL_PREP_DURATIONS[2]);
-      var upwardPreScrollDistance = Math.abs(config.finalScroll - config.startScroll);
-      var shouldUpwardPreScroll = config.upward && upwardPreScrollDistance > 1;
-      var preScrollMotionDuration = shouldUpwardPreScroll ?
-        scaleMotionDuration(clamp(upwardPreScrollDistance * 0.45, 360, 680)) :
-        0;
       var mainTrajectoryDuration = Math.max(1, (track.totalLength / MAIN_PATH_SPEED) * 1000);
       var firstLandingHeight = (3 * bounceZ) / 4;
       var secondLandingHeight = bounceZ / 2;
@@ -2539,14 +2539,13 @@
       var prep1End = firstPrepDuration;
       var prep2End = prep1End + secondPrepDuration;
       var prep3End = prep2End + thirdPrepDuration;
-      var preScrollEnd = prep3End + preScrollMotionDuration;
-      var mainEnd = preScrollEnd + mainTrajectoryDuration;
+      var mainEnd = prep3End + mainTrajectoryDuration;
       var rebound1End = mainEnd + firstLandingDuration;
       var rebound2End = rebound1End + secondLandingDuration;
       var rebound3End = rebound2End + thirdLandingDuration;
       var rollEnd = rebound3End + rollDuration;
       var rollDirection = rollDirectionFor(targetId);
-      var rollStartX = config.endScreen.x;
+      var rollStartX = B0.x;
       var rollEndX = rollDirection < 0 ? -ballRadius() - 18 : window.innerWidth + ballRadius() + 18;
       var rollCircumference = Math.max(1, Math.PI * ballRadius() * 2);
       var target = document.getElementById(targetId);
@@ -2556,9 +2555,13 @@
       var cameraDebugPhase = "";
       var timingLogged = false;
       var prepDebugLogged = false;
+      var landingDebugLogged = false;
       var prepStartScroll = startScroll;
       var scrollChangedDuringPrep = false;
       var prepBounceBases = [null, null, null];
+      var prepScrollSamples = [null, null, null];
+      var landingBounceBases = [null, null, null];
+      var landingScrollChanged = false;
       var speedDebugState = {
         previousNow: 0,
         previousX: 0,
@@ -2639,7 +2642,9 @@
           bounceHeightScale: NAV_BALL_BOUNCE_HEIGHT_SCALE,
           mainPathSpeed: MAIN_PATH_SPEED,
           mainTrajectoryDuration: round(mainTrajectoryDuration),
-          preScrollMotionDuration: round(preScrollMotionDuration),
+          upwardPreScrollDuration: 0,
+          scrollDuration: round(mainTrajectoryDuration),
+          scrollMode: config.cameraMode,
           trackLengthTotal: round(track.totalLength),
           bezierSampleCount: track.bezierSampleCount,
           firstLandingBounceHeight: round(firstLandingHeight),
@@ -2688,6 +2693,34 @@
           x: A0.x,
           y: A0.y
         };
+        prepScrollSamples[index] = currentScrollY();
+      }
+
+      function freezeLandingScroll() {
+        var current = currentScrollY();
+
+        if (Math.abs(current - config.finalScroll) > 0.5) {
+          landingScrollChanged = true;
+          window.scrollTo(0, config.finalScroll);
+        }
+      }
+
+      function recordLandingBounceBase(index) {
+        if (landingBounceBases[index]) {
+          return;
+        }
+
+        landingBounceBases[index] = {
+          x: B0.x,
+          y: B0.y
+        };
+      }
+
+      function hasBaseDrift(base1, base2, base3) {
+        return Math.abs(base1.x - base2.x) > 0.5 ||
+          Math.abs(base1.x - base3.x) > 0.5 ||
+          Math.abs(base1.y - base2.y) > 0.5 ||
+          Math.abs(base1.y - base3.y) > 0.5;
       }
 
       function logPrepAndPathDebug() {
@@ -2696,7 +2729,7 @@
         var base2;
         var base3;
 
-        if (!(DEBUG_NAV_BALL_PATH || DEBUG_NAV_BALL_BEZIER) || prepDebugLogged) {
+        if (!(DEBUG_NAV_BALL_PATH || DEBUG_NAV_BALL_BEZIER || DEBUG_NAV_BALL_UPWARD_SEQUENCE) || prepDebugLogged) {
           return;
         }
 
@@ -2706,8 +2739,8 @@
         base2 = prepBounceBases[1] || A0;
         base3 = prepBounceBases[2] || A0;
 
-        if (Math.abs(base1.y - base2.y) > 0.5 || Math.abs(base1.y - base3.y) > 0.5) {
-          console.warn("Prep bounce base drift detected", {
+        if (hasBaseDrift(base1, base2, base3)) {
+          console.warn("BUG: Prep bounce base changed", {
             prepBounceBase1: base1,
             prepBounceBase2: base2,
             prepBounceBase3: base3
@@ -2715,26 +2748,77 @@
         }
 
         if (scrollChangedDuringPrep) {
-          console.warn("Scroll moved during prep bounces");
+          console.warn("BUG: Scroll moved during prep bounces");
         }
 
         console.table({
+          stage: "before-main-flight",
           targetId: targetId,
-          A: A0,
-          B: config.endScreen,
+          upward: config.upward,
+          A0: A0,
+          BFinalViewport: B0,
+          B0: B0,
           P0: geometry.P0 || null,
           P1: geometry.P1 || null,
           P2: geometry.P2 || null,
           P3: geometry.P3 || null,
           overshoot: round(geometry.overshoot),
           controlY: round(geometry.controlY),
+          scrollStart: round(config.startScroll),
+          scrollTarget: round(config.finalScroll),
+          cameraMode: config.cameraMode,
+          upwardPreScrollDuration: 0,
           totalPathLength: round(track.totalLength),
           mainPathSpeed: MAIN_PATH_SPEED,
           bezierSampleCount: track.bezierSampleCount,
           scrollChangedDuringPrep: scrollChangedDuringPrep,
+          prepScroll1: round(prepScrollSamples[0]),
+          prepScroll2: round(prepScrollSamples[1]),
+          prepScroll3: round(prepScrollSamples[2]),
           prepBounceBase1: base1,
           prepBounceBase2: base2,
           prepBounceBase3: base3
+        });
+      }
+
+      function logLandingSequenceDebug() {
+        var base1;
+        var base2;
+        var base3;
+
+        if (!(DEBUG_NAV_BALL_PATH || DEBUG_NAV_BALL_BEZIER || DEBUG_NAV_BALL_UPWARD_SEQUENCE) || landingDebugLogged) {
+          return;
+        }
+
+        landingDebugLogged = true;
+        base1 = landingBounceBases[0] || B0;
+        base2 = landingBounceBases[1] || B0;
+        base3 = landingBounceBases[2] || B0;
+
+        if (hasBaseDrift(base1, base2, base3)) {
+          console.warn("BUG: Landing bounce base changed", {
+            landingBounceBase1: base1,
+            landingBounceBase2: base2,
+            landingBounceBase3: base3
+          });
+        }
+
+        if (landingScrollChanged) {
+          console.warn("BUG: Scroll moved during landing bounces");
+        }
+
+        console.table({
+          stage: "after-landing-bounces",
+          targetId: targetId,
+          upward: config.upward,
+          A0: A0,
+          BFinalViewport: B0,
+          B0: B0,
+          scrollTarget: round(config.finalScroll),
+          landingScrollChanged: landingScrollChanged,
+          landingBounceBase1: base1,
+          landingBounceBase2: base2,
+          landingBounceBase3: base3
         });
       }
 
@@ -2819,7 +2903,7 @@
         impactHandled = true;
         logMainPathSpeedSummary();
         window.scrollTo(0, config.finalScroll);
-        setBallPosition(config.endScreen.x, config.endScreen.y);
+        setBallPosition(B0.x, B0.y);
         debugRenderLandingTarget(endPoint, config.finalScroll);
         setState(STATES.BALL_LANDING);
         ball.classList.remove("is-moving", "is-flying", "is-lifting", "is-launching");
@@ -2881,7 +2965,8 @@
           mainPathSpeed: MAIN_PATH_SPEED,
           mainTrajectoryDuration: round(mainTrajectoryDuration),
           landingBounceTotalDuration: round(firstLandingDuration + secondLandingDuration + thirdLandingDuration),
-          scrollDuration: round(preScrollMotionDuration),
+          scrollDuration: round(mainTrajectoryDuration),
+          upwardPreScrollDuration: 0,
           rollDuration: round(rollDuration),
           totalUntilRollStarts: round(rebound3End),
           totalIncludingRoll: round(rollEnd)
@@ -2939,21 +3024,8 @@
           setBallPosition(bouncePoint.x, bouncePoint.y);
           applyBounceScale(raw, 0.9);
           setTimelineShadow(0, 0.72);
-        } else if (elapsed < preScrollEnd) {
-          raw = preScrollMotionDuration > 0 ? (elapsed - prep3End) / preScrollMotionDuration : 1;
-          actualScroll = mix(config.startScroll, config.finalScroll, easeInOut(raw));
-
-          logPrepAndPathDebug();
-          setState(STATES.BALL_TAKEOFF);
-          ball.classList.remove("is-landing", "is-landed", "is-arrived");
-          ball.classList.add("is-launching", "is-lifting");
-          window.scrollTo(0, actualScroll);
-          setBallPosition(A0.x, A0.y);
-          setBallScale(1, 1);
-          setTimelineShadow(0, 0.72);
-          debugCamera("upward-pre-scroll", raw, actualScroll, A0);
         } else if (elapsed < mainEnd) {
-          var mainElapsedSeconds = (elapsed - preScrollEnd) / 1000;
+          var mainElapsedSeconds = (elapsed - prep3End) / 1000;
           var distanceTravelled = Math.min(track.totalLength, mainElapsedSeconds * MAIN_PATH_SPEED);
 
           logPrepAndPathDebug();
@@ -2977,23 +3049,31 @@
 
           if (elapsed < rebound1End) {
             raw = (elapsed - mainEnd) / firstLandingDuration;
-            bouncePoint = evaluateBounce(config.endScreen.x, config.endScreen.y, firstLandingHeight, elapsed - mainEnd, firstLandingDuration);
+            freezeLandingScroll();
+            recordLandingBounceBase(0);
+            bouncePoint = evaluateBounce(B0.x, B0.y, firstLandingHeight, elapsed - mainEnd, firstLandingDuration);
             setBallPosition(bouncePoint.x, bouncePoint.y);
             applyBounceScale(raw, 1);
             applyBounceShadow(raw, 1);
           } else if (elapsed < rebound2End) {
             raw = (elapsed - rebound1End) / secondLandingDuration;
-            bouncePoint = evaluateBounce(config.endScreen.x, config.endScreen.y, secondLandingHeight, elapsed - rebound1End, secondLandingDuration);
+            freezeLandingScroll();
+            recordLandingBounceBase(1);
+            bouncePoint = evaluateBounce(B0.x, B0.y, secondLandingHeight, elapsed - rebound1End, secondLandingDuration);
             setBallPosition(bouncePoint.x, bouncePoint.y);
             applyBounceScale(raw, 0.72);
             applyBounceShadow(raw, 2);
           } else if (elapsed < rebound3End) {
             raw = (elapsed - rebound2End) / thirdLandingDuration;
-            bouncePoint = evaluateBounce(config.endScreen.x, config.endScreen.y, thirdLandingHeight, elapsed - rebound2End, thirdLandingDuration);
+            freezeLandingScroll();
+            recordLandingBounceBase(2);
+            bouncePoint = evaluateBounce(B0.x, B0.y, thirdLandingHeight, elapsed - rebound2End, thirdLandingDuration);
             setBallPosition(bouncePoint.x, bouncePoint.y);
             applyBounceScale(raw, 0.48);
             applyBounceShadow(raw, 3);
           } else if (elapsed < rollEnd) {
+            freezeLandingScroll();
+            logLandingSequenceDebug();
             logTimingSummary();
 
             if (!rollStarted) {
@@ -3009,7 +3089,7 @@
             rotation = rollDirection * (Math.abs(x - rollStartX) / rollCircumference) * 360;
 
             ball.style.setProperty("--ball-rotation", rotation + "deg");
-            setBallPosition(x, config.endScreen.y);
+            setBallPosition(x, B0.y);
             setBallScale(1, 1);
 
             if (endPoint.kind === "floor") {
