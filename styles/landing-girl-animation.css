@@ -1,12 +1,27 @@
+/* Landing animation: a full-width 16:4.5 band, centred VERTICALLY in the landing screen (the screen is 16:9; the page itself keeps its own layout:
+   title on top, navigation console at the bottom). The band spans the full width of the screen, so the SCREEN EDGE is the frame: the girl walks in
+   from beyond the right edge and out beyond the left edge with no buffer. Transparent, so it sits on the page's paper colour.
+   The canvas is TALLER than the band (extends above and below it) and is faded to transparent at both ends with a CSS mask, so swirl
+   arms, thrown cubes and the ball are never sliced by a hard edge; falling cubes leave the screen through the faded lower extension. */
+.landing-section {
+  position: relative;
+}
+
 .landing-media {
-  justify-self: stretch;
-  width: 100vw;
-  height: clamp(320px, 42vh, 470px);
-  margin-left: calc(50% - 50vw);
-  margin-right: calc(50% - 50vw);
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  align-self: auto;
+  justify-self: auto;
+  width: auto;
+  height: auto;
+  margin: 0;
+  aspect-ratio: 16 / 4.5;
+  translate: 0 -50%;
   border: 0;
   background: transparent;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .landing-media::before,
@@ -18,91 +33,30 @@
 .landing-girl-animation {
   position: absolute;
   inset: 0;
-  width: 100vw;
+  width: 100%;
   height: 100%;
   margin: 0;
   z-index: 1;
   pointer-events: none;
-  overflow: hidden;
+  overflow: visible;
   color: var(--color-ink);
 }
 
-.landing-girl-actor-svg {
+.landing-girl-canvas {
+  position: absolute;
+  left: 0;
+  top: -14%;
   display: block;
   width: 100%;
-  height: 100%;
-  overflow: hidden;
+  height: 150%;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 9.33%, #000 76%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 9.33%, #000 76%, transparent 100%);
 }
 
-.landing-girl-actor,
-.girl-pose,
-.actor-hit-ball,
-.actor-hit-burst {
-  transform-box: view-box;
-  transform-origin: 0 0;
-  will-change: transform, opacity;
-}
-
-.girl-pose {
-  opacity: 0;
-}
-
-.girl-silhouette,
-.actor-hit-ball-fill {
-  fill: currentColor;
-}
-
-.girl-hair-strand,
-.actor-hit-line {
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.girl-hair-strand {
-  stroke-width: 1.35;
-}
-
-.actor-hit-line {
-  stroke-width: 1.65;
-}
-
-.actor-shadow {
-  fill: currentColor;
-  filter: blur(7px);
-  transform-box: fill-box;
-  transform-origin: center;
-}
-
-.girl-hair-group,
-.girl-hair-strands {
-  will-change: opacity, transform;
-}
-
-@media (max-width: 760px) {
+/* phones and portrait tablets: a 16:4.5 strip would make her tiny, so give the band more height on narrow screens */
+@media (max-width: 760px), (max-width: 1024px) and (orientation: portrait) {
   .landing-media {
-    height: clamp(260px, 38vh, 390px);
-  }
-}
-
-@media (max-width: 480px) {
-  .landing-media {
-    height: clamp(240px, 36vh, 340px);
-  }
-}
-
-@media (max-height: 620px) {
-  .landing-media {
-    height: clamp(240px, 48vh, 330px);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .landing-girl-actor,
-  .girl-pose,
-  .actor-hit-ball,
-  .actor-hit-burst {
-    transition: none;
+    aspect-ratio: 16 / 8;
   }
 }
