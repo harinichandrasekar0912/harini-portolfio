@@ -4,6 +4,7 @@
   const DEBUG_NAV_BALL_TRAJECTORY = false;
   const DEBUG_NAV_BALL_EXACT_PATH = false;
   const DEBUG_BALL_PATH = false;
+  const DEBUG_NAV_BALL_CAMERA = false;
 
   var SECTION_IDS = ["landing", "about", "work", "archive", "contact"];
   var SECTION_INDEX = {
@@ -1527,8 +1528,7 @@
       var minimumOvershoot;
       var overshoot;
       var arcBaseY;
-      var arcRadiusY;
-      var shallowArcFallback;
+      var apexY;
       var m;
       var centerX = (start.x + landing.x) / 2;
       var centerY;
@@ -1541,14 +1541,7 @@
         Math.min(requestedOvershoot, Math.max(minimumOvershoot, availableRise * 0.82)) :
         1;
       arcBaseY = topY - overshoot;
-      arcRadiusY = r;
-      shallowArcFallback = false;
-
-      if (arcBaseY - arcRadiusY < safeTop) {
-        arcRadiusY = Math.max(0, arcBaseY - safeTop);
-        shallowArcFallback = true;
-      }
-
+      apexY = arcBaseY - r;
       m = start.y - arcBaseY;
       centerY = arcBaseY;
 
@@ -1562,16 +1555,15 @@
         arcBaseY: arcBaseY,
         safeTop: safeTop,
         bounceVisibleZMax: bounceVisibleZMax,
-        arcRadiusY: arcRadiusY,
-        shallowArcFallback: shallowArcFallback,
-        visibilityLimited: overshoot < requestedOvershoot || shallowArcFallback,
+        apexY: apexY,
+        visibilityLimited: overshoot < requestedOvershoot || apexY < safeTop,
         D: {
           x: start.x,
           y: arcBaseY
         },
         C: {
           x: centerX,
-          y: arcBaseY - arcRadiusY
+          y: apexY
         },
         E: {
           x: landing.x,
@@ -1609,7 +1601,7 @@
         theta = geometry.startTheta + (geometry.endTheta - geometry.startTheta) * p;
         return {
           x: geometry.centerX + geometry.r * Math.cos(theta),
-          y: geometry.centerY - geometry.arcRadiusY * Math.sin(theta)
+          y: geometry.centerY - geometry.r * Math.sin(theta)
         };
       }
 
@@ -1686,6 +1678,28 @@
       }
 
       return clamp(endPoint.y - (desiredCenterY + radius), 0, maxScroll);
+    }
+
+    function resolveCameraFinalScroll(endPoint, startScreen, targetId, bounds) {
+      var radius = ballRadius();
+      var maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+      var safeTop = visiblePathTopMargin({ bounds: bounds });
+      var z = navBallMasterHeight(radius * 2);
+      var overshoot = clamp(z * 1.25, 72, 150);
+      var arcRadius = Math.abs(endPoint.x - startScreen.x) / 2;
+      var minLandingY = safeTop + arcRadius + overshoot + 8;
+      var preferredLandingY = Math.max(window.innerHeight * 0.58, minLandingY);
+      var desiredLandingY = clamp(preferredLandingY, bounds.minY, bounds.maxY);
+
+      if (endPoint.kind === "floor" && endPoint.section === "contact") {
+        return sectionTopScroll("contact");
+      }
+
+      if (endPoint.kind === "floor") {
+        return maxScroll;
+      }
+
+      return clamp(endPoint.y - (desiredLandingY + radius), 0, maxScroll);
     }
 
     function updatePathApex(path) {
@@ -1822,7 +1836,7 @@
           Number.isFinite(path.geometry.z) &&
           Number.isFinite(path.geometry.m) &&
           Number.isFinite(path.geometry.r) &&
-          Number.isFinite(path.geometry.arcRadiusY) &&
+          Number.isFinite(path.geometry.apexY) &&
           Number.isFinite(path.geometry.topY) &&
           Number.isFinite(path.geometry.arcBaseY) &&
           Number.isFinite(path.geometry.overshoot) &&
@@ -1928,7 +1942,7 @@
       var downward = toIndex > fromIndex;
       var bounds = getSafeBounds({ allowFloor: targetId === "contact" });
       var startScreen = fitControlPointInsideBounds(documentPointToScreen(startPoint, startScroll), bounds);
-      var finalScroll = resolveFinalScroll(endPoint, startScreen, downward, targetId, bounds);
+      var finalScroll = resolveCameraFinalScroll(endPoint, startScreen, targetId, bounds);
       var endScreen = documentPointToScreen(endPoint, finalScroll);
       var duration = reducedMotion.matches ? 1 : clamp((pathDistance * 0.34 + 820) * FLIGHT_DURATION_MULTIPLIER, 1400, 2600);
 
@@ -1955,6 +1969,8 @@
         downward: downward,
         duration: duration,
         scrollDelay: 0,
+        cameraMode: upward ? "pre-scroll-before-flight" : "delayed-descent-scroll",
+        initialScroll: startScroll,
         hasShadow: endPoint.kind !== "floor",
         emergencyClampLogged: false,
         path: null
@@ -1979,9 +1995,24 @@
     }
 
     function flightScrollAt(raw, config) {
-      var progress = raw;
+      var progress = clamp(raw, 0, 1);
+      var arcEnd = config.path && typeof config.path.arcEnd === "number" ? config.path.arcEnd : 0.68;
+      var fallProgress;
 
-      return mix(config.startScroll, config.finalScroll, clamp(progress, 0, 1));
+      if (config.cameraMode === "pre-scrolled-freeze") {
+        return config.finalScroll;
+      }
+
+      if (config.cameraMode === "delayed-descent-scroll") {
+        if (progress < arcEnd) {
+          return config.startScroll;
+        }
+
+        fallProgress = (progress - arcEnd) / (1 - arcEnd);
+        return mix(config.startScroll, config.finalScroll, clamp(fallProgress, 0, 1));
+      }
+
+      return mix(config.startScroll, config.finalScroll, progress);
     }
 
     function debugNavBallPath(config) {
@@ -2040,8 +2071,7 @@
         requestedOvershoot: round(geometry.requestedOvershoot),
         safeTop: round(geometry.safeTop),
         bounceVisibleZMax: round(geometry.bounceVisibleZMax),
-        arcRadiusY: round(geometry.arcRadiusY),
-        shallowArcFallback: Boolean(geometry.shallowArcFallback),
+        apexY: round(geometry.apexY),
         visibilityLimited: Boolean(geometry.visibilityLimited),
         Dx: round(geometry.D && geometry.D.x),
         Dy: round(geometry.D && geometry.D.y),
@@ -2323,6 +2353,9 @@
       var firstPrepDuration = scaleMotionDuration(baseFirstPrepDuration);
       var secondPrepDuration = scaleMotionDuration(baseSecondPrepDuration);
       var thirdPrepDuration = scaleMotionDuration(baseThirdPrepDuration);
+      var preScrollDistance = Math.abs(config.finalScroll - config.startScroll);
+      var shouldPreScrollBeforeFlight = config.upward && preScrollDistance > 1;
+      var preScrollDuration = shouldPreScrollBeforeFlight ? scaleMotionDuration(clamp(preScrollDistance * 0.44, 260, 720)) : 0;
       var flightDuration = scaleMotionDuration(clamp(config.duration * 1.02, 1350, 2800));
       var firstLandingHeight = (3 * z) / 4;
       var secondLandingHeight = z / 2;
@@ -2334,7 +2367,8 @@
       var prep1End = firstPrepDuration;
       var prep2End = prep1End + secondPrepDuration;
       var prep3End = prep2End + thirdPrepDuration;
-      var flightEnd = prep3End + flightDuration;
+      var preScrollEnd = prep3End + preScrollDuration;
+      var flightEnd = preScrollEnd + flightDuration;
       var rebound1End = flightEnd + firstLandingDuration;
       var rebound2End = rebound1End + secondLandingDuration;
       var rebound3End = rebound2End + thirdLandingDuration;
@@ -2347,6 +2381,12 @@
       var cleanUrl = window.location.pathname + window.location.search;
       var impactHandled = false;
       var rollStarted = false;
+      var preScrollPrepared = !shouldPreScrollBeforeFlight;
+      var cameraDebugPhase = "";
+
+      if (config.upward && !shouldPreScrollBeforeFlight) {
+        config.cameraMode = "pre-scrolled-freeze";
+      }
 
       if (!isCurrentAnimation(token)) {
         debugNavBall("stale nav ball frame cancelled");
@@ -2391,8 +2431,7 @@
           requestedOvershoot: round(debugGeometry.requestedOvershoot),
           safeTop: round(debugGeometry.safeTop),
           bounceVisibleZMax: round(debugGeometry.bounceVisibleZMax),
-          arcRadiusY: round(debugGeometry.arcRadiusY),
-          shallowArcFallback: Boolean(debugGeometry.shallowArcFallback),
+          apexY: round(debugGeometry.apexY),
           visibilityLimited: Boolean(debugGeometry.visibilityLimited),
           pointD: debugGeometry.D ? {
             x: round(debugGeometry.D.x),
@@ -2435,6 +2474,49 @@
       ball.classList.remove("is-forming", "is-landed", "is-ready", "is-landing", "is-contact-landing");
       ball.classList.add("is-visible", "is-moving");
       resetTimelineShadow();
+
+      function markPreScrollComplete() {
+        if (preScrollPrepared) {
+          return;
+        }
+
+        preScrollPrepared = true;
+        config.cameraMode = "pre-scrolled-freeze";
+        window.scrollTo(0, config.finalScroll);
+      }
+
+      function debugCamera(phase, raw, scrollY, screenPoint) {
+        if (!DEBUG_NAV_BALL_CAMERA || cameraDebugPhase === phase) {
+          return;
+        }
+
+        cameraDebugPhase = phase;
+        console.table({
+          phase: phase,
+          targetId: targetId,
+          scenario: config.upward ?
+            (config.endScreen.x < config.startScreen.x ? "B left of A and above A" : "B right of A and above A") :
+            (config.endScreen.x < config.startScreen.x ? "B left of A and below A" : "B right of A and below A"),
+          cameraMode: config.cameraMode,
+          progress: round(raw),
+          initialScroll: round(config.initialScroll),
+          startScroll: round(config.startScroll),
+          finalScroll: round(config.finalScroll),
+          currentScrollY: round(scrollY),
+          Ax: round(config.startScreen.x),
+          Ay: round(config.startScreen.y),
+          Bx: round(config.endScreen.x),
+          By: round(config.endScreen.y),
+          Dx: round(config.path.geometry && config.path.geometry.D && config.path.geometry.D.x),
+          Dy: round(config.path.geometry && config.path.geometry.D && config.path.geometry.D.y),
+          Cx: round(config.path.geometry && config.path.geometry.C && config.path.geometry.C.x),
+          Cy: round(config.path.geometry && config.path.geometry.C && config.path.geometry.C.y),
+          Ex: round(config.path.geometry && config.path.geometry.E && config.path.geometry.E.x),
+          Ey: round(config.path.geometry && config.path.geometry.E && config.path.geometry.E.y),
+          screenX: round(screenPoint && screenPoint.x),
+          screenY: round(screenPoint && screenPoint.y)
+        });
+      }
 
       function applyImpact() {
         if (impactHandled) {
@@ -2513,6 +2595,7 @@
         var easedRoll;
         var x;
         var rotation;
+        var scrollRaw;
 
         if (elapsed < prep1End) {
           raw = elapsed / firstPrepDuration;
@@ -2532,8 +2615,20 @@
           ball.classList.add("is-launching", "is-lifting");
           setBallPosition(config.startScreen.x, config.startScreen.y - exactBounceLift(raw, thirdPrepHeight));
           setTimelineShadow(0, 0.72);
+        } else if (elapsed < preScrollEnd) {
+          raw = preScrollDuration > 0 ? (elapsed - prep3End) / preScrollDuration : 1;
+          scrollRaw = easeInOut(raw);
+          actualScroll = mix(config.startScroll, config.finalScroll, scrollRaw);
+
+          setState(STATES.BALL_TAKEOFF);
+          ball.classList.add("is-launching", "is-lifting");
+          window.scrollTo(0, actualScroll);
+          setBallPosition(config.startScreen.x, config.startScreen.y);
+          setTimelineShadow(0, 0.72);
+          debugCamera("pre-scroll-before-flight", raw, actualScroll, config.startScreen);
         } else if (elapsed < flightEnd) {
-          raw = (elapsed - prep3End) / flightDuration;
+          markPreScrollComplete();
+          raw = (elapsed - preScrollEnd) / flightDuration;
           point = flightPointAt(raw, config);
           actualScroll = flightScrollAt(raw, config);
           screen = config.path && config.path.kind === "exact-nav-trajectory" ?
@@ -2547,6 +2642,7 @@
           setBallPosition(screen.x, screen.y);
           debugRenderLandingTarget(endPoint, config.finalScroll);
           applyApproachShadow(raw);
+          debugCamera(raw < (config.path.arcEnd || 0.68) ? "main-flight-launch-arc" : "main-flight-descent", raw, actualScroll, screen);
         } else if (elapsed < rebound1End) {
           applyImpact();
           raw = (elapsed - flightEnd) / firstLandingDuration;
