@@ -31,6 +31,11 @@
     return 1 - Math.pow(1 - safeT, 3);
   }
 
+  function easeOutQuad(t) {
+    var safeT = clamp(t, 0, 1);
+    return 1 - Math.pow(1 - safeT, 2);
+  }
+
   function easeRollOut(t) {
     var safeT = clamp(t, 0, 1);
     return 1 - Math.pow(1 - safeT, 2.2);
@@ -1534,11 +1539,11 @@
       var centerY;
 
       z = Math.min(z, bounceVisibleZMax);
-      requestedOvershoot = clamp(z * 1.25, 72, 150);
+      requestedOvershoot = clamp(z * 0.95, 56, 118);
       availableRise = topY - safeTop;
       minimumOvershoot = Math.min(Math.max(z * 0.35, 18), Math.max(1, availableRise));
       overshoot = availableRise > 0 ?
-        Math.min(requestedOvershoot, Math.max(minimumOvershoot, availableRise * 0.82)) :
+        Math.min(requestedOvershoot, Math.max(minimumOvershoot, availableRise * 0.72)) :
         1;
       arcBaseY = topY - overshoot;
       apexY = arcBaseY - r;
@@ -1592,7 +1597,7 @@
         p = t / launchEnd;
         return {
           x: start.x,
-          y: mix(start.y, geometry.D.y, p)
+          y: mix(start.y, geometry.D.y, easeOutQuad(p))
         };
       }
 
@@ -1608,7 +1613,7 @@
       p = (t - arcEnd) / (1 - arcEnd);
       return {
         x: landing.x,
-        y: mix(geometry.E.y, landing.y, p)
+        y: mix(geometry.E.y, landing.y, p * p)
       };
     }
 
@@ -1685,7 +1690,7 @@
       var maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
       var safeTop = visiblePathTopMargin({ bounds: bounds });
       var z = navBallMasterHeight(radius * 2);
-      var overshoot = clamp(z * 1.25, 72, 150);
+      var overshoot = clamp(z * 0.95, 56, 118);
       var arcRadius = Math.abs(endPoint.x - startScreen.x) / 2;
       var minLandingY = safeTop + arcRadius + overshoot + 8;
       var preferredLandingY = Math.max(window.innerHeight * 0.58, minLandingY);
@@ -2347,22 +2352,31 @@
       var firstPrepHeight = z / 4;
       var secondPrepHeight = z / 2;
       var thirdPrepHeight = (3 * z) / 4;
-      var baseFirstPrepDuration = 300;
-      var baseSecondPrepDuration = 360;
-      var baseThirdPrepDuration = 430;
+      var geometry = config.path && config.path.geometry ? config.path.geometry : {};
+      var launchDistance = geometry.D ? Math.abs(config.startScreen.y - geometry.D.y) : Math.abs(config.startScreen.y - config.endScreen.y) * 0.45;
+      var arcDistance = Number.isFinite(geometry.r) ? Math.PI * geometry.r : Math.abs(config.endScreen.x - config.startScreen.x);
+      var fallDistance = geometry.E ? Math.abs(config.endScreen.y - geometry.E.y) : Math.abs(config.endScreen.y - config.startScreen.y);
+      var baseFirstPrepDuration = 220;
+      var baseSecondPrepDuration = 250;
+      var baseThirdPrepDuration = 290;
       var firstPrepDuration = scaleMotionDuration(baseFirstPrepDuration);
       var secondPrepDuration = scaleMotionDuration(baseSecondPrepDuration);
       var thirdPrepDuration = scaleMotionDuration(baseThirdPrepDuration);
       var preScrollDistance = Math.abs(config.finalScroll - config.startScroll);
       var shouldPreScrollBeforeFlight = config.upward && preScrollDistance > 1;
       var preScrollDuration = shouldPreScrollBeforeFlight ? scaleMotionDuration(clamp(preScrollDistance * 0.44, 260, 720)) : 0;
-      var flightDuration = scaleMotionDuration(clamp(config.duration * 1.02, 1350, 2800));
+      var launchDuration = scaleMotionDuration(clamp(launchDistance * 1.05 + 160, 280, 380));
+      var arcDuration = scaleMotionDuration(clamp(arcDistance * 0.52, 420, 620));
+      var fallDuration = scaleMotionDuration(clamp(fallDistance * 0.55 + 180, 300, 520));
+      var flightDuration = launchDuration + arcDuration + fallDuration;
+      config.path.launchEnd = launchDuration / flightDuration;
+      config.path.arcEnd = (launchDuration + arcDuration) / flightDuration;
       var firstLandingHeight = (3 * z) / 4;
       var secondLandingHeight = z / 2;
       var thirdLandingHeight = z / 4;
-      var firstLandingDuration = scaleMotionDuration(440);
-      var secondLandingDuration = scaleMotionDuration(340);
-      var thirdLandingDuration = scaleMotionDuration(240);
+      var firstLandingDuration = scaleMotionDuration(330);
+      var secondLandingDuration = scaleMotionDuration(250);
+      var thirdLandingDuration = scaleMotionDuration(180);
       var rollDuration = scaleMotionDuration(2180);
       var prep1End = firstPrepDuration;
       var prep2End = prep1End + secondPrepDuration;
@@ -2451,6 +2465,11 @@
           firstPrepBounceDuration: round(firstPrepDuration),
           secondPrepBounceDuration: round(secondPrepDuration),
           thirdPrepBounceDuration: round(thirdPrepDuration),
+          launchDuration: round(launchDuration),
+          arcDuration: round(arcDuration),
+          fallDuration: round(fallDuration),
+          launchEndProgress: round(config.path.launchEnd),
+          arcEndProgress: round(config.path.arcEnd),
           firstLandingBounceHeight: round(firstLandingHeight),
           secondLandingBounceHeight: round(secondLandingHeight),
           thirdLandingBounceHeight: round(thirdLandingHeight),
@@ -2617,7 +2636,7 @@
           setTimelineShadow(0, 0.72);
         } else if (elapsed < preScrollEnd) {
           raw = preScrollDuration > 0 ? (elapsed - prep3End) / preScrollDuration : 1;
-          scrollRaw = easeInOut(raw);
+          scrollRaw = raw;
           actualScroll = mix(config.startScroll, config.finalScroll, scrollRaw);
 
           setState(STATES.BALL_TAKEOFF);
