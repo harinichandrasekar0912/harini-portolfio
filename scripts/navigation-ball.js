@@ -17,6 +17,11 @@
   var FLIGHT_DURATION_MULTIPLIER = 1.32;
   var MOBILE_BALL_TIME_SCALE = 1.42;
   var BALL_MORPH_DURATION = 1300;
+  var NAV_BALL_GRAVITY = 620;
+  var NAV_BALL_SLOW_MOTION = 1.45;
+  var NAV_BALL_MIN_TRACK_SPEED = 135;
+  var NAV_BALL_MAX_TRACK_SPEED = 420;
+  var NAV_BALL_MAX_BOUNCE_DURATION = 720;
 
   function clamp(value, min, max) {
     return Math.min(Math.max(value, min), max);
@@ -29,11 +34,6 @@
   function easeOutCubic(t) {
     var safeT = clamp(t, 0, 1);
     return 1 - Math.pow(1 - safeT, 3);
-  }
-
-  function easeOutQuad(t) {
-    var safeT = clamp(t, 0, 1);
-    return 1 - Math.pow(1 - safeT, 2);
   }
 
   function easeRollOut(t) {
@@ -1495,8 +1495,96 @@
       return cubicSegmentVelocityAt(safeT, path);
     }
 
-    function exactBounceLift(raw, height) {
-      return height * Math.sin(Math.PI * clamp(raw, 0, 1));
+    function bounceDurationForHeight(height) {
+      var safeHeight = Math.max(0, height);
+      var v0 = Math.sqrt(2 * NAV_BALL_GRAVITY * safeHeight);
+      var duration = (2 * v0 / NAV_BALL_GRAVITY) * NAV_BALL_SLOW_MOTION * 1000;
+
+      return clamp(duration, 360, NAV_BALL_MAX_BOUNCE_DURATION);
+    }
+
+    function evaluateBounce(baseX, baseY, height, elapsedMs, durationMs) {
+      var p = clamp(durationMs > 0 ? elapsedMs / durationMs : 1, 0, 1);
+      var yOffset = -4 * height * p * (1 - p);
+
+      return {
+        x: baseX,
+        y: baseY + yOffset
+      };
+    }
+
+    function createExactTrackMetrics(start, landing, geometry) {
+      var length1 = geometry && geometry.D ? Math.abs(start.y - geometry.D.y) : 0;
+      var length2 = geometry && Number.isFinite(geometry.r) ? Math.PI * Math.max(0, geometry.r) : 0;
+      var length3 = geometry && geometry.E ? Math.abs(landing.y - geometry.E.y) : 0;
+      var totalLength = Math.max(1, length1 + length2 + length3);
+      var descentStartDistance = length1 + length2;
+
+      return {
+        length1: length1,
+        length2: length2,
+        length3: length3,
+        totalLength: totalLength,
+        ascentEndDistance: length1,
+        descentStartDistance: descentStartDistance,
+        ascentEndProgress: length1 / totalLength,
+        descentStartProgress: descentStartDistance / totalLength
+      };
+    }
+
+    function evaluateTrackAtDistance(distance, path) {
+      var geometry = path.geometry;
+      var track = path.track || createExactTrackMetrics(path.start, path.end, geometry);
+      var s = clamp(distance, 0, track.totalLength);
+      var arcS;
+      var arcProgress;
+      var theta;
+      var fallS;
+
+      if (s <= track.length1) {
+        return {
+          x: path.start.x,
+          y: path.start.y - s
+        };
+      }
+
+      if (track.length2 > 0 && s <= track.descentStartDistance) {
+        arcS = s - track.length1;
+        arcProgress = clamp(arcS / track.length2, 0, 1);
+        theta = geometry.startTheta + (geometry.endTheta - geometry.startTheta) * arcProgress;
+
+        return {
+          x: geometry.centerX + geometry.r * Math.cos(theta),
+          y: geometry.centerY - geometry.r * Math.sin(theta)
+        };
+      }
+
+      fallS = s - track.length1 - track.length2;
+      return {
+        x: path.end.x,
+        y: geometry.E.y + fallS
+      };
+    }
+
+    function initialTrackSpeedForPath(path, z) {
+      var geometry = path && path.geometry ? path.geometry : {};
+      var topPointY = geometry.C && Number.isFinite(geometry.C.y) ? geometry.C.y : path.start.y;
+      var verticalRiseToApex = Math.max(0, path.start.y - topPointY);
+
+      return Math.sqrt(2 * NAV_BALL_GRAVITY * (verticalRiseToApex + z * 0.35));
+    }
+
+    function trackSpeedAtPoint(point, path, initialTrackSpeed) {
+      var energySpeed = Math.sqrt(Math.max(
+        NAV_BALL_MIN_TRACK_SPEED * NAV_BALL_MIN_TRACK_SPEED,
+        initialTrackSpeed * initialTrackSpeed + 2 * NAV_BALL_GRAVITY * (point.y - path.start.y)
+      ));
+
+      return clamp(
+        energySpeed / NAV_BALL_SLOW_MOTION,
+        NAV_BALL_MIN_TRACK_SPEED,
+        NAV_BALL_MAX_TRACK_SPEED
+      );
     }
 
     function navBallMasterHeight(ballSize) {
@@ -1539,7 +1627,7 @@
       var centerY;
 
       z = Math.min(z, bounceVisibleZMax);
-      requestedOvershoot = clamp(z * 0.95, 56, 118);
+      requestedOvershoot = clamp(z * 0.86, 52, 108);
       availableRise = topY - safeTop;
       minimumOvershoot = Math.min(Math.max(z * 0.35, 18), Math.max(1, availableRise));
       overshoot = availableRise > 0 ?
@@ -1585,36 +1673,17 @@
 
     function evaluateExactNavTrajectory(raw, start, landing, options) {
       var t = clamp(raw, 0, 1);
-      var launchEnd = options && typeof options.launchEnd === "number" ? options.launchEnd : 0.28;
-      var arcEnd = options && typeof options.arcEnd === "number" ? options.arcEnd : 0.68;
       var geometry = options && options.geometry ?
         options.geometry :
         createExactPathGeometry(start, landing, navBallMasterHeight(ballRadius() * 2), options);
-      var p;
-      var theta;
+      var track = options && options.track ? options.track : createExactTrackMetrics(start, landing, geometry);
 
-      if (t < launchEnd) {
-        p = t / launchEnd;
-        return {
-          x: start.x,
-          y: mix(start.y, geometry.D.y, easeOutQuad(p))
-        };
-      }
-
-      if (t < arcEnd) {
-        p = (t - launchEnd) / (arcEnd - launchEnd);
-        theta = geometry.startTheta + (geometry.endTheta - geometry.startTheta) * p;
-        return {
-          x: geometry.centerX + geometry.r * Math.cos(theta),
-          y: geometry.centerY - geometry.r * Math.sin(theta)
-        };
-      }
-
-      p = (t - arcEnd) / (1 - arcEnd);
-      return {
-        x: landing.x,
-        y: mix(geometry.E.y, landing.y, p * p)
-      };
+      return evaluateTrackAtDistance(track.totalLength * t, {
+        start: start,
+        end: landing,
+        geometry: geometry,
+        track: track
+      });
     }
 
     function pathPointAt(raw, path) {
@@ -1690,7 +1759,7 @@
       var maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
       var safeTop = visiblePathTopMargin({ bounds: bounds });
       var z = navBallMasterHeight(radius * 2);
-      var overshoot = clamp(z * 0.95, 56, 118);
+      var overshoot = clamp(z * 0.86, 52, 108);
       var arcRadius = Math.abs(endPoint.x - startScreen.x) / 2;
       var minLandingY = safeTop + arcRadius + overshoot + 8;
       var preferredLandingY = Math.max(window.innerHeight * 0.58, minLandingY);
@@ -1882,8 +1951,7 @@
         apex: geometry.C,
         geometry: geometry,
         z: geometry.z,
-        launchEnd: 0.28,
-        arcEnd: 0.68,
+        track: createExactTrackMetrics(start, landing, geometry),
         direction: direction
       };
 
@@ -2001,7 +2069,9 @@
 
     function flightScrollAt(raw, config) {
       var progress = clamp(raw, 0, 1);
-      var arcEnd = config.path && typeof config.path.arcEnd === "number" ? config.path.arcEnd : 0.68;
+      var arcEnd = config.path && config.path.track && Number.isFinite(config.path.track.descentStartProgress) ?
+        config.path.track.descentStartProgress :
+        0.68;
       var fallProgress;
 
       if (config.cameraMode === "pre-scrolled-freeze") {
@@ -2352,41 +2422,23 @@
       var firstPrepHeight = z / 4;
       var secondPrepHeight = z / 2;
       var thirdPrepHeight = (3 * z) / 4;
-      var geometry = config.path && config.path.geometry ? config.path.geometry : {};
-      var launchDistance = geometry.D ? Math.abs(config.startScreen.y - geometry.D.y) : Math.abs(config.startScreen.y - config.endScreen.y) * 0.45;
-      var arcDistance = Number.isFinite(geometry.r) ? Math.PI * geometry.r : Math.abs(config.endScreen.x - config.startScreen.x);
-      var fallDistance = geometry.E ? Math.abs(config.endScreen.y - geometry.E.y) : Math.abs(config.endScreen.y - config.startScreen.y);
-      var baseFirstPrepDuration = 220;
-      var baseSecondPrepDuration = 250;
-      var baseThirdPrepDuration = 290;
-      var firstPrepDuration = scaleMotionDuration(baseFirstPrepDuration);
-      var secondPrepDuration = scaleMotionDuration(baseSecondPrepDuration);
-      var thirdPrepDuration = scaleMotionDuration(baseThirdPrepDuration);
+      var track = config.path && config.path.track ? config.path.track : createExactTrackMetrics(config.path.start, config.path.end, config.path.geometry);
+      var initialTrackSpeed = initialTrackSpeedForPath(config.path, z);
+      var firstPrepDuration = scaleMotionDuration(bounceDurationForHeight(firstPrepHeight));
+      var secondPrepDuration = scaleMotionDuration(bounceDurationForHeight(secondPrepHeight));
+      var thirdPrepDuration = scaleMotionDuration(bounceDurationForHeight(thirdPrepHeight));
       var preScrollDistance = Math.abs(config.finalScroll - config.startScroll);
       var shouldPreScrollBeforeFlight = config.upward && preScrollDistance > 1;
-      var preScrollDuration = shouldPreScrollBeforeFlight ? scaleMotionDuration(clamp(preScrollDistance * 0.44, 260, 720)) : 0;
-      var launchDuration = scaleMotionDuration(clamp(launchDistance * 1.05 + 160, 280, 380));
-      var arcDuration = scaleMotionDuration(clamp(arcDistance * 0.52, 420, 620));
-      var fallDuration = scaleMotionDuration(clamp(fallDistance * 0.55 + 180, 300, 520));
-      var flightDuration = launchDuration + arcDuration + fallDuration;
-      config.path.launchEnd = launchDuration / flightDuration;
-      config.path.arcEnd = (launchDuration + arcDuration) / flightDuration;
       var firstLandingHeight = (3 * z) / 4;
       var secondLandingHeight = z / 2;
       var thirdLandingHeight = z / 4;
-      var firstLandingDuration = scaleMotionDuration(330);
-      var secondLandingDuration = scaleMotionDuration(250);
-      var thirdLandingDuration = scaleMotionDuration(180);
+      var firstLandingDuration = scaleMotionDuration(bounceDurationForHeight(firstLandingHeight));
+      var secondLandingDuration = scaleMotionDuration(bounceDurationForHeight(secondLandingHeight));
+      var thirdLandingDuration = scaleMotionDuration(bounceDurationForHeight(thirdLandingHeight));
       var rollDuration = scaleMotionDuration(2180);
       var prep1End = firstPrepDuration;
       var prep2End = prep1End + secondPrepDuration;
       var prep3End = prep2End + thirdPrepDuration;
-      var preScrollEnd = prep3End + preScrollDuration;
-      var flightEnd = preScrollEnd + flightDuration;
-      var rebound1End = flightEnd + firstLandingDuration;
-      var rebound2End = rebound1End + secondLandingDuration;
-      var rebound3End = rebound2End + thirdLandingDuration;
-      var rollEnd = rebound3End + rollDuration;
       var rollDirection = rollDirectionFor(targetId);
       var rollStartX = config.endScreen.x;
       var rollEndX = rollDirection < 0 ? -ballRadius() - 18 : window.innerWidth + ballRadius() + 18;
@@ -2397,6 +2449,10 @@
       var rollStarted = false;
       var preScrollPrepared = !shouldPreScrollBeforeFlight;
       var cameraDebugPhase = "";
+      var trackDistance = 0;
+      var lastFlightFrameTime = 0;
+      var flightComplete = false;
+      var landingStartTime = 0;
 
       if (config.upward && !shouldPreScrollBeforeFlight) {
         config.cameraMode = "pre-scrolled-freeze";
@@ -2465,11 +2521,17 @@
           firstPrepBounceDuration: round(firstPrepDuration),
           secondPrepBounceDuration: round(secondPrepDuration),
           thirdPrepBounceDuration: round(thirdPrepDuration),
-          launchDuration: round(launchDuration),
-          arcDuration: round(arcDuration),
-          fallDuration: round(fallDuration),
-          launchEndProgress: round(config.path.launchEnd),
-          arcEndProgress: round(config.path.arcEnd),
+          gravity: NAV_BALL_GRAVITY,
+          slowMotion: NAV_BALL_SLOW_MOTION,
+          minTrackSpeed: NAV_BALL_MIN_TRACK_SPEED,
+          maxTrackSpeed: NAV_BALL_MAX_TRACK_SPEED,
+          trackLengthAscent: round(track.length1),
+          trackLengthArc: round(track.length2),
+          trackLengthDescent: round(track.length3),
+          trackLengthTotal: round(track.totalLength),
+          initialTrackSpeed: round(initialTrackSpeed),
+          ascentEndProgress: round(track.ascentEndProgress),
+          descentStartProgress: round(track.descentStartProgress),
           firstLandingBounceHeight: round(firstLandingHeight),
           secondLandingBounceHeight: round(secondLandingHeight),
           thirdLandingBounceHeight: round(thirdLandingHeight),
@@ -2502,6 +2564,19 @@
         preScrollPrepared = true;
         config.cameraMode = "pre-scrolled-freeze";
         window.scrollTo(0, config.finalScroll);
+      }
+
+      function syncPrepScroll(elapsedMs) {
+        var prepScrollRaw;
+        var prepScrollY;
+
+        if (!shouldPreScrollBeforeFlight || preScrollPrepared) {
+          return;
+        }
+
+        prepScrollRaw = clamp(prep3End > 0 ? elapsedMs / prep3End : 1, 0, 1);
+        prepScrollY = mix(config.startScroll, config.finalScroll, prepScrollRaw);
+        window.scrollTo(0, prepScrollY);
       }
 
       function debugCamera(phase, raw, scrollY, screenPoint) {
@@ -2604,55 +2679,65 @@
           startTime = now;
         }
 
-        var elapsed = clamp(now - startTime, 0, rollEnd);
+        var elapsed = now - startTime;
         var raw = 0;
         var point;
         var screen;
         var actualScroll;
-        var lift;
+        var bouncePoint;
         var rollRaw;
         var easedRoll;
         var x;
         var rotation;
-        var scrollRaw;
+        var deltaTimeSeconds;
+        var trackSpeed;
+        var landingElapsed;
+        var bounceTotalDuration;
+        var descentBreak;
 
         if (elapsed < prep1End) {
           raw = elapsed / firstPrepDuration;
+          bouncePoint = evaluateBounce(config.startScreen.x, config.startScreen.y, firstPrepHeight, elapsed, firstPrepDuration);
           setState(STATES.BALL_TAKEOFF);
           ball.classList.add("is-launching", "is-lifting");
-          setBallPosition(config.startScreen.x, config.startScreen.y - exactBounceLift(raw, firstPrepHeight));
+          setBallPosition(bouncePoint.x, bouncePoint.y);
+          syncPrepScroll(elapsed);
           setTimelineShadow(0, 0.72);
         } else if (elapsed < prep2End) {
           raw = (elapsed - prep1End) / secondPrepDuration;
+          bouncePoint = evaluateBounce(config.startScreen.x, config.startScreen.y, secondPrepHeight, elapsed - prep1End, secondPrepDuration);
           setState(STATES.BALL_TAKEOFF);
           ball.classList.add("is-launching", "is-lifting");
-          setBallPosition(config.startScreen.x, config.startScreen.y - exactBounceLift(raw, secondPrepHeight));
+          setBallPosition(bouncePoint.x, bouncePoint.y);
+          syncPrepScroll(elapsed);
           setTimelineShadow(0, 0.72);
         } else if (elapsed < prep3End) {
           raw = (elapsed - prep2End) / thirdPrepDuration;
+          bouncePoint = evaluateBounce(config.startScreen.x, config.startScreen.y, thirdPrepHeight, elapsed - prep2End, thirdPrepDuration);
           setState(STATES.BALL_TAKEOFF);
           ball.classList.add("is-launching", "is-lifting");
-          setBallPosition(config.startScreen.x, config.startScreen.y - exactBounceLift(raw, thirdPrepHeight));
+          setBallPosition(bouncePoint.x, bouncePoint.y);
+          syncPrepScroll(elapsed);
           setTimelineShadow(0, 0.72);
-        } else if (elapsed < preScrollEnd) {
-          raw = preScrollDuration > 0 ? (elapsed - prep3End) / preScrollDuration : 1;
-          scrollRaw = raw;
-          actualScroll = mix(config.startScroll, config.finalScroll, scrollRaw);
-
-          setState(STATES.BALL_TAKEOFF);
-          ball.classList.add("is-launching", "is-lifting");
-          window.scrollTo(0, actualScroll);
-          setBallPosition(config.startScreen.x, config.startScreen.y);
-          setTimelineShadow(0, 0.72);
-          debugCamera("pre-scroll-before-flight", raw, actualScroll, config.startScreen);
-        } else if (elapsed < flightEnd) {
+        } else if (!flightComplete) {
           markPreScrollComplete();
-          raw = (elapsed - preScrollEnd) / flightDuration;
-          point = flightPointAt(raw, config);
+
+          if (!lastFlightFrameTime) {
+            lastFlightFrameTime = now;
+          }
+
+          point = evaluateTrackAtDistance(trackDistance, config.path);
+          deltaTimeSeconds = clamp((now - lastFlightFrameTime) / 1000, 0, 0.05);
+          lastFlightFrameTime = now;
+          trackSpeed = trackSpeedAtPoint(point, config.path, initialTrackSpeed);
+          trackDistance = Math.min(track.totalLength, trackDistance + trackSpeed * deltaTimeSeconds);
+          raw = clamp(trackDistance / track.totalLength, 0, 1);
+          point = evaluateTrackAtDistance(trackDistance, config.path);
           actualScroll = flightScrollAt(raw, config);
           screen = config.path && config.path.kind === "exact-nav-trajectory" ?
             point :
             emergencyClampToViewport(point, config, raw);
+          descentBreak = track.descentStartProgress || 0.68;
 
           setState(STATES.BALL_FLYING);
           ball.classList.remove("is-launching", "is-lifting", "is-landing", "is-landed", "is-arrived");
@@ -2661,51 +2746,59 @@
           setBallPosition(screen.x, screen.y);
           debugRenderLandingTarget(endPoint, config.finalScroll);
           applyApproachShadow(raw);
-          debugCamera(raw < (config.path.arcEnd || 0.68) ? "main-flight-launch-arc" : "main-flight-descent", raw, actualScroll, screen);
-        } else if (elapsed < rebound1End) {
-          applyImpact();
-          raw = (elapsed - flightEnd) / firstLandingDuration;
-          lift = exactBounceLift(raw, firstLandingHeight);
-          setBallPosition(config.endScreen.x, config.endScreen.y - lift);
-          applyBounceShadow(raw, 1);
-        } else if (elapsed < rebound2End) {
-          applyImpact();
-          raw = (elapsed - rebound1End) / secondLandingDuration;
-          lift = exactBounceLift(raw, secondLandingHeight);
-          setBallPosition(config.endScreen.x, config.endScreen.y - lift);
-          applyBounceShadow(raw, 2);
-        } else if (elapsed < rebound3End) {
-          applyImpact();
-          raw = (elapsed - rebound2End) / thirdLandingDuration;
-          lift = exactBounceLift(raw, thirdLandingHeight);
-          setBallPosition(config.endScreen.x, config.endScreen.y - lift);
-          applyBounceShadow(raw, 3);
-        } else if (elapsed < rollEnd) {
-          applyImpact();
+          debugCamera(raw < descentBreak ? "main-flight-launch-arc" : "main-flight-descent", raw, actualScroll, screen);
 
-          if (!rollStarted) {
-            rollStarted = true;
-            setState(STATES.BALL_ROLLING_OUT);
-            ball.classList.remove("is-arrived", "is-landing", "is-landed");
-            ball.classList.add("is-rolling");
-          }
-
-          rollRaw = (elapsed - rebound3End) / rollDuration;
-          easedRoll = easeRollOut(rollRaw);
-          x = mix(rollStartX, rollEndX, easedRoll);
-          rotation = rollDirection * (Math.abs(x - rollStartX) / rollCircumference) * 360;
-
-          ball.style.setProperty("--ball-rotation", rotation + "deg");
-          setBallPosition(x, config.endScreen.y);
-
-          if (endPoint.kind === "floor") {
-            setTimelineShadow(0, 0.72);
-          } else {
-            setTimelineShadow(mix(0.3, 0, rollRaw), mix(1.08, 0.72, rollRaw));
+          if (trackDistance >= track.totalLength) {
+            flightComplete = true;
+            landingStartTime = now;
+            applyImpact();
           }
         } else {
-          restorePlusAfterRoll(token, targetId);
-          return;
+          applyImpact();
+          landingElapsed = now - landingStartTime;
+          bounceTotalDuration = firstLandingDuration + secondLandingDuration + thirdLandingDuration;
+
+          if (landingElapsed < firstLandingDuration) {
+            raw = landingElapsed / firstLandingDuration;
+            bouncePoint = evaluateBounce(config.endScreen.x, config.endScreen.y, firstLandingHeight, landingElapsed, firstLandingDuration);
+            setBallPosition(bouncePoint.x, bouncePoint.y);
+            applyBounceShadow(raw, 1);
+          } else if (landingElapsed < firstLandingDuration + secondLandingDuration) {
+            raw = (landingElapsed - firstLandingDuration) / secondLandingDuration;
+            bouncePoint = evaluateBounce(config.endScreen.x, config.endScreen.y, secondLandingHeight, landingElapsed - firstLandingDuration, secondLandingDuration);
+            setBallPosition(bouncePoint.x, bouncePoint.y);
+            applyBounceShadow(raw, 2);
+          } else if (landingElapsed < bounceTotalDuration) {
+            raw = (landingElapsed - firstLandingDuration - secondLandingDuration) / thirdLandingDuration;
+            bouncePoint = evaluateBounce(config.endScreen.x, config.endScreen.y, thirdLandingHeight, landingElapsed - firstLandingDuration - secondLandingDuration, thirdLandingDuration);
+            setBallPosition(bouncePoint.x, bouncePoint.y);
+            applyBounceShadow(raw, 3);
+          } else if (landingElapsed < bounceTotalDuration + rollDuration) {
+
+            if (!rollStarted) {
+              rollStarted = true;
+              setState(STATES.BALL_ROLLING_OUT);
+              ball.classList.remove("is-arrived", "is-landing", "is-landed");
+              ball.classList.add("is-rolling");
+            }
+
+            rollRaw = (landingElapsed - bounceTotalDuration) / rollDuration;
+            easedRoll = easeRollOut(rollRaw);
+            x = mix(rollStartX, rollEndX, easedRoll);
+            rotation = rollDirection * (Math.abs(x - rollStartX) / rollCircumference) * 360;
+
+            ball.style.setProperty("--ball-rotation", rotation + "deg");
+            setBallPosition(x, config.endScreen.y);
+
+            if (endPoint.kind === "floor") {
+              setTimelineShadow(0, 0.72);
+            } else {
+              setTimelineShadow(mix(0.3, 0, rollRaw), mix(1.08, 0.72, rollRaw));
+            }
+          } else {
+            restorePlusAfterRoll(token, targetId);
+            return;
+          }
         }
 
         requestBallFrame(frame, token);
