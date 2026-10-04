@@ -1550,6 +1550,7 @@
 
       return {
         z: z,
+        a: m,
         m: m,
         mMaxVisible: mMaxVisible,
         safeTop: safeTop,
@@ -1606,7 +1607,7 @@
       p = (t - arcEnd) / (1 - arcEnd);
       return {
         x: landing.x,
-        y: geometry.E.y + (landing.y - geometry.E.y) * (p * p)
+        y: mix(geometry.E.y, landing.y, p)
       };
     }
 
@@ -2011,6 +2012,7 @@
         Bx: round(config.path.end.x),
         By: round(config.path.end.y),
         z: round(geometry.z),
+        a: round(geometry.a),
         m: round(geometry.m),
         mMaxVisible: round(geometry.mMaxVisible),
         safeTop: round(geometry.safeTop),
@@ -2356,6 +2358,7 @@
           capMovesX: Math.abs(debugP28.x - debugP48.x) > 0.5 || Math.abs(debugP48.x - debugP68.x) > 0.5,
           fallXFixed: Math.abs(debugP68.x - debugP100.x) < 0.5,
           z: round(z),
+          a: round(debugGeometry.a),
           m: round(debugGeometry.m),
           mMaxVisible: round(debugGeometry.mMaxVisible),
           safeTop: round(debugGeometry.safeTop),
