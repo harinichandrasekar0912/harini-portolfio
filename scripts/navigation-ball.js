@@ -3,6 +3,7 @@
   const DEBUG_NAV_BALL_PATH = false;
   const DEBUG_NAV_BALL_TRAJECTORY = false;
   const DEBUG_NAV_BALL_EXACT_PATH = false;
+  const DEBUG_BALL_PATH = false;
 
   var SECTION_IDS = ["landing", "about", "work", "archive", "contact"];
   var SECTION_INDEX = {
@@ -1498,17 +1499,62 @@
         clamp(ballSize * 2, 64, 120);
     }
 
-    function createExactPathGeometry(start, landing, z) {
-      var targetAboveAmount = Math.max(0, start.y - landing.y);
-      var m = Math.max(z * 1.25, targetAboveAmount + z * 0.75);
+    function visiblePathTopMargin(options) {
+      var fallback = Math.max(24, ballRadius() + 4);
+
+      if (options && Number.isFinite(options.safeTop)) {
+        return Math.max(0, options.safeTop);
+      }
+
+      if (options && options.bounds && Number.isFinite(options.bounds.minY)) {
+        return Math.max(24, options.bounds.minY);
+      }
+
+      return fallback;
+    }
+
+    function createExactPathGeometry(start, landing, baseZ, options) {
+      var safeTop = visiblePathTopMargin(options);
       var dx = landing.x - start.x;
       var r = Math.abs(dx) / 2;
+      var mMaxVisible = start.y - safeTop - r;
+      var z = Math.max(0, baseZ);
+      var prepBounceZMax = Math.max(0, (start.y - safeTop) / 0.75);
+      var landingBounceZMax = Math.max(0, (landing.y - safeTop) / 0.75);
+      var bounceVisibleZMax = Math.min(prepBounceZMax, landingBounceZMax);
+      var mPreferred = Math.max(z * 1.25, Math.abs(landing.y - start.y) * 0.35 + z);
+      var m;
       var centerX = (start.x + landing.x) / 2;
-      var centerY = start.y - m;
+      var centerY;
+
+      z = Math.min(z, bounceVisibleZMax);
+      mPreferred = Math.max(z * 1.25, Math.abs(landing.y - start.y) * 0.35 + z);
+
+      if (mMaxVisible <= 0) {
+        z = 0;
+        m = 0;
+      } else if (mMaxVisible <= z) {
+        z = Math.max(0, mMaxVisible * 0.78);
+        mPreferred = Math.max(z * 1.25, Math.abs(landing.y - start.y) * 0.35 + z);
+        m = Math.min(mPreferred, mMaxVisible);
+      } else {
+        m = Math.min(mPreferred, mMaxVisible);
+      }
+
+      if (mMaxVisible > 0 && m <= z) {
+        z = Math.max(0, Math.min(z, mMaxVisible * 0.78));
+        m = mMaxVisible;
+      }
+
+      centerY = start.y - m;
 
       return {
         z: z,
         m: m,
+        mMaxVisible: mMaxVisible,
+        safeTop: safeTop,
+        bounceVisibleZMax: bounceVisibleZMax,
+        visibilityLimited: m < mPreferred,
         D: {
           x: start.x,
           y: start.y - m
@@ -1534,7 +1580,9 @@
       var t = clamp(raw, 0, 1);
       var launchEnd = options && typeof options.launchEnd === "number" ? options.launchEnd : 0.28;
       var arcEnd = options && typeof options.arcEnd === "number" ? options.arcEnd : 0.68;
-      var geometry = options && options.geometry ? options.geometry : createExactPathGeometry(start, landing, navBallMasterHeight(ballRadius() * 2));
+      var geometry = options && options.geometry ?
+        options.geometry :
+        createExactPathGeometry(start, landing, navBallMasterHeight(ballRadius() * 2), options);
       var p;
       var theta;
 
@@ -1789,7 +1837,9 @@
 
     function createExactNavTrajectoryPath(start, landing, config, direction) {
       var z = navBallMasterHeight(ballRadius() * 2);
-      var geometry = createExactPathGeometry(start, landing, z);
+      var geometry = createExactPathGeometry(start, landing, z, {
+        bounds: config.bounds
+      });
       var path = {
         kind: "exact-nav-trajectory",
         start: start,
@@ -1798,7 +1848,7 @@
         end: landing,
         apex: geometry.C,
         geometry: geometry,
-        z: z,
+        z: geometry.z,
         launchEnd: 0.28,
         arcEnd: 0.68,
         direction: direction
@@ -1930,7 +1980,7 @@
       var finalVelocity;
       var geometry;
 
-      if (!(DEBUG_NAV_BALL_PATH || DEBUG_NAV_BALL_TRAJECTORY || DEBUG_NAV_BALL_EXACT_PATH) || !config || !config.path) {
+      if (!(DEBUG_BALL_PATH || DEBUG_NAV_BALL_PATH || DEBUG_NAV_BALL_TRAJECTORY || DEBUG_NAV_BALL_EXACT_PATH) || !config || !config.path) {
         return;
       }
 
@@ -1962,6 +2012,10 @@
         By: round(config.path.end.y),
         z: round(geometry.z),
         m: round(geometry.m),
+        mMaxVisible: round(geometry.mMaxVisible),
+        safeTop: round(geometry.safeTop),
+        bounceVisibleZMax: round(geometry.bounceVisibleZMax),
+        visibilityLimited: Boolean(geometry.visibilityLimited),
         Dx: round(geometry.D && geometry.D.x),
         Dy: round(geometry.D && geometry.D.y),
         Cx: round(geometry.C && geometry.C.x),
@@ -2230,7 +2284,9 @@
       var impactVelocity = flightVelocityAt(1, config);
       var impactVelocityY = Math.max(0, impactVelocity.y);
       var ballSize = ballRadius() * 2;
-      var z = navBallMasterHeight(ballSize);
+      var z = config.path && config.path.geometry && Number.isFinite(config.path.geometry.z) ?
+        config.path.geometry.z :
+        navBallMasterHeight(ballSize);
       var firstPrepHeight = z / 4;
       var secondPrepHeight = z / 2;
       var thirdPrepHeight = (3 * z) / 4;
@@ -2301,6 +2357,10 @@
           fallXFixed: Math.abs(debugP68.x - debugP100.x) < 0.5,
           z: round(z),
           m: round(debugGeometry.m),
+          mMaxVisible: round(debugGeometry.mMaxVisible),
+          safeTop: round(debugGeometry.safeTop),
+          bounceVisibleZMax: round(debugGeometry.bounceVisibleZMax),
+          visibilityLimited: Boolean(debugGeometry.visibilityLimited),
           pointD: debugGeometry.D ? {
             x: round(debugGeometry.D.x),
             y: round(debugGeometry.D.y)
