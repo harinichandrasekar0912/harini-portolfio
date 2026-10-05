@@ -115,24 +115,28 @@ html.is-ball-animating {
   --item-x: -122px;
   --item-y: -88px;
   --pop-delay: 0ms;
+  --phone-pop-delay: 120ms;
 }
 
 .radial-item-work {
   --item-x: -48px;
   --item-y: -144px;
   --pop-delay: 38ms;
+  --phone-pop-delay: 165ms;
 }
 
 .radial-item-archive {
   --item-x: 48px;
   --item-y: -144px;
   --pop-delay: 76ms;
+  --phone-pop-delay: 210ms;
 }
 
 .radial-item-contact {
   --item-x: 122px;
   --item-y: -88px;
   --pop-delay: 114ms;
+  --phone-pop-delay: 255ms;
 }
 
 .radial-item button {
@@ -336,8 +340,119 @@ html.is-ball-animating {
   transform: translate(-50%, -50%) rotate(90deg);
 }
 
+/* the plus fades in IN PLACE after a trip: opacity 0 -> 1, scale 0.96 -> 1 (no ball or shadow travels back to it) */
 .nav-object.is-plus-restoring .nav-core {
-  animation: plusRestore 340ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: plusRestore 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* While the plus fades in (or the ball closes into it on a "home" trip) nothing from the menu may show or move:
+   the selected circle must not reappear at its old spot and glide back to the plus. */
+.nav-object.is-plus-restoring .radial-menu,
+.nav-object.is-plus-restoring .radial-lines,
+.nav-object.is-ball-closing .radial-menu,
+.nav-object.is-ball-closing .radial-lines {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: none;
+}
+
+.nav-object.is-plus-restoring .radial-item,
+.nav-object.is-plus-restoring .radial-item button,
+.nav-object.is-ball-closing .radial-item,
+.nav-object.is-ball-closing .radial-item button {
+  transition: none;
+}
+
+/* Staged menu opening for phones / touch tablets.
+   navigation-ball.js first applies is-phone-nav-preparing (closed state: spokes hidden, circles opacity 0 / scale 0.82, no pointer events),
+   waits two animation frames, then swaps it for is-phone-nav-opening (+ is-open) and finally adds is-phone-nav-ready (pointer events on).
+   These rules are class-gated, so they do not depend on a media query; every property animates opacity/transform only (no display switching). */
+html .nav-object.is-phone-nav-preparing .radial-lines,
+html .nav-object.is-phone-nav-preparing .radial-line {
+  opacity: 0;
+  transition: none;
+}
+
+html .nav-object.is-phone-nav-preparing .nav-ring {
+  opacity: 0;
+  transition: none;
+}
+
+html .nav-object.is-phone-nav-preparing .nav-ring circle {
+  stroke-dashoffset: 1;
+  transition: none;
+}
+
+html .nav-object.is-phone-nav-preparing .radial-menu,
+html .nav-object.is-phone-nav-preparing .radial-item,
+html .nav-object.is-phone-nav-preparing .radial-item button {
+  pointer-events: none;
+}
+
+html .nav-object.is-phone-nav-preparing .radial-item {
+  opacity: 0;
+  transform: translate(calc(-50% + var(--item-x)), var(--item-y)) scale(0.82);
+  animation: none;
+  transition: none;
+  will-change: transform, opacity;
+}
+
+html .nav-object.is-open.is-phone-nav-opening .radial-menu {
+  pointer-events: none;
+}
+
+html .nav-object.is-open.is-phone-nav-opening.is-phone-nav-ready .radial-menu,
+html .nav-object.is-open.is-phone-nav-opening.is-phone-nav-ready .radial-item,
+html .nav-object.is-open.is-phone-nav-opening.is-phone-nav-ready .radial-item button {
+  pointer-events: auto;
+}
+
+html .nav-object.is-open.is-phone-nav-opening .radial-lines {
+  opacity: 1;
+  transition: opacity 120ms linear 0ms;
+}
+
+html .nav-object.is-open.is-phone-nav-opening .radial-line {
+  opacity: 1;
+  stroke-dashoffset: 0;
+  transition: opacity 120ms linear 0ms;
+}
+
+html .nav-object.is-open.is-phone-nav-opening .nav-ring {
+  opacity: 1;
+  transition: opacity 160ms linear 0ms;
+}
+
+html .nav-object.is-open.is-phone-nav-opening .nav-ring circle {
+  stroke-dashoffset: 0;
+  transition:
+    stroke-dashoffset 360ms cubic-bezier(0.22, 1, 0.36, 1) 0ms,
+    opacity 120ms linear;
+}
+
+html .nav-object.is-open.is-phone-nav-opening .nav-core::after {
+  opacity: 1;
+  transform: scale(1);
+  transition:
+    opacity 280ms var(--ease-standard) 0ms,
+    transform 280ms var(--ease-standard) 0ms;
+}
+
+html .nav-object.is-open.is-phone-nav-opening .radial-item {
+  opacity: 1;
+  transform: translate(calc(-50% + var(--item-x)), var(--item-y)) scale(1);
+  animation: none;
+  transition:
+    opacity 360ms cubic-bezier(0.22, 1, 0.36, 1) var(--phone-pop-delay, 120ms),
+    transform 360ms cubic-bezier(0.22, 1, 0.36, 1) var(--phone-pop-delay, 120ms);
+  will-change: transform, opacity;
+}
+
+/* once the opening is finished the circles follow layout changes (rotation / resize) immediately, so the spokes always match them */
+html .nav-object.is-open.is-phone-nav-opening.is-phone-nav-ready .radial-item {
+  transition: none;
+  will-change: auto;
 }
 
 .nav-object.is-project-close {
@@ -724,6 +839,8 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
     border-color var(--duration-medium) var(--ease-standard);
 }
 
+/* The travelling ball is positioned and squashed every frame by navigation-ball.js (--ball-x / --ball-y / --ball-scale-*),
+   so it must never have a transform transition: only opacity and colours are allowed to transition. */
 .nav-travel-ball {
   transition:
     opacity var(--duration-medium) var(--ease-standard),
@@ -746,6 +863,7 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
     border-color var(--duration-medium) var(--ease-standard);
 }
 
+/* is-restoring is only used by the "home" trip, where the ball closes into the plus; it never runs while the ball travels */
 .nav-travel-ball.is-restoring {
   transition:
     opacity var(--restore-duration, var(--duration-medium)) var(--ease-standard),
@@ -775,7 +893,7 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
 @keyframes plusRestore {
   0% {
     opacity: 0;
-    transform: translateX(-50%) scale(0.92);
+    transform: translateX(-50%) scale(0.96);
   }
 
   100% {
@@ -1330,5 +1448,15 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
     transition-duration: 1ms !important;
+  }
+
+  .nav-object .radial-item,
+  .nav-object .radial-line,
+  .nav-object .radial-lines,
+  .nav-object .nav-core::after,
+  .nav-object .nav-ring,
+  .nav-object .nav-ring circle {
+    transition-delay: 0ms !important;
+    animation-delay: 0ms !important;
   }
 }
