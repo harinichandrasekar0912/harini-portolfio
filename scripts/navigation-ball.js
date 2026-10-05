@@ -2,20 +2,25 @@
  *
  * Trip sequence (every non-phone trip, in this exact order):
  *   selected nav circle morphs into the ball -> capture A once -> freeze scroll -> three prep bounces at A (z/4, z/2, 3z/4)
- *   -> compute scrollTarget and the final visible landing point F -> ONE continuous centripetal Catmull-Rom spline A-B-C-D-E-F
- *   (constant speed along arc length, page scrolls with the ball in the same requestAnimationFrame loop) -> exact landing at F
+ *   -> compute scrollTarget and the final visible landing point F -> ONE continuous arch A -> straight up -> over the top -> straight down
+ *   into E -> straight down to F (vertical tangent at A and at E; constant speed along arc length, page scrolls with the ball in the same
+ *   requestAnimationFrame loop) -> exact landing at F
  *   -> three landing bounces at F (3z/4, z/2, z/4) -> roll out of the screen -> travelling ball hidden -> plus fades in IN PLACE.
  * Phone (max-width: 767px): same sequence, but the ball never moves sideways before the roll-away (F.x = A.x, vertical quadratic Bezier).
  *
  * Obsolete experimental path systems (obstacle nudging, "exact" trajectory, composite camera modes, debug overlay) were removed so
- * that nothing can run by accident. The three path modes below share ONE arc-length engine; NAV_BALL_PATH_MODE switches them.
+ * that nothing can run by accident. The path modes below share ONE arc-length engine; NAV_BALL_PATH_MODE switches them.
  */
 (function () {
   "use strict";
 
   /* ------------------------------------------------------------------ configuration */
 
-  // "spline" = six-point centripetal Catmull-Rom (final). "bezier" = single cubic arch. "segmented" = line / arc / line.
+  // "spline"    = the final arch: ONE continuous sampled path A -> up -> over -> down into E -> down to F (cubic arch with vertical tangents at A and E,
+  //               joined tangent-continuously to the vertical descent E -> F).
+  // "bezier"    = a single cubic from A to F with vertical tangents at both ends.
+  // "catmull"   = centripetal Catmull-Rom through the guide points [A, DHigh, C, EHigh, E, F].
+  // "segmented" = the old stitched look (straight rise, shallow cap, straight fall) - only kept for comparison.
   const NAV_BALL_PATH_MODE = "spline";
 
   const DEBUG_NAV_BALL_SEQUENCE = false;
@@ -24,8 +29,18 @@
 
   const MAIN_PATH_SPEED = 430; // px/s along the desktop/tablet path (constant, no easing)
   const PHONE_PATH_SPEED = 380; // px/s along the phone path
-  const SPLINE_ALPHA = 0.5; // centripetal
+  const SPLINE_ALPHA = 0.5; // centripetal (used by the "catmull" mode)
   const SAMPLES_PER_SEGMENT = 36;
+
+  // the arch (see buildDesktopPath)
+  const ARCH_LIFT_FACTOR = 1.12; // m = z * 1.12 (> z): how far above the higher of A and F the guide level E sits
+  const ARCH_LIFT_MIN = 40;
+  const ARCH_HEIGHT_FACTOR = 0.35; // h = clamp(|dx| * 0.35, ARCH_HEIGHT_MIN, ARCH_HEIGHT_MAX): controlled apex height
+  const ARCH_HEIGHT_MIN = 40;
+  const ARCH_HEIGHT_MAX = 130;
+  const ARCH_CONTROL_FACTOR = 0.65; // the two cubic control points sit 0.65 h above the guide level
+  const ARCH_MIN_APEX_FACTOR = 0.3; // the arch must rise at least 0.3 h above E (tall, narrow trips raise the controls to keep a visible arch)
+  const ARCH_MIN_LANDING_DROP = 14; // E stays at least this far above F, so the ball always comes down into F
   const PHONE_PATH_SAMPLE_COUNT = 100;
   const BEZIER_SAMPLE_COUNT = 160;
   const SCROLL_PROGRESS_MODE = "smootherstep"; // page scroll easing only ("linear" = scroll progress equals path progress); the ball itself is never eased
@@ -349,9 +364,18 @@
     };
   }
 
+  // roughly one sample every 3 px (never fewer than BEZIER_SAMPLE_COUNT), so even wide arches keep smooth, evenly spaced samples
+  function cubicSampleCount(p0, p1, p2, p3) {
+    const controlLength = Math.hypot(p1.x - p0.x, p1.y - p0.y) + Math.hypot(p2.x - p1.x, p2.y - p1.y) + Math.hypot(p3.x - p2.x, p3.y - p2.y);
+
+    return clamp(Math.ceil(controlLength / 3), BEZIER_SAMPLE_COUNT, 900);
+  }
+
   function sampleCubic(samples, p0, p1, p2, p3, count) {
-    for (let index = 0; index <= count; index += 1) {
-      const point = cubicBezierPoint(p0, p1, p2, p3, index / count);
+    const sampleTotal = Math.max(count, cubicSampleCount(p0, p1, p2, p3));
+
+    for (let index = 0; index <= sampleTotal; index += 1) {
+      const point = cubicBezierPoint(p0, p1, p2, p3, index / sampleTotal);
       appendSample(samples, point.x, point.y);
     }
   }
@@ -372,114 +396,143 @@
     return minY;
   }
 
-  /* spline points A B C D E F (viewport coordinates); the formulas follow the specification */
-  function splinePointsFor(A, F, z, arcHeightScale) {
-    const dx = F.x - A.x;
-    const absDx = Math.abs(dx);
+  /* ---- the arch ------------------------------------------------------------------------------------------------------------------
+   * One continuous trajectory (viewport coordinates, y grows downward):  A -> straight up -> rounded arch -> straight down into E -> down to F
+   *   guide level  G = (higher of A and F) - m,   m = 1.12 z  (> z, so the ball clears its own bounce height)
+   *   E = (F.x, G)      h = clamp(|dx| * 0.35, 40, 130)      control height c = 0.65 h above G
+   *   cubic arch   P0 = A,  P1 = (A.x, G - c),  P2 = (F.x, G - c),  P3 = E
+   *   -> dx/dt = 0 and the ball moves UP at A, dx/dt = 0 and the ball moves DOWN at E, and x never leaves [A.x, F.x] (no side bulge).
+   *   Then the vertical descent E -> F. Both parts go into ONE sample table, so tangent and speed stay continuous: no visible join.
+   * The same formulas serve all four directions (left/right, higher/lower); the sign of dx mirrors the arch. */
+  function archGuide(A, F, z, scale) {
     const topY = Math.min(A.y, F.y);
-    const lift = clamp(z * 0.62, 34, 72);
-    const baseY = topY - lift;
-    const arcHeight = clamp(absDx * 0.16, 36, 88) * (arcHeightScale || 1);
-    const cNudge = clamp(arcHeight * 0.12, 5, 14);
+    const absDx = Math.abs(F.x - A.x);
+    const lift = Math.max(z * ARCH_LIFT_FACTOR, ARCH_LIFT_MIN) * scale;
+    const height = clamp(absDx * ARCH_HEIGHT_FACTOR, ARCH_HEIGHT_MIN, ARCH_HEIGHT_MAX) * scale;
 
+    return { topY: topY, absDx: absDx, lift: lift, height: height, guideY: topY - lift };
+  }
+
+  function archKeyPoints(A, F, guideY, height, control) {
     return {
-      dx: dx,
-      absDx: absDx,
-      topY: topY,
-      lift: lift,
-      baseY: baseY,
-      arcHeight: arcHeight,
-      cNudge: cNudge,
       A: copyPoint(A),
-      B: { x: A.x, y: baseY },
-      C: { x: A.x + dx * 0.34, y: baseY - arcHeight - cNudge },
-      D: { x: A.x + dx * 0.66, y: baseY - arcHeight * 0.55 },
-      E: { x: F.x, y: baseY },
-      F: copyPoint(F)
+      P1: { x: A.x, y: guideY - control },
+      P2: { x: F.x, y: guideY - control },
+      E: { x: F.x, y: guideY },
+      F: copyPoint(F),
+      DHigh: { x: A.x, y: guideY - height * 0.25 },
+      C: { x: (A.x + F.x) / 2, y: guideY - height },
+      EHigh: { x: F.x, y: guideY - height * 0.25 }
     };
   }
 
-  function shiftSplineMiddle(geometry, amount) {
-    geometry.B.y += amount;
-    geometry.C.y += amount;
-    geometry.D.y += amount;
-    geometry.E.y += amount;
-    geometry.baseY += amount;
+  function sampleVerticalDescent(samples, from, to) {
+    const count = Math.max(2, Math.ceil(Math.abs(to.y - from.y) / 8));
+
+    for (let index = 1; index <= count; index += 1) {
+      appendSample(samples, to.x, mix(from.y, to.y, index / count));
+    }
   }
 
-  function buildPathFromGeometry(mode, geometry) {
+  function buildArchPath(mode, points) {
+    const samples = [];
+
+    if (mode === "catmull") {
+      const catmull = sampleCatmullRom([points.A, points.DHigh, points.C, points.EHigh, points.E, points.F], SAMPLES_PER_SEGMENT);
+
+      catmull.mode = "catmull";
+      return catmull;
+    }
+
     if (mode === "bezier") {
-      const controlY = geometry.baseY - geometry.arcHeight * 0.35;
-      const samples = [];
-      sampleCubic(samples, geometry.A, { x: geometry.A.x, y: controlY }, { x: geometry.F.x, y: controlY }, geometry.F, BEZIER_SAMPLE_COUNT);
+      sampleCubic(samples, points.A, points.P1, points.P2, points.F, BEZIER_SAMPLE_COUNT);
       return finalizePath(samples, { mode: "bezier" });
     }
 
     if (mode === "segmented") {
-      const samples = [];
-      const apexY = geometry.C.y;
-      sampleLine(samples, geometry.A, geometry.B, 24);
-      sampleCubic(samples, geometry.B, { x: geometry.B.x, y: apexY }, { x: geometry.E.x, y: apexY }, geometry.E, BEZIER_SAMPLE_COUNT);
-      sampleLine(samples, geometry.E, geometry.F, 24);
+      const riseEnd = { x: points.A.x, y: points.E.y };
+
+      sampleLine(samples, points.A, riseEnd, 24);
+      sampleCubic(samples, riseEnd, { x: points.A.x, y: points.C.y }, { x: points.F.x, y: points.C.y }, points.E, BEZIER_SAMPLE_COUNT);
+      sampleLine(samples, points.E, points.F, 24);
       return finalizePath(samples, { mode: "segmented" });
     }
 
-    const path = sampleCatmullRom([geometry.A, geometry.B, geometry.C, geometry.D, geometry.E, geometry.F], SAMPLES_PER_SEGMENT);
-    path.mode = "spline";
-    return path;
+    sampleCubic(samples, points.A, points.P1, points.P2, points.E, BEZIER_SAMPLE_COUNT);
+    sampleVerticalDescent(samples, points.E, points.F);
+
+    // the path starts exactly at A and ends exactly at F
+    samples[0].x = points.A.x;
+    samples[0].y = points.A.y;
+    samples[samples.length - 1].x = points.F.x;
+    samples[samples.length - 1].y = points.F.y;
+
+    return finalizePath(samples, { mode: "spline" });
   }
 
-  /* desktop / tablet main path: A -> F through B C D E, kept inside the visible frame by moving B/C/D/E together (A and F never move) */
+  /* desktop / tablet main path A -> F, kept inside the visible frame: the guide level and the control points move down together (A and F never move) */
   function buildDesktopPath(A, F, z, safeTop, mode) {
-    const pathMode = mode === "bezier" || mode === "segmented" ? mode : "spline";
-    const MIN_LANDING_DROP = 14; // E stays at least this far above F, so the ball always comes down into F
+    const pathMode = mode === "bezier" || mode === "segmented" || mode === "catmull" ? mode : "spline";
+    let scale = 1;
+    let result = null;
 
-    function fit(scale) {
-      const fitted = splinePointsFor(A, F, z, scale);
-      let moved = 0;
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      const guide = archGuide(A, F, z, scale);
+      let guideY = guide.guideY;
+      let control = ARCH_CONTROL_FACTOR * guide.height;
+      let points = archKeyPoints(A, F, guideY, guide.height, control);
+      let path = buildArchPath(pathMode, points);
+      let adjustment = 0;
 
-      if (fitted.C.y < safeTop) {
-        moved = safeTop - fitted.C.y;
-        shiftSplineMiddle(fitted, moved);
+      // tall, narrow trips: raise the control points until the arch visibly rises above E
+      for (let step = 0; step < 40 && guideY - minSampleY(path) < ARCH_MIN_APEX_FACTOR * guide.height; step += 1) {
+        control *= 1.12;
+        points = archKeyPoints(A, F, guideY, guide.height, control);
+        path = buildArchPath(pathMode, points);
       }
 
-      return { geometry: fitted, adjustment: moved };
-    }
+      // SAFE_TOP: if the apex would leave the visible frame, move the guide level (and with it the controls) down
+      for (let step = 0; step < 4 && minSampleY(path) < safeTop - 0.5; step += 1) {
+        const shift = safeTop - minSampleY(path);
 
-    let arcScale = 1;
-    let result = fit(arcScale);
+        adjustment += shift;
+        guideY += shift;
+        points = archKeyPoints(A, F, guideY, guide.height, control);
+        path = buildArchPath(pathMode, points);
+      }
 
-    // F very close to the top edge: reduce arcHeight (the spec's last resort) instead of letting E sink below F
-    while (result.geometry.E.y > F.y - MIN_LANDING_DROP && arcScale > 0.3) {
-      arcScale = Math.max(0.3, arcScale - 0.1);
-      result = fit(arcScale);
-    }
+      result = { guide: guide, guideY: guideY, control: control, points: points, path: path, adjustment: adjustment, scale: scale };
 
-    const geometry = result.geometry;
-    let adjustment = result.adjustment;
-    let path = buildPathFromGeometry(pathMode, geometry);
-
-    for (let attempt = 0; attempt < 4; attempt += 1) {
-      const minY = minSampleY(path);
-
-      if (minY >= safeTop - 0.5) {
+      if (guideY <= F.y - ARCH_MIN_LANDING_DROP) {
         break;
       }
 
-      // the spline may swing a few pixels above C: nudge the middle points down by exactly that much
-      const shift = safeTop - minY;
-      shiftSplineMiddle(geometry, shift);
-      adjustment += shift;
-      path = buildPathFromGeometry(pathMode, geometry);
+      scale *= 0.85; // very small screen / F close to the top edge: flatten the arch a little before giving up on the shape
     }
 
-    path.geometry = geometry;
-    path.mode = pathMode;
-    path.visibilityAdjustment = adjustment;
-    path.arcScale = arcScale;
-    path.safeTop = safeTop;
-    path.speed = MAIN_PATH_SPEED;
-    return path;
+    const resultPath = result.path;
+
+    resultPath.geometry = {
+      A: result.points.A,
+      P1: result.points.P1,
+      P2: result.points.P2,
+      E: result.points.E,
+      F: result.points.F,
+      DHigh: result.points.DHigh,
+      C: result.points.C,
+      EHigh: result.points.EHigh,
+      guideY: result.guideY,
+      lift: result.guide.lift,
+      height: result.guide.height,
+      control: result.control,
+      topY: result.guide.topY
+    };
+    resultPath.mode = pathMode;
+    resultPath.visibilityAdjustment = result.adjustment;
+    resultPath.arcScale = result.scale;
+    resultPath.safeTop = safeTop;
+    resultPath.speed = MAIN_PATH_SPEED;
+    return resultPath;
   }
 
   /* phone main path: vertical quadratic Bezier A -> C -> FPhone, constant x */
@@ -1628,8 +1681,8 @@
             safeTop: round(safeTop)
           });
 
-          if (DEBUG_NAV_BALL_SPLINE && geometry.B) {
-            console.debug("nav ball spline points", { A: geometry.A, B: geometry.B, C: geometry.C, D: geometry.D, E: geometry.E, F: geometry.F });
+          if (DEBUG_NAV_BALL_SPLINE && geometry.E) {
+            console.debug("nav ball arch points", { A: geometry.A, P1: geometry.P1, P2: geometry.P2, E: geometry.E, F: geometry.F, guideY: geometry.guideY, lift: geometry.lift, height: geometry.height, control: geometry.control });
           }
         }
 
@@ -1797,7 +1850,9 @@
             debugInfo.lastScrollProgress = scrollProgress;
             scrollInstantly(mix(scrollStart, scrollTarget, scrollProgress));
             setBallPosition(point.x, point.y);
-            setBallScale(progress >= 0.72 ? 0.985 : 1, progress >= 0.72 ? 1.025 : 1);
+            const stretch = smootherstep((progress - 0.6) / 0.2); // eases in over the last 40%, no pop
+
+            setBallScale(1 - 0.015 * stretch, 1 + 0.025 * stretch);
 
             if (endPoint.kind === "floor") {
               setTimelineShadow(0, 0.72);
@@ -1807,14 +1862,15 @@
               setTimelineShadow(approach <= 0 ? 0 : mix(0.06, 0.34, approach), approach <= 0 ? 0.72 : mix(0.72, 1.18, approach));
             }
 
-            if (previousSample && now > previousSample.now) {
-              const speed = Math.hypot(point.x - previousSample.x, point.y - previousSample.y) / ((now - previousSample.now) / 1000);
+            if (previousSample && elapsed > previousSample.elapsed) {
+              // phase-relative time (exact at the phase-end render), so the debug speed matches the real constant speed
+              const speed = Math.hypot(point.x - previousSample.x, point.y - previousSample.y) / ((elapsed - previousSample.elapsed) / 1000);
 
               speedMin = Math.min(speedMin, speed);
               speedMax = Math.max(speedMax, speed);
             }
 
-            previousSample = { x: point.x, y: point.y, now: now };
+            previousSample = { x: point.x, y: point.y, elapsed: elapsed };
             debugInfo.lateral.min = Math.min(debugInfo.lateral.min, point.x);
             debugInfo.lateral.max = Math.max(debugInfo.lateral.max, point.x);
             break;
