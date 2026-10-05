@@ -1,75 +1,108 @@
+/* Navigation plus console + travelling ball.
+ *
+ * Trip sequence (every non-phone trip, in this exact order):
+ *   selected nav circle morphs into the ball -> capture A once -> freeze scroll -> three prep bounces at A (z/4, z/2, 3z/4)
+ *   -> compute scrollTarget and the final visible landing point F -> ONE continuous centripetal Catmull-Rom spline A-B-C-D-E-F
+ *   (constant speed along arc length, page scrolls with the ball in the same requestAnimationFrame loop) -> exact landing at F
+ *   -> three landing bounces at F (3z/4, z/2, z/4) -> roll out of the screen -> travelling ball hidden -> plus fades in IN PLACE.
+ * Phone (max-width: 767px): same sequence, but the ball never moves sideways before the roll-away (F.x = A.x, vertical quadratic Bezier).
+ *
+ * Obsolete experimental path systems (obstacle nudging, "exact" trajectory, composite camera modes, debug overlay) were removed so
+ * that nothing can run by accident. The three path modes below share ONE arc-length engine; NAV_BALL_PATH_MODE switches them.
+ */
 (function () {
-  const DEBUG_NAV_GEOMETRY = false;
-  const DEBUG_NAV_BALL_PATH = false;
-  const DEBUG_NAV_BALL_TRAJECTORY = false;
-  const DEBUG_NAV_BALL_EXACT_PATH = false;
-  const DEBUG_BALL_PATH = false;
-  const DEBUG_NAV_BALL_CAMERA = false;
-  const DEBUG_NAV_BALL_TIMING = false;
+  "use strict";
 
-  var SECTION_IDS = ["landing", "about", "work", "archive", "contact"];
-  var SECTION_INDEX = {
-    landing: 0,
-    about: 1,
-    work: 2,
-    archive: 3,
-    contact: 4
+  /* ------------------------------------------------------------------ configuration */
+
+  // "spline" = six-point centripetal Catmull-Rom (final). "bezier" = single cubic arch. "segmented" = line / arc / line.
+  const NAV_BALL_PATH_MODE = "spline";
+
+  const DEBUG_NAV_BALL_SEQUENCE = false;
+  const DEBUG_NAV_BALL_SPLINE = false;
+  const DEBUG_PHONE_NAV_BALL = false;
+
+  const MAIN_PATH_SPEED = 430; // px/s along the desktop/tablet path (constant, no easing)
+  const PHONE_PATH_SPEED = 380; // px/s along the phone path
+  const SPLINE_ALPHA = 0.5; // centripetal
+  const SAMPLES_PER_SEGMENT = 36;
+  const PHONE_PATH_SAMPLE_COUNT = 100;
+  const BEZIER_SAMPLE_COUNT = 160;
+  const SCROLL_PROGRESS_MODE = "smootherstep"; // page scroll easing only ("linear" = scroll progress equals path progress); the ball itself is never eased
+
+  // "home" trips (the circle of the section you are in turns into "home"): true = the previous behaviour (prep bounces, arc up and over to the plus,
+  // the ball closes into the plus). false = the same sequence as every other trip, landing on the landing media and rolling away.
+  const HOME_TRIP_CLOSES_INTO_PLUS = true;
+
+  const BALL_MORPH_DURATION = 1300;
+  const NAV_BALL_PREP_DURATIONS = [360, 430, 500];
+  const NAV_BALL_LANDING_DURATIONS = [480, 360, 260];
+  const NAV_BALL_ROLL_DURATION = 2180;
+  const MOBILE_BALL_TIME_SCALE = 1.42; // calmer bounces / roll on phones
+
+  // staged (phone) menu opening: total under 650 ms
+  const PHONE_MENU_SPOKE_DURATION = 420;
+  const PHONE_MENU_SPOKE_STAGGER = 45;
+  const PHONE_MENU_READY_DELAY = 610; // circles are fully in by ~615 ms after the opening starts
+
+  const SECTION_IDS = ["landing", "about", "work", "archive", "contact"];
+  const SECTION_INDEX = { landing: 0, about: 1, work: 2, archive: 3, contact: 4 };
+
+  const STATES = {
+    PLUS_IDLE: "plus_idle",
+    MENU_OPEN: "menu_open",
+    NAVI_HOVERED: "navi_hovered",
+    NAVI_SELECTED: "navi_selected",
+    NAVI_TEXT_VANISHING: "navi_text_vanishing",
+    NAVI_TO_BALL_MORPH: "navi_to_ball_morph",
+    BALL_READY: "ball_ready",
+    BALL_TAKEOFF: "ball_takeoff",
+    BALL_FLYING: "ball_flying",
+    BALL_LANDING: "ball_landing",
+    BALL_ROLLING_OUT: "ball_rolling_out",
+    PLUS_RESTORED: "plus_restored"
   };
-  var FLIGHT_DURATION_MULTIPLIER = 1.32;
-  var MOBILE_BALL_TIME_SCALE = 1.42;
-  var BALL_MORPH_DURATION = 1300;
-  var NAV_BALL_BOUNCE_HEIGHT_SCALE = 1.08;
-  var NAV_BALL_PREP_DURATIONS = [360, 430, 500];
-  var NAV_BALL_TRAJECTORY_DURATIONS = {
-    launch: 430,
-    arc: 480,
-    fall: 560
+
+  // ball trip phases (also written to data-ball-phase for tests / styling hooks)
+  const PHASE = {
+    MORPH: "morph",
+    PREP1: "prep1",
+    PREP2: "prep2",
+    PREP3: "prep3",
+    MAIN: "main",
+    LAND1: "land1",
+    LAND2: "land2",
+    LAND3: "land3",
+    ROLL: "roll",
+    PLUS: "plus"
   };
-  var NAV_BALL_LANDING_DURATIONS = [480, 360, 260];
+  const PHASE_ORDER = [PHASE.PREP1, PHASE.PREP2, PHASE.PREP3, PHASE.MAIN, PHASE.LAND1, PHASE.LAND2, PHASE.LAND3, PHASE.ROLL];
+
+  /* ------------------------------------------------------------------ small helpers */
 
   function clamp(value, min, max) {
     return Math.min(Math.max(value, min), max);
   }
 
-  function easeInOut(t) {
-    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  function mix(from, to, t) {
+    return from + (to - from) * t;
+  }
+
+  function smootherstep(t) {
+    const x = clamp(t, 0, 1);
+    return x * x * x * (x * (x * 6 - 15) + 10);
   }
 
   function easeOutCubic(t) {
-    var safeT = clamp(t, 0, 1);
-    return 1 - Math.pow(1 - safeT, 3);
+    return 1 - Math.pow(1 - clamp(t, 0, 1), 3);
   }
 
-  function easeInOutSine(t) {
-    var safeT = clamp(t, 0, 1);
-    return -(Math.cos(Math.PI * safeT) - 1) / 2;
+  function easeInOutCubic(t) {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
   }
 
   function easeRollOut(t) {
-    var safeT = clamp(t, 0, 1);
-    return 1 - Math.pow(1 - safeT, 2.2);
-  }
-
-  function launchProgress(t) {
-    var p = clamp(t, 0, 1);
-
-    return 0.82 * p + 0.18 * (1 - Math.pow(1 - p, 2));
-  }
-
-  function fallProgress(t) {
-    var p = clamp(t, 0, 1);
-
-    return 0.55 * p + 0.45 * p * p;
-  }
-
-  function smoothstep(t) {
-    var p = clamp(t, 0, 1);
-
-    return p * p * (3 - 2 * p);
-  }
-
-  function mix(from, to, t) {
-    return from + (to - from) * t;
+    return 1 - Math.pow(1 - clamp(t, 0, 1), 2.2);
   }
 
   function round(value) {
@@ -77,16 +110,17 @@
   }
 
   function parsePixel(value) {
-    var parsed = parseFloat(value);
+    const parsed = parseFloat(value);
     return Number.isFinite(parsed) ? parsed : 0;
   }
 
+  function copyPoint(point) {
+    return { x: point.x, y: point.y };
+  }
+
   function centerOf(element) {
-    var rect = element.getBoundingClientRect();
-    return {
-      x: rect.left + rect.width / 2,
-      y: rect.top + rect.height / 2
-    };
+    const rect = element.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
   }
 
   function sectionIndex(section) {
@@ -106,18 +140,31 @@
   }
 
   function rollDirectionFor(section) {
-    if (section === "archive" || section === "contact") {
-      return 1;
-    }
+    return section === "archive" || section === "contact" ? 1 : -1;
+  }
 
-    return -1;
+  function currentScrollY() {
+    return window.scrollY || window.pageYOffset || 0;
+  }
+
+  function maxScrollY() {
+    return Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+  }
+
+  function scrollInstantly(y) {
+    // the page has scroll-behavior: smooth; html.is-ball-animating switches it off, "instant" is the belt and braces
+    try {
+      window.scrollTo({ top: y, left: 0, behavior: "instant" });
+    } catch (error) {
+      window.scrollTo(0, y);
+    }
   }
 
   function platformFromElement(element, section, side, kind) {
-    var safeElement = element || document.body;
-    var rect = safeElement.getBoundingClientRect();
-    var scrollY = window.scrollY || window.pageYOffset;
-    var x = rect.left + rect.width / 2;
+    const safeElement = element || document.body;
+    const rect = safeElement.getBoundingClientRect();
+    const scrollY = currentScrollY();
+    let x = rect.left + rect.width / 2;
 
     if (side === "left") {
       x = rect.left + rect.width * 0.72;
@@ -133,66 +180,390 @@
       side: side || "center",
       kind: kind || "platform",
       x: clamp(x, 28, window.innerWidth - 28),
-      y: rect.top + scrollY,
+      y: rect.top + scrollY, // document y of the top edge of the platform
       width: rect.width,
       height: rect.height
     };
   }
 
-  var STATES = {
-    PLUS_IDLE: "plus_idle",
-    MENU_OPEN: "menu_open",
-    NAVI_HOVERED: "navi_hovered",
-    NAVI_SELECTED: "navi_selected",
-    NAVI_TEXT_VANISHING: "navi_text_vanishing",
-    NAVI_TO_BALL_MORPH: "navi_to_ball_morph",
-    BALL_READY: "ball_ready",
-    BALL_TAKEOFF: "ball_takeoff",
-    BALL_FLYING: "ball_flying",
-    BALL_LANDING: "ball_landing",
-    BALL_ROLLING_OUT: "ball_rolling_out",
-    PLUS_RESTORED: "plus_restored"
-  };
+  /* ------------------------------------------------------------------ path engine (pure functions) */
+
+  function appendSample(samples, x, y) {
+    const last = samples[samples.length - 1];
+
+    if (last && Math.abs(last.x - x) < 0.0005 && Math.abs(last.y - y) < 0.0005) {
+      return; // zero-length duplicate: skip so cumulative distance never gets a flat step
+    }
+
+    samples.push({ x: x, y: y, distance: 0 });
+  }
+
+  function finalizePath(samples, extra) {
+    let total = 0;
+
+    for (let index = 1; index < samples.length; index += 1) {
+      total += Math.hypot(samples[index].x - samples[index - 1].x, samples[index].y - samples[index - 1].y);
+      samples[index].distance = total;
+    }
+
+    if (samples.length > 0) {
+      samples[0].distance = 0;
+    }
+
+    const path = { samples: samples, totalLength: total };
+
+    if (extra) {
+      Object.keys(extra).forEach(function (key) {
+        path[key] = extra[key];
+      });
+    }
+
+    return path;
+  }
+
+  function getPointAtDistance(path, targetDistance) {
+    const samples = path.samples;
+    const total = path.totalLength;
+
+    if (samples.length === 0) {
+      return { x: 0, y: 0 };
+    }
+
+    if (samples.length === 1 || targetDistance <= 0 || total <= 0) {
+      return { x: samples[0].x, y: samples[0].y };
+    }
+
+    if (targetDistance >= total) {
+      return { x: samples[samples.length - 1].x, y: samples[samples.length - 1].y };
+    }
+
+    let low = 0;
+    let high = samples.length - 1;
+
+    while (low < high) {
+      const middle = (low + high) >> 1;
+
+      if (samples[middle].distance < targetDistance) {
+        low = middle + 1;
+      } else {
+        high = middle;
+      }
+    }
+
+    const after = samples[low];
+    const before = samples[Math.max(0, low - 1)];
+    const span = after.distance - before.distance;
+
+    if (span <= 0.0001) {
+      return { x: after.x, y: after.y };
+    }
+
+    const local = (targetDistance - before.distance) / span;
+    return { x: mix(before.x, after.x, local), y: mix(before.y, after.y, local) };
+  }
+
+  /* centripetal Catmull-Rom (Barry-Goldman pyramid) */
+  function catmullKnot(previous, current, startKnot) {
+    const distance = Math.hypot(current.x - previous.x, current.y - previous.y);
+    return startKnot + Math.pow(Math.max(distance, 0.0001), SPLINE_ALPHA);
+  }
+
+  function lerpPoint(pointA, pointB, knotA, knotB, knot) {
+    const span = knotB - knotA;
+
+    if (Math.abs(span) < 0.0001) {
+      return copyPoint(pointB);
+    }
+
+    const weightA = (knotB - knot) / span;
+    const weightB = (knot - knotA) / span;
+    return { x: pointA.x * weightA + pointB.x * weightB, y: pointA.y * weightA + pointB.y * weightB };
+  }
+
+  function catmullRomPoint(p0, p1, p2, p3, raw) {
+    const t0 = 0;
+    const t1 = catmullKnot(p0, p1, t0);
+    const t2 = catmullKnot(p1, p2, t1);
+    const t3 = catmullKnot(p2, p3, t2);
+    const t = mix(t1, t2, clamp(raw, 0, 1));
+    const a1 = lerpPoint(p0, p1, t0, t1, t);
+    const a2 = lerpPoint(p1, p2, t1, t2, t);
+    const a3 = lerpPoint(p2, p3, t2, t3, t);
+    const b1 = lerpPoint(a1, a2, t0, t2, t);
+    const b2 = lerpPoint(a2, a3, t1, t3, t);
+    return lerpPoint(b1, b2, t1, t2, t);
+  }
+
+  function phantomPoint(edge, neighbour) {
+    // reflects the neighbour through the edge point, so the end tangents follow A->B and E->F exactly
+    return { x: edge.x + (edge.x - neighbour.x), y: edge.y + (edge.y - neighbour.y) };
+  }
+
+  function sampleCatmullRom(points, samplesPerSegment) {
+    const perSegment = Math.max(4, samplesPerSegment || SAMPLES_PER_SEGMENT);
+    const samples = [];
+
+    if (points.length < 2) {
+      return finalizePath(samples, { samplesPerSegment: perSegment });
+    }
+
+    const extended = [phantomPoint(points[0], points[1])]
+      .concat(points)
+      .concat([phantomPoint(points[points.length - 1], points[points.length - 2])]);
+
+    for (let segment = 0; segment < points.length - 1; segment += 1) {
+      for (let step = 0; step <= perSegment; step += 1) {
+        if (segment > 0 && step === 0) {
+          continue;
+        }
+
+        const point = catmullRomPoint(extended[segment], extended[segment + 1], extended[segment + 2], extended[segment + 3], step / perSegment);
+        appendSample(samples, point.x, point.y);
+      }
+    }
+
+    // the path starts exactly at A and ends exactly at F
+    samples[0].x = points[0].x;
+    samples[0].y = points[0].y;
+    samples[samples.length - 1].x = points[points.length - 1].x;
+    samples[samples.length - 1].y = points[points.length - 1].y;
+
+    return finalizePath(samples, { samplesPerSegment: perSegment });
+  }
+
+  function cubicBezierPoint(p0, p1, p2, p3, raw) {
+    const t = clamp(raw, 0, 1);
+    const u = 1 - t;
+    return {
+      x: u * u * u * p0.x + 3 * u * u * t * p1.x + 3 * u * t * t * p2.x + t * t * t * p3.x,
+      y: u * u * u * p0.y + 3 * u * u * t * p1.y + 3 * u * t * t * p2.y + t * t * t * p3.y
+    };
+  }
+
+  function quadraticBezierPoint(p0, p1, p2, raw) {
+    const t = clamp(raw, 0, 1);
+    const u = 1 - t;
+    return {
+      x: u * u * p0.x + 2 * u * t * p1.x + t * t * p2.x,
+      y: u * u * p0.y + 2 * u * t * p1.y + t * t * p2.y
+    };
+  }
+
+  function sampleCubic(samples, p0, p1, p2, p3, count) {
+    for (let index = 0; index <= count; index += 1) {
+      const point = cubicBezierPoint(p0, p1, p2, p3, index / count);
+      appendSample(samples, point.x, point.y);
+    }
+  }
+
+  function sampleLine(samples, from, to, count) {
+    for (let index = 0; index <= count; index += 1) {
+      appendSample(samples, mix(from.x, to.x, index / count), mix(from.y, to.y, index / count));
+    }
+  }
+
+  function minSampleY(path) {
+    let minY = Infinity;
+
+    path.samples.forEach(function (sample) {
+      minY = Math.min(minY, sample.y);
+    });
+
+    return minY;
+  }
+
+  /* spline points A B C D E F (viewport coordinates); the formulas follow the specification */
+  function splinePointsFor(A, F, z, arcHeightScale) {
+    const dx = F.x - A.x;
+    const absDx = Math.abs(dx);
+    const topY = Math.min(A.y, F.y);
+    const lift = clamp(z * 0.62, 34, 72);
+    const baseY = topY - lift;
+    const arcHeight = clamp(absDx * 0.16, 36, 88) * (arcHeightScale || 1);
+    const cNudge = clamp(arcHeight * 0.12, 5, 14);
+
+    return {
+      dx: dx,
+      absDx: absDx,
+      topY: topY,
+      lift: lift,
+      baseY: baseY,
+      arcHeight: arcHeight,
+      cNudge: cNudge,
+      A: copyPoint(A),
+      B: { x: A.x, y: baseY },
+      C: { x: A.x + dx * 0.34, y: baseY - arcHeight - cNudge },
+      D: { x: A.x + dx * 0.66, y: baseY - arcHeight * 0.55 },
+      E: { x: F.x, y: baseY },
+      F: copyPoint(F)
+    };
+  }
+
+  function shiftSplineMiddle(geometry, amount) {
+    geometry.B.y += amount;
+    geometry.C.y += amount;
+    geometry.D.y += amount;
+    geometry.E.y += amount;
+    geometry.baseY += amount;
+  }
+
+  function buildPathFromGeometry(mode, geometry) {
+    if (mode === "bezier") {
+      const controlY = geometry.baseY - geometry.arcHeight * 0.35;
+      const samples = [];
+      sampleCubic(samples, geometry.A, { x: geometry.A.x, y: controlY }, { x: geometry.F.x, y: controlY }, geometry.F, BEZIER_SAMPLE_COUNT);
+      return finalizePath(samples, { mode: "bezier" });
+    }
+
+    if (mode === "segmented") {
+      const samples = [];
+      const apexY = geometry.C.y;
+      sampleLine(samples, geometry.A, geometry.B, 24);
+      sampleCubic(samples, geometry.B, { x: geometry.B.x, y: apexY }, { x: geometry.E.x, y: apexY }, geometry.E, BEZIER_SAMPLE_COUNT);
+      sampleLine(samples, geometry.E, geometry.F, 24);
+      return finalizePath(samples, { mode: "segmented" });
+    }
+
+    const path = sampleCatmullRom([geometry.A, geometry.B, geometry.C, geometry.D, geometry.E, geometry.F], SAMPLES_PER_SEGMENT);
+    path.mode = "spline";
+    return path;
+  }
+
+  /* desktop / tablet main path: A -> F through B C D E, kept inside the visible frame by moving B/C/D/E together (A and F never move) */
+  function buildDesktopPath(A, F, z, safeTop, mode) {
+    const pathMode = mode === "bezier" || mode === "segmented" ? mode : "spline";
+    const MIN_LANDING_DROP = 14; // E stays at least this far above F, so the ball always comes down into F
+
+    function fit(scale) {
+      const fitted = splinePointsFor(A, F, z, scale);
+      let moved = 0;
+
+      if (fitted.C.y < safeTop) {
+        moved = safeTop - fitted.C.y;
+        shiftSplineMiddle(fitted, moved);
+      }
+
+      return { geometry: fitted, adjustment: moved };
+    }
+
+    let arcScale = 1;
+    let result = fit(arcScale);
+
+    // F very close to the top edge: reduce arcHeight (the spec's last resort) instead of letting E sink below F
+    while (result.geometry.E.y > F.y - MIN_LANDING_DROP && arcScale > 0.3) {
+      arcScale = Math.max(0.3, arcScale - 0.1);
+      result = fit(arcScale);
+    }
+
+    const geometry = result.geometry;
+    let adjustment = result.adjustment;
+    let path = buildPathFromGeometry(pathMode, geometry);
+
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const minY = minSampleY(path);
+
+      if (minY >= safeTop - 0.5) {
+        break;
+      }
+
+      // the spline may swing a few pixels above C: nudge the middle points down by exactly that much
+      const shift = safeTop - minY;
+      shiftSplineMiddle(geometry, shift);
+      adjustment += shift;
+      path = buildPathFromGeometry(pathMode, geometry);
+    }
+
+    path.geometry = geometry;
+    path.mode = pathMode;
+    path.visibilityAdjustment = adjustment;
+    path.arcScale = arcScale;
+    path.safeTop = safeTop;
+    path.speed = MAIN_PATH_SPEED;
+    return path;
+  }
+
+  /* phone main path: vertical quadratic Bezier A -> C -> FPhone, constant x */
+  function buildPhonePath(A, FPhone, z, safeTop) {
+    const topY = Math.min(A.y, FPhone.y);
+    const phoneLift = clamp(z * 1.15, 58, 110);
+    const C = { x: A.x, y: topY - phoneLift };
+    let path;
+
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const samples = [];
+
+      for (let index = 0; index <= PHONE_PATH_SAMPLE_COUNT; index += 1) {
+        const point = quadraticBezierPoint(A, C, FPhone, index / PHONE_PATH_SAMPLE_COUNT);
+        appendSample(samples, A.x, point.y); // x is constant by construction
+      }
+
+      path = finalizePath(samples, { mode: "phone-vertical" });
+
+      if (minSampleY(path) >= safeTop - 0.5) {
+        break;
+      }
+
+      C.y += safeTop - minSampleY(path);
+    }
+
+    path.geometry = { A: copyPoint(A), C: copyPoint(C), F: copyPoint(FPhone), topY: topY, phoneLift: phoneLift };
+    path.mode = "phone-vertical";
+    path.safeTop = safeTop;
+    path.speed = PHONE_PATH_SPEED;
+    return path;
+  }
+
+  function bouncePoint(base, height, p) {
+    const q = clamp(p, 0, 1);
+    return { x: base.x, y: base.y - 4 * height * q * (1 - q) };
+  }
+
+  /* ------------------------------------------------------------------ init */
 
   function init() {
-    var nav = document.querySelector("[data-nav-object]");
-    var core = document.querySelector("[data-nav-core]");
-    var spokes = document.querySelector(".radial-lines");
-    var menu = document.getElementById("radial-menu");
-    var ball = document.querySelector("[data-travel-ball]");
-    var ballLabel = document.querySelector("[data-travel-label]");
-    var travelShadow = ball ? ball.querySelector(".travel-shadow") : null;
-    var items = Array.prototype.slice.call(document.querySelectorAll("[data-nav-target]"));
-    var lines = {
+    const nav = document.querySelector("[data-nav-object]");
+    const core = document.querySelector("[data-nav-core]");
+    const spokes = document.querySelector(".radial-lines");
+    const menu = document.getElementById("radial-menu");
+    const ball = document.querySelector("[data-travel-ball]");
+    const ballLabel = document.querySelector("[data-travel-label]");
+    const travelShadow = ball ? ball.querySelector(".travel-shadow") : null;
+    const items = Array.prototype.slice.call(document.querySelectorAll("[data-nav-target]"));
+    const lines = {
       about: document.querySelector(".radial-line-about"),
       work: document.querySelector(".radial-line-work"),
       archive: document.querySelector(".radial-line-archive"),
       contact: document.querySelector(".radial-line-contact")
     };
-    var spokeMasks = {};
+    const spokeMasks = {};
 
     if (!nav || !core || !spokes || !menu || !ball || !ballLabel || items.length === 0) {
       return;
     }
 
-    var canHover = window.matchMedia("(hover: hover) and (pointer: fine)");
-    var coarsePointer = window.matchMedia("(pointer: coarse)");
-    var mobileViewport = window.matchMedia("(max-width: 767px)");
-    var reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-    var isOpen = false;
-    var isTravelling = false;
-    var isProjectMode = false;
-    var closeOnBlurTimer = 0;
-    var phoneMenuReadyTimer = 0;
-    var resetTimer = 0;
-    var sectionFrame = 0;
-    var navGeometryFrame = 0;
-    var currentSection = "landing";
-    var navState = STATES.PLUS_IDLE;
-    var activeAnimationToken = 0;
-    var ballFrames = [];
-    var ballTimers = [];
-    var debugOverlay = createDebugOverlay();
+    const canHover = window.matchMedia("(hover: hover) and (pointer: fine)");
+    const coarsePointer = window.matchMedia("(pointer: coarse)");
+    const mobileViewport = window.matchMedia("(max-width: 767px)");
+    const tabletLandscapeTouch = window.matchMedia("(min-width: 768px) and (max-width: 1180px) and (orientation: landscape) and (pointer: coarse)");
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+    let isOpen = false;
+    let isTravelling = false;
+    let isBallAnimating = false; // guard: never two ball animations at once
+    let isProjectMode = false;
+    let isPhoneNavOpening = false; // guard: ignore repeated taps while the staged menu opens
+    let isPhoneNavOpen = false;
+    let closeOnBlurTimer = 0;
+    let phoneMenuReadyTimer = 0;
+    let resetTimer = 0;
+    let sectionFrame = 0;
+    let navGeometryFrame = 0;
+    let currentSection = "landing";
+    let navState = STATES.PLUS_IDLE;
+    let activeAnimationToken = 0;
+    let ballFrames = [];
+    let ballTimers = [];
+    let scrollLockActive = false;
 
     Array.prototype.slice.call(document.querySelectorAll("[data-travel-ball]")).forEach(function (travelBall, index) {
       if (index > 0) {
@@ -201,7 +572,7 @@
     });
 
     items.forEach(function (item) {
-      var original = item.getAttribute("data-nav-target");
+      const original = item.getAttribute("data-nav-target");
       item.dataset.navOriginalTarget = original;
       item.dataset.navOriginalLabel = item.textContent.trim();
       item.setAttribute("aria-label", "go to " + original);
@@ -211,218 +582,41 @@
       return button.dataset.navOriginalTarget || button.getAttribute("data-nav-target");
     }
 
-    function ensureSpokeMask(label) {
-      var maskParts = spokeMasks[label];
+    /* -------------------------------------------------------------- device / mode helpers */
 
-      if (maskParts) {
-        return maskParts;
-      }
-
-      var defs = spokes.querySelector("defs");
-
-      if (!defs) {
-        defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
-        spokes.insertBefore(defs, spokes.firstChild);
-      }
-
-      var mask = document.createElementNS("http://www.w3.org/2000/svg", "mask");
-      var rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-      var drawLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      var maskId = "nav-spoke-mask-" + label;
-
-      mask.setAttribute("id", maskId);
-      mask.setAttribute("maskUnits", "userSpaceOnUse");
-      rect.setAttribute("fill", "black");
-      rect.setAttribute("x", "0");
-      rect.setAttribute("y", "0");
-      drawLine.setAttribute("stroke", "white");
-      drawLine.setAttribute("stroke-width", "8");
-      drawLine.setAttribute("stroke-linecap", "round");
-      drawLine.setAttribute("fill", "none");
-      drawLine.setAttribute("vector-effect", "non-scaling-stroke");
-
-      mask.appendChild(rect);
-      mask.appendChild(drawLine);
-      defs.appendChild(mask);
-
-      maskParts = {
-        id: maskId,
-        mask: mask,
-        rect: rect,
-        drawLine: drawLine,
-        length: 0
-      };
-      spokeMasks[label] = maskParts;
-      return maskParts;
+    function isMobileViewport() {
+      return mobileViewport.matches;
     }
 
-    function playSpokeDraw() {
-      var labels = ["about", "work", "archive", "contact"];
-
-      labels.forEach(function (label, index) {
-        var maskParts = spokeMasks[label];
-
-        if (!maskParts) {
-          return;
-        }
-
-        maskParts.drawLine.style.transition = "stroke-dashoffset " + (reducedMotion.matches ? "1ms" : "560ms") + " cubic-bezier(0.22, 1, 0.36, 1)";
-        maskParts.drawLine.style.transitionDelay = reducedMotion.matches ? "0ms" : 520 + index * 38 + "ms";
-        maskParts.drawLine.style.strokeDashoffset = "0";
-      });
+    function isCoarsePointer() {
+      return coarsePointer.matches;
     }
 
-    function createDebugOverlay() {
-      if (!DEBUG_NAV_GEOMETRY) {
-        return {
-          marker: function () {},
-          hideMarker: function () {},
-          trajectory: function () {},
-          clearTrajectory: function () {},
-          outline: function () {},
-          clearOutline: function () {}
-        };
-      }
-
-      var existing = document.querySelector("[data-nav-debug-overlay]");
-
-      if (existing) {
-        existing.remove();
-      }
-
-      var root = document.createElement("div");
-      var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-      var polyline = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
-      var outline = document.createElement("div");
-      var markers = {};
-
-      root.setAttribute("data-nav-debug-overlay", "");
-      root.style.cssText = [
-        "position: fixed",
-        "inset: 0",
-        "z-index: 5000",
-        "pointer-events: none",
-        "overflow: visible"
-      ].join(";");
-
-      svg.setAttribute("aria-hidden", "true");
-      svg.style.cssText = [
-        "position: fixed",
-        "inset: 0",
-        "width: 100vw",
-        "height: 100vh",
-        "overflow: visible",
-        "pointer-events: none"
-      ].join(";");
-
-      polyline.setAttribute("fill", "none");
-      polyline.setAttribute("stroke", "rgba(218, 22, 22, 0.88)");
-      polyline.setAttribute("stroke-width", "1.25");
-      polyline.setAttribute("stroke-linecap", "round");
-      polyline.setAttribute("stroke-linejoin", "round");
-      polyline.setAttribute("vector-effect", "non-scaling-stroke");
-      svg.appendChild(polyline);
-
-      outline.style.cssText = [
-        "position: fixed",
-        "display: none",
-        "border: 1px solid rgba(255, 0, 0, 0.86)",
-        "background: rgba(255, 0, 0, 0.035)",
-        "box-sizing: border-box",
-        "pointer-events: none"
-      ].join(";");
-
-      root.appendChild(svg);
-      root.appendChild(outline);
-      document.body.appendChild(root);
-
-      function buildMarker(name, color) {
-        var marker = document.createElement("div");
-        var horizontal = document.createElement("span");
-        var vertical = document.createElement("span");
-        var label = document.createElement("span");
-
-        marker.style.cssText = [
-          "position: fixed",
-          "left: 0",
-          "top: 0",
-          "width: 15px",
-          "height: 15px",
-          "transform: translate(-50%, -50%)",
-          "pointer-events: none"
-        ].join(";");
-
-        horizontal.style.cssText = [
-          "position: absolute",
-          "left: 0",
-          "top: 7px",
-          "width: 15px",
-          "height: 1px",
-          "background: " + color
-        ].join(";");
-
-        vertical.style.cssText = [
-          "position: absolute",
-          "left: 7px",
-          "top: 0",
-          "width: 1px",
-          "height: 15px",
-          "background: " + color
-        ].join(";");
-
-        label.textContent = name;
-        label.style.cssText = [
-          "position: absolute",
-          "left: 12px",
-          "top: 10px",
-          "padding: 2px 4px",
-          "border: 1px solid rgba(0, 0, 0, 0.14)",
-          "background: rgba(250, 248, 243, 0.92)",
-          "color: " + color,
-          "font: 10px/1.15 ui-monospace, SFMono-Regular, Consolas, monospace",
-          "white-space: nowrap"
-        ].join(";");
-
-        marker.appendChild(horizontal);
-        marker.appendChild(vertical);
-        marker.appendChild(label);
-        root.appendChild(marker);
-        markers[name] = marker;
-        return marker;
-      }
-
-      return {
-        marker: function (name, x, y, color) {
-          var marker = markers[name] || buildMarker(name, color);
-          marker.style.display = "block";
-          marker.style.left = round(x) + "px";
-          marker.style.top = round(y) + "px";
-        },
-        hideMarker: function (name) {
-          if (markers[name]) {
-            markers[name].style.display = "none";
-          }
-        },
-        trajectory: function (points) {
-          polyline.setAttribute("points", points.map(function (point) {
-            return round(point.x) + "," + round(point.y);
-          }).join(" "));
-        },
-        clearTrajectory: function () {
-          polyline.setAttribute("points", "");
-        },
-        outline: function (rect) {
-          outline.style.display = "block";
-          outline.style.left = round(rect.left) + "px";
-          outline.style.top = round(rect.top) + "px";
-          outline.style.width = round(rect.width) + "px";
-          outline.style.height = round(rect.height) + "px";
-        },
-        clearOutline: function () {
-          outline.style.display = "none";
-        }
-      };
+    function isMobileTapMode() {
+      return isMobileViewport() || isCoarsePointer();
     }
+
+    function isTabletLandscapeTouchViewport() {
+      return tabletLandscapeTouch.matches;
+    }
+
+    function usesStagedMenuOpen() {
+      return isMobileViewport() || isTabletLandscapeTouchViewport();
+    }
+
+    function canUseHoverNav() {
+      return canHover.matches && !isMobileTapMode();
+    }
+
+    function motionScale() {
+      return isMobileViewport() ? MOBILE_BALL_TIME_SCALE : 1;
+    }
+
+    function scaleMotionDuration(duration) {
+      return reducedMotion.matches ? 1 : duration * motionScale();
+    }
+
+    /* -------------------------------------------------------------- state + bookkeeping */
 
     function setState(nextState) {
       navState = nextState;
@@ -430,10 +624,8 @@
       ball.dataset.ballState = nextState;
     }
 
-    function debugNavBall(message, detail) {
-      if (DEBUG_NAV_GEOMETRY) {
-        console.debug(message, detail || "");
-      }
+    function setBallPhase(phase) {
+      ball.dataset.ballPhase = phase;
     }
 
     function clearBallTimersAndFrames() {
@@ -454,13 +646,12 @@
     }
 
     function requestBallFrame(callback, token) {
-      var frameId = window.requestAnimationFrame(function (now) {
+      const frameId = window.requestAnimationFrame(function (now) {
         ballFrames = ballFrames.filter(function (storedFrameId) {
           return storedFrameId !== frameId;
         });
 
         if (!isCurrentAnimation(token)) {
-          debugNavBall("stale nav ball frame cancelled");
           return;
         }
 
@@ -478,13 +669,12 @@
     }
 
     function setBallTimeout(callback, delay, token) {
-      var timerId = window.setTimeout(function () {
+      const timerId = window.setTimeout(function () {
         ballTimers = ballTimers.filter(function (storedTimerId) {
           return storedTimerId !== timerId;
         });
 
         if (!isCurrentAnimation(token)) {
-          debugNavBall("stale nav ball frame cancelled");
           return;
         }
 
@@ -495,65 +685,69 @@
       return timerId;
     }
 
-    function isMobileViewport() {
-      return mobileViewport.matches;
-    }
-
-    function isCoarsePointer() {
-      return coarsePointer.matches;
-    }
-
-    function isMobileTapMode() {
-      return isMobileViewport() || isCoarsePointer();
-    }
-
-    function isTabletLandscapeTouchViewport() {
-      const isTabletLandscapeTouch =
-        window.matchMedia("(min-width: 768px) and (max-width: 1180px) and (orientation: landscape) and (pointer: coarse)").matches;
-      return isTabletLandscapeTouch;
-    }
-
-    function canUseHoverNav() {
-      return canHover.matches && !isMobileTapMode();
-    }
-
-    function clearPhoneMenuOpeningState() {
-      window.clearTimeout(phoneMenuReadyTimer);
-      phoneMenuReadyTimer = 0;
-      nav.classList.remove("is-phone-preparing", "is-phone-opening", "is-phone-items-ready");
-    }
-
-    function mobileMotionScale() {
-      return isMobileViewport() ? MOBILE_BALL_TIME_SCALE : 1;
-    }
-
-    function scaleMotionDuration(duration) {
-      return reducedMotion.matches ? 1 : duration * mobileMotionScale();
-    }
-
-    function queueNavGeometryUpdate() {
-      if (navGeometryFrame) {
-        return;
-      }
-
-      navGeometryFrame = window.requestAnimationFrame(function () {
-        navGeometryFrame = 0;
-        updateSpokeGeometry();
-        debugRenderBase();
-      });
-    }
-
     function cancelBallAnimation() {
       activeAnimationToken += 1;
       clearBallTimersAndFrames();
     }
+
+    function beginBallAnimation() {
+      cancelBallAnimation();
+      activeAnimationToken += 1;
+      return activeAnimationToken;
+    }
+
+    /* -------------------------------------------------------------- user scroll lock while the ball travels */
+
+    function preventScrollInput(event) {
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+    }
+
+    function preventScrollKeys(event) {
+      const typingTarget = event.target;
+
+      if (typingTarget && typingTarget.nodeType === 1 && (typingTarget.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(typingTarget.tagName))) {
+        return; // never interfere with typing in the contact form
+      }
+
+      const keys = [" ", "Spacebar", "ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End"];
+
+      if (keys.indexOf(event.key) !== -1 && event.cancelable) {
+        event.preventDefault();
+      }
+    }
+
+    function lockUserScroll() {
+      if (scrollLockActive) {
+        return;
+      }
+
+      scrollLockActive = true;
+      window.addEventListener("wheel", preventScrollInput, { passive: false });
+      window.addEventListener("touchmove", preventScrollInput, { passive: false });
+      window.addEventListener("keydown", preventScrollKeys, { passive: false });
+    }
+
+    function unlockUserScroll() {
+      if (!scrollLockActive) {
+        return;
+      }
+
+      scrollLockActive = false;
+      window.removeEventListener("wheel", preventScrollInput, { passive: false });
+      window.removeEventListener("touchmove", preventScrollInput, { passive: false });
+      window.removeEventListener("keydown", preventScrollKeys, { passive: false });
+    }
+
+    /* -------------------------------------------------------------- landing animation hooks (kept as they were) */
 
     function landingAnimationController() {
       return window.landingGirlAnimation || null;
     }
 
     function shouldDelayForLandingAnimation(targetId) {
-      var landingAnimation = landingAnimationController();
+      const landingAnimation = landingAnimationController();
 
       return targetId !== "landing" &&
         landingAnimation &&
@@ -563,7 +757,7 @@
     }
 
     function notifyLandingPlusOpened() {
-      var landingAnimation = landingAnimationController();
+      const landingAnimation = landingAnimationController();
 
       window.dispatchEvent(new CustomEvent("landing-nav-plus-opened"));
 
@@ -578,542 +772,24 @@
     }
 
     function startLandingAnimationInterrupt(targetId) {
-      var landingAnimation = landingAnimationController();
+      const landingAnimation = landingAnimationController();
 
       if (!shouldDelayForLandingAnimation(targetId)) {
         return Promise.resolve();
       }
 
-      window.dispatchEvent(new CustomEvent("landing-nav-circle-selected", {
-        detail: {
-          targetSectionId: targetId
-        }
-      }));
-
+      window.dispatchEvent(new CustomEvent("landing-nav-circle-selected", { detail: { targetSectionId: targetId } }));
       return landingAnimation.interruptForNavigation();
     }
 
-    function waitForLandingAnimationBeforeFlight(targetId, pendingInterrupt) {
-      if (pendingInterrupt) {
-        return pendingInterrupt;
-      }
+    /* -------------------------------------------------------------- travelling ball: visuals */
 
-      return startLandingAnimationInterrupt(targetId);
+    function ballDiameter() {
+      return ball.offsetWidth || 44; // layout size: not affected by the squash transform
     }
 
-    function beginBallAnimation(targetId) {
-      cancelBallAnimation();
-      activeAnimationToken += 1;
-      debugNavBall("nav ball animation start", targetId);
-      return activeAnimationToken;
-    }
-
-    function hideTravelBallImmediately() {
-      resetBallClasses();
-      ball.style.opacity = "0";
-      ball.style.setProperty("--ball-lift", "0px");
-      ball.style.setProperty("--ball-scale-x", "1");
-      ball.style.setProperty("--ball-scale-y", "1");
-      ball.style.setProperty("--ball-rotation", "0deg");
-      ball.style.removeProperty("--restore-duration");
-      resetTimelineShadow();
-    }
-
-    function hideTravelBallForPlusRestore() {
-      ball.style.transition = "none";
-      resetBallClasses();
-      ballLabel.textContent = "";
-      ball.style.opacity = "0";
-      ball.style.setProperty("--ball-x", "-9999px");
-      ball.style.setProperty("--ball-y", "-9999px");
-      ball.style.setProperty("--ball-lift", "0px");
-      ball.style.setProperty("--ball-scale-x", "1");
-      ball.style.setProperty("--ball-scale-y", "1");
-      ball.style.setProperty("--ball-rotation", "0deg");
-      ball.style.removeProperty("--restore-duration");
-      setTimelineShadow(0, 0.72);
-
-      window.requestAnimationFrame(function () {
-        ball.style.transition = "";
-        resetTimelineShadow();
-      });
-    }
-
-    function resetBallState(finalState) {
-      cancelBallAnimation();
-      hideTravelBallImmediately();
-      ballLabel.textContent = "";
-      isTravelling = false;
-      nav.classList.remove("is-plus-restoring");
-      document.documentElement.classList.remove("is-ball-animating");
-      setState(finalState || STATES.PLUS_IDLE);
-    }
-
-    function setMenuA11y(open) {
-      core.setAttribute("aria-expanded", String(open));
-      core.setAttribute("aria-label", isProjectMode ? "close project" : open ? "close navigation" : "open navigation");
-      menu.setAttribute("aria-hidden", String(!open));
-      items.forEach(function (item) {
-        item.tabIndex = open ? 0 : -1;
-      });
-    }
-
-    function getSafeBounds(options) {
-      var radius = ballRadius();
-      var margin = Math.max(radius + 18, 18);
-      var allowFloor = Boolean(options && options.allowFloor);
-
-      return {
-        minX: margin,
-        maxX: window.innerWidth - margin,
-        minY: margin,
-        maxY: allowFloor ? window.innerHeight - radius : window.innerHeight - margin,
-        floorY: window.innerHeight - radius,
-        marginX: margin,
-        marginY: margin
-      };
-    }
-
-    function getSafeViewportBounds() {
-      var bounds = getSafeBounds();
-
-      return {
-        safeMinX: bounds.minX,
-        safeMaxX: bounds.maxX,
-        safeMinY: bounds.minY,
-        safeMaxY: bounds.maxY
-      };
-    }
-
-    function fitControlPointInsideBounds(point, bounds) {
-      return {
-        x: clamp(point.x, bounds.minX, bounds.maxX),
-        y: clamp(point.y, bounds.minY, bounds.maxY)
-      };
-    }
-
-    function clampToViewport(point) {
-      return fitControlPointInsideBounds(point, getSafeBounds());
-    }
-
-    function samePlatformElement(element, targetElement) {
-      if (!element || !targetElement) {
-        return false;
-      }
-
-      return element === targetElement || element.contains(targetElement) || targetElement.contains(element);
-    }
-
-    function getObstacleRects(targetElement) {
-      var selectors = [".landing-media", ".about-portrait", ".about-portrait img", ".work-tile", ".archive-bar"];
-      var scrollY = window.scrollY || window.pageYOffset;
-      var seen = [];
-      var clearance = Math.max(ballRadius() + 24, 48);
-      var obstacles = [];
-
-      selectors.forEach(function (selector) {
-        Array.prototype.slice.call(document.querySelectorAll(selector)).forEach(function (element) {
-          var rect;
-
-          if (seen.indexOf(element) !== -1 || samePlatformElement(element, targetElement)) {
-            return;
-          }
-
-          rect = element.getBoundingClientRect();
-
-          if (rect.width < 4 || rect.height < 4) {
-            return;
-          }
-
-          seen.push(element);
-          obstacles.push({
-            element: element,
-            left: rect.left + window.scrollX - clearance,
-            top: rect.top + scrollY - clearance,
-            right: rect.left + window.scrollX + rect.width + clearance,
-            bottom: rect.top + scrollY + rect.height + clearance,
-            clearance: clearance
-          });
-        });
-      });
-
-      return obstacles;
-    }
-
-    function screenRectForObstacle(obstacle, scrollY) {
-      return {
-        left: obstacle.left,
-        top: obstacle.top - scrollY,
-        right: obstacle.right,
-        bottom: obstacle.bottom - scrollY
-      };
-    }
-
-    function pointInsideRect(point, rect) {
-      return point.x >= rect.left && point.x <= rect.right && point.y >= rect.top && point.y <= rect.bottom;
-    }
-
-    function detectPathCollision(config, obstacles) {
-      var samples = 68;
-      var collision = null;
-
-      if (!obstacles || obstacles.length === 0) {
-        return null;
-      }
-
-      for (var index = 2; index <= samples - 2; index += 1) {
-        var raw = index / samples;
-        var point = flightPointAt(raw, config);
-        var scrollY = flightScrollAt(raw, config);
-
-        for (var obstacleIndex = 0; obstacleIndex < obstacles.length; obstacleIndex += 1) {
-          var obstacle = obstacles[obstacleIndex];
-          var rect = screenRectForObstacle(obstacle, scrollY);
-
-          if (pointInsideRect(point, rect)) {
-            collision = {
-              raw: raw,
-              point: point,
-              rect: rect,
-              obstacle: obstacle
-            };
-            break;
-          }
-        }
-
-        if (collision) {
-          break;
-        }
-      }
-
-      return collision;
-    }
-
-    function whitespaceLaneX(config, attempt) {
-      var side = targetSideFor(config.targetId);
-      var drift = attempt * clamp(window.innerWidth * 0.04, 18, 52);
-      var x = window.innerWidth * 0.5;
-
-      if (side === "left") {
-        x = window.innerWidth * 0.2 - drift;
-      } else if (side === "right") {
-        x = window.innerWidth * 0.8 + drift;
-      }
-
-      return clamp(x, config.bounds.minX, config.bounds.maxX);
-    }
-
-    function nudgePathAroundCollision(config, collision, attempt) {
-      var laneX = whitespaceLaneX(config, attempt);
-      var lift = clamp(window.innerHeight * (0.09 + attempt * 0.055), 72, 190);
-      var controlBias = clamp(0.46 + attempt * 0.16, 0.46, 0.78);
-      var topClear = collision ? collision.rect.top - lift : config.path.apex.y - lift;
-      var controlAX = config.upward ? config.path.controlA.x : mix(config.path.controlA.x, laneX, controlBias * 0.28);
-      var controlBX = hasFinitePoint(config.path.controlB) ?
-        config.path.controlB.x :
-        finalApproachControlX(config.path.start, config.path.end, config.upward);
-
-      if (Array.isArray(config.path.segments) && config.path.segments.length === 2) {
-        config.path.segments[0].controlA = fitControlPointInsideBounds({
-          x: controlAX,
-          y: Math.min(config.path.segments[0].controlA.y, topClear)
-        }, config.bounds);
-        config.path.segments[0].controlB = fitControlPointInsideBounds({
-          x: config.path.segments[0].controlB.x,
-          y: Math.min(config.path.segments[0].controlB.y, topClear)
-        }, config.bounds);
-        config.path.segments[1].controlA = fitControlPointInsideBounds({
-          x: config.path.segments[1].controlA.x,
-          y: Math.min(config.path.segments[1].controlA.y, topClear + lift * 0.16)
-        }, config.bounds);
-        config.path.segments[1].controlB = fitControlPointInsideBounds({
-          x: controlBX,
-          y: Math.min(config.path.segments[1].controlB.y, topClear + lift * 0.24)
-        }, config.bounds);
-        syncCompositePath(config.path);
-        updatePathApex(config.path);
-        return;
-      }
-
-      config.path.controlA = fitControlPointInsideBounds({
-        x: controlAX,
-        y: Math.min(config.path.controlA.y, topClear)
-      }, config.bounds);
-
-      config.path.controlB = fitControlPointInsideBounds({
-        x: controlBX,
-        y: Math.min(config.path.controlB.y, topClear + lift * 0.18)
-      }, config.bounds);
-
-      updatePathApex(config.path);
-    }
-
-    function adjustPathForObstacles(config) {
-      var obstacles = getObstacleRects(config.endPoint.element);
-      var attempts = 0;
-
-      config.obstacles = obstacles;
-
-      if (config.path && config.path.kind === "exact-nav-trajectory") {
-        return;
-      }
-
-      while (attempts < 3) {
-        var collision = detectPathCollision(config, obstacles);
-
-        if (!collision) {
-          return;
-        }
-
-        nudgePathAroundCollision(config, collision, attempts + 1);
-        attempts += 1;
-      }
-    }
-
-    function emergencyClampToViewport(point, config, raw) {
-      var bounds = config.bounds;
-      var clamped = fitControlPointInsideBounds(point, bounds);
-      var changed = Math.abs(clamped.x - point.x) > 0.5 || Math.abs(clamped.y - point.y) > 0.5;
-
-      if (changed && DEBUG_NAV_GEOMETRY && !config.emergencyClampLogged) {
-        config.emergencyClampLogged = true;
-        console.warn("Navigation ball emergency clamp activated", {
-          target: config.targetId,
-          progress: round(raw),
-          x: round(point.x),
-          y: round(point.y),
-          clampedX: round(clamped.x),
-          clampedY: round(clamped.y)
-        });
-      }
-
-      return clamped;
-    }
-
-    function detectCurrentSection() {
-      var scrollY = window.scrollY || window.pageYOffset;
-      var probe = scrollY + window.innerHeight * 0.52;
-      var detected = "landing";
-
-      SECTION_IDS.forEach(function (id) {
-        var section = document.getElementById(id);
-
-        if (!section) {
-          return;
-        }
-
-        var rect = section.getBoundingClientRect();
-        var top = rect.top + scrollY;
-
-        if (top <= probe) {
-          detected = id;
-        }
-      });
-
-      return detected;
-    }
-
-    function updateCurrentSection(section, force) {
-      var nextSection = section || detectCurrentSection();
-
-      if (!force && isTravelling) {
-        return;
-      }
-
-      currentSection = nextSection;
-      items.forEach(function (button) {
-        var original = originalTarget(button);
-        var isCurrentDestination = currentSection !== "landing" && original === currentSection;
-        var nextLabel = isCurrentDestination ? "home" : button.dataset.navOriginalLabel || original;
-        var nextTarget = isCurrentDestination ? "landing" : original;
-
-        if (button.textContent.trim() !== nextLabel) {
-          button.textContent = nextLabel;
-        }
-
-        button.setAttribute("data-nav-target", nextTarget);
-        button.setAttribute("aria-label", isCurrentDestination ? "go home" : "go to " + original);
-      });
-
-      if (isOpen) {
-        updateSpokeGeometry();
-      }
-    }
-
-    function queueCurrentSectionUpdate() {
-      if (isTravelling || sectionFrame) {
-        return;
-      }
-
-      sectionFrame = window.requestAnimationFrame(function () {
-        sectionFrame = 0;
-        updateCurrentSection(detectCurrentSection());
-      });
-    }
-
-    function readPlusGeometry() {
-      var coreRect = core.getBoundingClientRect();
-      var coreStyle = window.getComputedStyle(core);
-      var plusCircleSize = parsePixel(coreStyle.width) || coreRect.width;
-      var bottomBuffer = parsePixel(coreStyle.bottom) || window.innerHeight - coreRect.bottom;
-      var measuredPlusCentreX = coreRect.left + coreRect.width / 2;
-      var measuredPlusCentreY = coreRect.top + coreRect.height / 2;
-      var measuredSpokeOriginX = coreRect.left + coreRect.width / 2;
-      var measuredSpokeOriginY = coreRect.top;
-
-      return {
-        viewportWidth: window.innerWidth,
-        viewportHeight: window.innerHeight,
-        plusCircleSize: plusCircleSize,
-        bottomBuffer: bottomBuffer,
-        measuredPlusCentreX: measuredPlusCentreX,
-        measuredPlusCentreY: measuredPlusCentreY,
-        expectedPlusCentreX: window.innerWidth / 2,
-        expectedPlusCentreY: window.innerHeight - (bottomBuffer + plusCircleSize / 2),
-        measuredSpokeOriginX: measuredSpokeOriginX,
-        measuredSpokeOriginY: measuredSpokeOriginY,
-        expectedSpokeOriginX: window.innerWidth / 2,
-        expectedSpokeOriginY: window.innerHeight - (bottomBuffer + plusCircleSize)
-      };
-    }
-
-    function naviCircleCentres() {
-      return items.map(function (button) {
-        var label = originalTarget(button);
-        var centre = centerOf(button);
-
-        return {
-          label: label,
-          x: centre.x,
-          y: centre.y
-        };
-      });
-    }
-
-    function debugSnapshot(extra) {
-      var plus = readPlusGeometry();
-      var selected = extra || {};
-      var spokeLine = lines.about;
-      var spokeLineX1 = spokeLine ? parsePixel(spokeLine.getAttribute("x1")) : null;
-      var spokeLineY1 = spokeLine ? parsePixel(spokeLine.getAttribute("y1")) : null;
-      var centres = {
-        aboutCircleCentreX: null,
-        aboutCircleCentreY: null,
-        workCircleCentreX: null,
-        workCircleCentreY: null,
-        archiveCircleCentreX: null,
-        archiveCircleCentreY: null,
-        contactCircleCentreX: null,
-        contactCircleCentreY: null
-      };
-
-      naviCircleCentres().forEach(function (point) {
-        centres[point.label + "CircleCentreX"] = round(point.x);
-        centres[point.label + "CircleCentreY"] = round(point.y);
-      });
-
-      return {
-        viewportWidth: round(plus.viewportWidth),
-        viewportHeight: round(plus.viewportHeight),
-        plusCircleSize: round(plus.plusCircleSize),
-        bottomBuffer: round(plus.bottomBuffer),
-        plusCircleCentreX: round(plus.measuredPlusCentreX),
-        plusCircleCentreY: round(plus.measuredPlusCentreY),
-        expectedPlusCircleCentreX: round(plus.expectedPlusCentreX),
-        expectedPlusCircleCentreY: round(plus.expectedPlusCentreY),
-        measuredRedX: round(plus.measuredPlusCentreX),
-        measuredBlueX: round(plus.measuredSpokeOriginX),
-        expectedCentreX: round(plus.expectedPlusCentreX),
-        spokeOriginX: round(plus.measuredSpokeOriginX),
-        spokeOriginY: round(plus.measuredSpokeOriginY),
-        expectedSpokeOriginX: round(plus.expectedSpokeOriginX),
-        expectedSpokeOriginY: round(plus.expectedSpokeOriginY),
-        spokeLineX1: round(spokeLineX1),
-        spokeLineY1: round(spokeLineY1),
-        blueMarkerX: round(plus.measuredSpokeOriginX),
-        blueMarkerY: round(plus.measuredSpokeOriginY),
-        differenceBetweenSpokeStartAndBlueMarkerX: round(spokeLineX1 - plus.measuredSpokeOriginX),
-        differenceBetweenSpokeStartAndBlueMarkerY: round(spokeLineY1 - plus.measuredSpokeOriginY),
-        aboutCircleCentreX: centres.aboutCircleCentreX,
-        aboutCircleCentreY: centres.aboutCircleCentreY,
-        workCircleCentreX: centres.workCircleCentreX,
-        workCircleCentreY: centres.workCircleCentreY,
-        archiveCircleCentreX: centres.archiveCircleCentreX,
-        archiveCircleCentreY: centres.archiveCircleCentreY,
-        contactCircleCentreX: centres.contactCircleCentreX,
-        contactCircleCentreY: centres.contactCircleCentreY,
-        selectedNaviCircle: selected.selectedNaviCircle || null,
-        selectedNaviCircleCentreX: round(selected.selectedNaviCircleCentreX),
-        selectedNaviCircleCentreY: round(selected.selectedNaviCircleCentreY),
-        ballStartX: round(selected.ballStartX),
-        ballStartY: round(selected.ballStartY),
-        landingTargetX: round(selected.landingTargetX),
-        landingTargetY: round(selected.landingTargetY)
-      };
-    }
-
-    function debugLogGeometry(extra) {
-      if (!DEBUG_NAV_GEOMETRY) {
-        return;
-      }
-
-      console.table(debugSnapshot(extra));
-    }
-
-    function debugRenderBase() {
-      if (!DEBUG_NAV_GEOMETRY) {
-        return;
-      }
-
-      var plus = readPlusGeometry();
-      debugOverlay.marker("plus centre", plus.measuredPlusCentreX, plus.measuredPlusCentreY, "rgb(220, 0, 0)");
-      debugOverlay.marker("spoke origin", plus.measuredSpokeOriginX, plus.measuredSpokeOriginY, "rgb(0, 86, 255)");
-      naviCircleCentres().forEach(function (point) {
-        debugOverlay.marker(point.label + " centre", point.x, point.y, "rgb(0, 150, 54)");
-      });
-    }
-
-    function landingTargetScreenRect(platform, finalScroll) {
-      if (platform && platform.kind === "floor") {
-        return {
-          left: 0,
-          top: window.innerHeight - 1,
-          width: window.innerWidth,
-          height: 1
-        };
-      }
-
-      if (platform && platform.element) {
-        var rect = platform.element.getBoundingClientRect();
-        var scrollY = window.scrollY || window.pageYOffset;
-
-        return {
-          left: rect.left,
-          top: rect.top + scrollY - finalScroll,
-          width: rect.width,
-          height: rect.height
-        };
-      }
-
-      return {
-        left: 0,
-        top: window.innerHeight - 1,
-        width: window.innerWidth,
-        height: 1
-      };
-    }
-
-    function debugRenderLandingTarget(platform, finalScrollOverride) {
-      if (!DEBUG_NAV_GEOMETRY || !platform) {
-        return;
-      }
-
-      var finalScroll = typeof finalScrollOverride === "number" ? finalScrollOverride : targetScrollFor(platform);
-      var rect = landingTargetScreenRect(platform, finalScroll);
-      var screenPoint = documentPointToScreen(platform, finalScroll);
-
-      debugOverlay.outline(rect);
-      debugOverlay.marker("landing target", screenPoint.x, screenPoint.y + ballRadius(), "rgb(220, 0, 0)");
+    function ballRadius() {
+      return ballDiameter() / 2;
     }
 
     function setBallPosition(x, y) {
@@ -1127,16 +803,13 @@
     }
 
     function applyBounceScale(raw, intensity) {
-      var liftRatio = 4 * clamp(raw, 0, 1) * (1 - clamp(raw, 0, 1));
-      var safeIntensity = clamp(intensity, 0, 1);
-      var baseScaleX = 1 + 0.08 * safeIntensity;
-      var baseScaleY = 1 - 0.08 * safeIntensity;
-      var topScaleX = 1 - 0.04 * safeIntensity;
-      var topScaleY = 1 + 0.06 * safeIntensity;
+      const p = clamp(raw, 0, 1);
+      const liftRatio = 4 * p * (1 - p);
+      const safeIntensity = clamp(intensity, 0, 1);
 
       setBallScale(
-        mix(baseScaleX, topScaleX, liftRatio),
-        mix(baseScaleY, topScaleY, liftRatio)
+        mix(1 + 0.08 * safeIntensity, 1 - 0.04 * safeIntensity, liftRatio),
+        mix(1 - 0.08 * safeIntensity, 1 + 0.06 * safeIntensity, liftRatio)
       );
     }
 
@@ -1162,10 +835,6 @@
       travelShadow.style.transform = "";
     }
 
-    function ballRadius() {
-      return ball.getBoundingClientRect().width / 2 || 22;
-    }
-
     function resetBallClasses() {
       ball.classList.remove(
         "is-visible",
@@ -1185,27 +854,211 @@
       );
     }
 
+    function hideTravelBallImmediately() {
+      resetBallClasses();
+      ball.style.opacity = "0";
+      ball.style.setProperty("--ball-lift", "0px");
+      ball.style.setProperty("--ball-scale-x", "1");
+      ball.style.setProperty("--ball-scale-y", "1");
+      ball.style.setProperty("--ball-rotation", "0deg");
+      ball.style.removeProperty("--restore-duration");
+      delete ball.dataset.ballPhase;
+      resetTimelineShadow();
+    }
+
+    function hideTravelBallForPlusRestore() {
+      ball.style.transition = "none";
+      resetBallClasses();
+      ballLabel.textContent = "";
+      ball.style.opacity = "0";
+      ball.style.setProperty("--ball-x", "-9999px");
+      ball.style.setProperty("--ball-y", "-9999px");
+      ball.style.setProperty("--ball-lift", "0px");
+      ball.style.setProperty("--ball-scale-x", "1");
+      ball.style.setProperty("--ball-scale-y", "1");
+      ball.style.setProperty("--ball-rotation", "0deg");
+      ball.style.removeProperty("--restore-duration");
+      resetTimelineShadow();
+
+      window.requestAnimationFrame(function () {
+        ball.style.transition = "";
+        resetTimelineShadow();
+      });
+    }
+
+    function resetBallState(finalState) {
+      cancelBallAnimation();
+      hideTravelBallImmediately();
+      ballLabel.textContent = "";
+      isTravelling = false;
+      isBallAnimating = false;
+      unlockUserScroll();
+      nav.classList.remove("is-plus-restoring", "is-ball-closing");
+      document.documentElement.classList.remove("is-ball-animating");
+      setState(finalState || STATES.PLUS_IDLE);
+    }
+
+    /* -------------------------------------------------------------- menu a11y + current section ("home" label logic) */
+
+    function setMenuA11y(open) {
+      core.setAttribute("aria-expanded", String(open));
+      core.setAttribute("aria-label", isProjectMode ? "close project" : open ? "close navigation" : "open navigation");
+      menu.setAttribute("aria-hidden", String(!open));
+      items.forEach(function (item) {
+        item.tabIndex = open ? 0 : -1;
+      });
+    }
+
+    function detectCurrentSection() {
+      const scrollY = currentScrollY();
+      const probe = scrollY + window.innerHeight * 0.52;
+      let detected = "landing";
+
+      SECTION_IDS.forEach(function (id) {
+        const section = document.getElementById(id);
+
+        if (!section) {
+          return;
+        }
+
+        if (section.getBoundingClientRect().top + scrollY <= probe) {
+          detected = id;
+        }
+      });
+
+      return detected;
+    }
+
+    function updateCurrentSection(section, force) {
+      const nextSection = section || detectCurrentSection();
+
+      if (!force && isTravelling) {
+        return;
+      }
+
+      currentSection = nextSection;
+      items.forEach(function (button) {
+        const original = originalTarget(button);
+        const isCurrentDestination = currentSection !== "landing" && original === currentSection;
+        const nextLabel = isCurrentDestination ? "home" : button.dataset.navOriginalLabel || original;
+        const nextTarget = isCurrentDestination ? "landing" : original;
+
+        if (button.textContent.trim() !== nextLabel) {
+          button.textContent = nextLabel;
+        }
+
+        button.setAttribute("data-nav-target", nextTarget);
+        button.setAttribute("aria-label", isCurrentDestination ? "go home" : "go to " + original);
+      });
+
+      if (isOpen) {
+        updateSpokeGeometry();
+      }
+    }
+
+    function queueCurrentSectionUpdate() {
+      if (isTravelling || sectionFrame) {
+        return;
+      }
+
+      sectionFrame = window.requestAnimationFrame(function () {
+        sectionFrame = 0;
+        updateCurrentSection(detectCurrentSection());
+      });
+    }
+
+    /* -------------------------------------------------------------- spokes (SVG dotted lines revealed through masks) */
+
+    function ensureSpokeMask(label) {
+      let maskParts = spokeMasks[label];
+
+      if (maskParts) {
+        return maskParts;
+      }
+
+      let defs = spokes.querySelector("defs");
+
+      if (!defs) {
+        defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+        spokes.insertBefore(defs, spokes.firstChild);
+      }
+
+      const mask = document.createElementNS("http://www.w3.org/2000/svg", "mask");
+      const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      const drawLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      const maskId = "nav-spoke-mask-" + label;
+
+      mask.setAttribute("id", maskId);
+      mask.setAttribute("maskUnits", "userSpaceOnUse");
+      rect.setAttribute("fill", "black");
+      rect.setAttribute("x", "0");
+      rect.setAttribute("y", "0");
+      drawLine.setAttribute("stroke", "white");
+      drawLine.setAttribute("stroke-width", "8");
+      drawLine.setAttribute("stroke-linecap", "round");
+      drawLine.setAttribute("fill", "none");
+      drawLine.setAttribute("vector-effect", "non-scaling-stroke");
+
+      mask.appendChild(rect);
+      mask.appendChild(drawLine);
+      defs.appendChild(mask);
+
+      maskParts = { id: maskId, mask: mask, rect: rect, drawLine: drawLine, length: 0 };
+      spokeMasks[label] = maskParts;
+      return maskParts;
+    }
+
+    function playSpokeDraw(options) {
+      const staged = Boolean(options && options.staged);
+      const duration = reducedMotion.matches ? 1 : staged ? PHONE_MENU_SPOKE_DURATION : 560;
+
+      ["about", "work", "archive", "contact"].forEach(function (label, index) {
+        const maskParts = spokeMasks[label];
+
+        if (!maskParts) {
+          return;
+        }
+
+        maskParts.drawLine.style.transition = "stroke-dashoffset " + duration + "ms cubic-bezier(0.22, 1, 0.36, 1)";
+        maskParts.drawLine.style.transitionDelay = reducedMotion.matches ? "0ms" : staged ? index * PHONE_MENU_SPOKE_STAGGER + "ms" : 520 + index * 38 + "ms";
+        maskParts.drawLine.style.strokeDashoffset = "0";
+      });
+    }
+
+    function readPlusGeometry() {
+      const coreRect = core.getBoundingClientRect();
+
+      return {
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+        measuredPlusCentreX: coreRect.left + coreRect.width / 2,
+        measuredPlusCentreY: coreRect.top + coreRect.height / 2,
+        measuredSpokeOriginX: coreRect.left + coreRect.width / 2,
+        measuredSpokeOriginY: coreRect.top
+      };
+    }
+
     function updateSpokeGeometry(options) {
-      var resetDraw = Boolean(options && options.resetDraw);
-      var plus = readPlusGeometry();
-      var originX = plus.measuredSpokeOriginX;
-      var originY = plus.measuredSpokeOriginY;
+      const resetDraw = Boolean(options && options.resetDraw);
+      const plus = readPlusGeometry();
+      const originX = plus.measuredSpokeOriginX;
+      const originY = plus.measuredSpokeOriginY;
 
       spokes.setAttribute("viewBox", "0 0 " + window.innerWidth + " " + window.innerHeight);
       spokes.setAttribute("width", String(window.innerWidth));
       spokes.setAttribute("height", String(window.innerHeight));
 
       items.forEach(function (button) {
-        var label = originalTarget(button);
-        var line = lines[label];
-        var point = centerOf(button);
+        const label = originalTarget(button);
+        const line = lines[label];
+        const point = centerOf(button);
 
         if (!line) {
           return;
         }
 
-        var length = Math.max(1, Math.hypot(point.x - originX, point.y - originY));
-        var maskParts = ensureSpokeMask(label);
+        const length = Math.max(1, Math.hypot(point.x - originX, point.y - originY));
+        const maskParts = ensureSpokeMask(label);
 
         maskParts.length = length;
         maskParts.mask.setAttribute("x", "0");
@@ -1236,19 +1089,40 @@
         line.setAttribute("mask", "url(#" + maskParts.id + ")");
         line.removeAttribute("pathLength");
       });
-
-      debugRenderBase();
     }
 
-    function setOpen(open) {
-      if (isTravelling || isProjectMode) {
+    function queueNavGeometryUpdate() {
+      if (navGeometryFrame) {
         return;
       }
+
+      navGeometryFrame = window.requestAnimationFrame(function () {
+        navGeometryFrame = 0;
+        updateSpokeGeometry();
+      });
+    }
+
+    /* -------------------------------------------------------------- menu open / close (desktop hover + click, staged phone opening) */
+
+    function clearPhoneMenuState() {
+      window.clearTimeout(phoneMenuReadyTimer);
+      phoneMenuReadyTimer = 0;
+      isPhoneNavOpening = false;
+      isPhoneNavOpen = false;
+      nav.classList.remove("is-phone-nav-preparing", "is-phone-nav-opening", "is-phone-nav-ready");
+    }
+
+    function setOpen(open, options) {
+      if (isTravelling || isProjectMode || isBallAnimating) {
+        return; // the console stays untouched while a ball animation or the plus restore is running
+      }
+
+      const staged = Boolean(options && options.staged);
 
       window.clearTimeout(closeOnBlurTimer);
 
       if (!open) {
-        clearPhoneMenuOpeningState();
+        clearPhoneMenuState();
       }
 
       if (open) {
@@ -1260,57 +1134,68 @@
       setState(open ? STATES.MENU_OPEN : STATES.PLUS_IDLE);
       setMenuA11y(open);
 
-      if (open) {
-        debugOverlay.clearTrajectory();
-        debugOverlay.clearOutline();
-        debugOverlay.hideMarker("ball start");
-        debugOverlay.hideMarker("start point");
-        debugOverlay.hideMarker("ascent control");
-        debugOverlay.hideMarker("descent control");
-        debugOverlay.hideMarker("apex point");
-        debugOverlay.hideMarker("landing point");
-        debugOverlay.hideMarker("landing target");
+      if (open && !staged) {
         window.requestAnimationFrame(function () {
           updateSpokeGeometry({ resetDraw: true });
-          window.requestAnimationFrame(playSpokeDraw);
+          window.requestAnimationFrame(function () {
+            playSpokeDraw();
+          });
         });
         window.setTimeout(function () {
           updateSpokeGeometry();
-          debugLogGeometry();
         }, reducedMotion.matches ? 1 : 1120);
       }
     }
 
-    function preparePhoneMenuOpen() {
-      if (isTravelling || isProjectMode || isOpen) {
+    /* Phone menu: closed state first -> two animation frames -> spokes outward, circles staggered -> pointer-events on after the animation. */
+    function openStagedMenu() {
+      if (isPhoneNavOpening || isOpen || isTravelling || isProjectMode || isBallAnimating) {
         return;
       }
 
-      clearPhoneMenuOpeningState();
-      nav.classList.add("is-phone-preparing");
+      clearPhoneMenuState();
+      isPhoneNavOpening = true;
+      nav.classList.add("is-phone-nav-preparing");
       updateCurrentSection(detectCurrentSection(), true);
       updateSpokeGeometry({ resetDraw: true });
 
+      if (DEBUG_PHONE_NAV_BALL) {
+        console.debug("phone nav: prepared closed state", { viewport: [window.innerWidth, window.innerHeight] });
+      }
+
       window.requestAnimationFrame(function () {
-        if (isTravelling || isProjectMode || isOpen) {
-          clearPhoneMenuOpeningState();
-          return;
-        }
+        window.requestAnimationFrame(function () {
+          if (!isPhoneNavOpening || isTravelling || isProjectMode) {
+            clearPhoneMenuState();
+            return;
+          }
 
-        nav.classList.remove("is-phone-preparing");
-        nav.classList.add("is-phone-opening");
-        setOpen(true);
+          nav.classList.remove("is-phone-nav-preparing");
+          nav.classList.add("is-phone-nav-opening");
+          setOpen(true, { staged: true });
+          playSpokeDraw({ staged: true });
 
-        phoneMenuReadyTimer = window.setTimeout(function () {
-          nav.classList.add("is-phone-items-ready");
-        }, reducedMotion.matches ? 1 : 980);
+          phoneMenuReadyTimer = window.setTimeout(function () {
+            if (!isOpen) {
+              return;
+            }
+
+            nav.classList.add("is-phone-nav-ready");
+            isPhoneNavOpening = false;
+            isPhoneNavOpen = true;
+            updateSpokeGeometry(); // re-measure once the circles have settled (covers a rotation during the opening)
+
+            if (DEBUG_PHONE_NAV_BALL) {
+              console.debug("phone nav: open and interactive");
+            }
+          }, reducedMotion.matches ? 1 : PHONE_MENU_READY_DELAY);
+        });
       });
     }
 
     function clearChoiceState(finalState) {
-      nav.classList.remove("is-open", "is-choosing", "is-travelling", "is-phone-preparing", "is-phone-opening", "is-phone-items-ready");
-      window.clearTimeout(phoneMenuReadyTimer);
-      phoneMenuReadyTimer = 0;
+      nav.classList.remove("is-open", "is-choosing", "is-travelling");
+      clearPhoneMenuState();
       items.forEach(function (item) {
         item.disabled = false;
         item.parentElement.classList.remove("is-selected");
@@ -1321,21 +1206,15 @@
       setState(finalState || STATES.PLUS_IDLE);
     }
 
-    function documentPointToScreen(point, scrollY) {
-      return {
-        x: point.x,
-        y: point.y - scrollY - ballRadius()
-      };
-    }
+    /* -------------------------------------------------------------- project popup interplay (unchanged contract) */
 
     function enterProjectMode() {
       resetBallState(STATES.PLUS_IDLE);
+      clearChoiceState(STATES.PLUS_IDLE); // re-enables the circles if a project opens in the middle of a trip
 
-      if (isOpen) {
-        isOpen = false;
-      }
-
-      nav.classList.remove("is-open", "is-choosing", "is-travelling", "is-phone-preparing", "is-phone-opening", "is-phone-items-ready");
+      isOpen = false;
+      nav.classList.remove("is-open", "is-choosing", "is-travelling");
+      clearPhoneMenuState();
       isProjectMode = true;
       nav.classList.remove("is-project-closing");
       nav.classList.add("is-project-close");
@@ -1359,55 +1238,32 @@
       updateCurrentSection(detectCurrentSection(), true);
     }
 
-    function sectionTopScroll(sectionId) {
-      var maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-      var section = document.getElementById(sectionId);
-      var scrollY = window.scrollY || window.pageYOffset;
-      var sectionTop = section ? section.getBoundingClientRect().top + scrollY : maxScroll;
+    /* -------------------------------------------------------------- destination logic (kept from the previous working version) */
 
-      return clamp(sectionTop, 0, maxScroll);
+    function getSafeBounds(options) {
+      const radius = ballRadius();
+      const margin = Math.max(radius + 18, 18);
+      const allowFloor = Boolean(options && options.allowFloor);
+
+      return {
+        minX: margin,
+        maxX: window.innerWidth - margin,
+        minY: margin,
+        maxY: allowFloor ? window.innerHeight - radius : window.innerHeight - margin,
+        floorY: window.innerHeight - radius
+      };
     }
 
-    function sectionVisualScroll(sectionId, endPoint) {
-      var maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-      var section = document.getElementById(sectionId);
-      var scrollY = window.scrollY || window.pageYOffset;
-      var title;
-      var titleTop;
-      var topBuffer;
-      var targetScroll;
-      var contentScreenY;
-      var maxContentScreenY;
+    function sectionTopScroll(sectionId) {
+      const section = document.getElementById(sectionId);
+      const sectionTop = section ? section.getBoundingClientRect().top + currentScrollY() : maxScrollY();
 
-      if (sectionId === "contact") {
-        return sectionTopScroll("contact");
-      }
-
-      if (!section || ["about", "work", "archive"].indexOf(sectionId) === -1) {
-        return null;
-      }
-
-      title = section.querySelector(".section-title");
-      titleTop = title ? title.getBoundingClientRect().top + scrollY : section.getBoundingClientRect().top + scrollY;
-      topBuffer = clamp(window.innerHeight * 0.13, 78, 124);
-      targetScroll = titleTop - topBuffer;
-
-      if (endPoint && typeof endPoint.y === "number") {
-        contentScreenY = endPoint.y - targetScroll;
-        maxContentScreenY = window.innerHeight * 0.72;
-
-        if (contentScreenY > maxContentScreenY) {
-          targetScroll = endPoint.y - maxContentScreenY;
-        }
-      }
-
-      return clamp(targetScroll, 0, maxScroll);
+      return clamp(sectionTop, 0, maxScrollY());
     }
 
     function contactFloor() {
-      var contact = document.getElementById("contact");
-      var scrollY = window.scrollY || window.pageYOffset;
-      var contactTop = contact ? contact.getBoundingClientRect().top + scrollY : sectionTopScroll("contact");
+      const contact = document.getElementById("contact");
+      const contactTop = contact ? contact.getBoundingClientRect().top + currentScrollY() : sectionTopScroll("contact");
 
       return {
         element: contact,
@@ -1442,354 +1298,29 @@
         return contactFloor();
       }
 
-      var target = document.getElementById(section);
-      return platformFromElement(target || document.body, section, "center");
+      return platformFromElement(document.getElementById(section) || document.body, section, "center");
     }
 
-    function targetScrollFor(point) {
-      var maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-
-      var visualScroll = sectionVisualScroll(point.section, point);
-
-      if (visualScroll !== null) {
-        return visualScroll;
-      }
-
-      if (point.kind === "floor" && point.section === "contact") {
-        return sectionTopScroll("contact");
-      }
-
-      if (point.kind === "floor") {
-        return maxScroll;
-      }
-
-      return clamp(point.y - window.innerHeight * 0.48, 0, maxScroll);
+    function visiblePathTopMargin(bounds) {
+      return Math.max(ballRadius() + 24, bounds && Number.isFinite(bounds.minY) ? bounds.minY : 0);
     }
 
-    function cubicSegmentPointAt(t, path) {
-      var inverse = 1 - t;
-      var p0 = path.start;
-      var p1 = path.controlA;
-      var p2 = path.controlB;
-      var p3 = path.end;
+    function tripBounceHeight(isPhone) {
+      const ballSize = ballDiameter();
 
-      return {
-        x: inverse * inverse * inverse * p0.x + 3 * inverse * inverse * t * p1.x + 3 * inverse * t * t * p2.x + t * t * t * p3.x,
-        y: inverse * inverse * inverse * p0.y + 3 * inverse * inverse * t * p1.y + 3 * inverse * t * t * p2.y + t * t * t * p3.y
-      };
+      return isPhone ? clamp(ballSize * 1.45, 38, 72) : clamp(ballSize * 2, 64, 118);
     }
 
-    function cubicPointAt(t, path) {
-      var safeT = clamp(t, 0, 1);
-      var split;
-      var segmentT;
-
-      if (path && Array.isArray(path.segments) && path.segments.length === 2) {
-        split = clamp(path.split || 0.42, 0.22, 0.72);
-
-        if (safeT <= split) {
-          segmentT = split === 0 ? 1 : safeT / split;
-          return cubicSegmentPointAt(segmentT, path.segments[0]);
-        }
-
-        segmentT = (safeT - split) / (1 - split);
-        return cubicSegmentPointAt(segmentT, path.segments[1]);
-      }
-
-      return cubicSegmentPointAt(safeT, path);
-    }
-
-    function cubicSegmentVelocityAt(t, path) {
-      var inverse = 1 - t;
-      var p0 = path.start;
-      var p1 = path.controlA;
-      var p2 = path.controlB;
-      var p3 = path.end;
-
-      return {
-        x: 3 * inverse * inverse * (p1.x - p0.x) + 6 * inverse * t * (p2.x - p1.x) + 3 * t * t * (p3.x - p2.x),
-        y: 3 * inverse * inverse * (p1.y - p0.y) + 6 * inverse * t * (p2.y - p1.y) + 3 * t * t * (p3.y - p2.y)
-      };
-    }
-
-    function cubicVelocityAt(t, path) {
-      var safeT = clamp(t, 0, 1);
-      var split;
-      var segmentT;
-      var velocity;
-
-      if (path && Array.isArray(path.segments) && path.segments.length === 2) {
-        split = clamp(path.split || 0.42, 0.22, 0.72);
-
-        if (safeT <= split) {
-          segmentT = split === 0 ? 1 : safeT / split;
-          velocity = cubicSegmentVelocityAt(segmentT, path.segments[0]);
-          return {
-            x: velocity.x / split,
-            y: velocity.y / split
-          };
-        }
-
-        segmentT = (safeT - split) / (1 - split);
-        velocity = cubicSegmentVelocityAt(segmentT, path.segments[1]);
-        return {
-          x: velocity.x / (1 - split),
-          y: velocity.y / (1 - split)
-        };
-      }
-
-      return cubicSegmentVelocityAt(safeT, path);
-    }
-
-    function evaluateBounce(baseX, baseY, height, elapsedMs, durationMs) {
-      var p = clamp(durationMs > 0 ? elapsedMs / durationMs : 1, 0, 1);
-      var yOffset = -4 * height * p * (1 - p);
-
-      return {
-        x: baseX,
-        y: baseY + yOffset
-      };
-    }
-
-    function createExactTrackMetrics(start, landing, geometry) {
-      var length1 = geometry && geometry.D ? Math.abs(start.y - geometry.D.y) : 0;
-      var length2 = geometry && Number.isFinite(geometry.horizontalSpan) && Number.isFinite(geometry.arcHeight) ?
-        Math.max(1, geometry.horizontalSpan + geometry.arcHeight * 2) :
-        0;
-      var length3 = geometry && geometry.E ? Math.abs(landing.y - geometry.E.y) : 0;
-      var totalLength = Math.max(1, length1 + length2 + length3);
-      var descentStartDistance = length1 + length2;
-
-      return {
-        length1: length1,
-        length2: length2,
-        length3: length3,
-        totalLength: totalLength,
-        ascentEndDistance: length1,
-        descentStartDistance: descentStartDistance,
-        ascentEndProgress: length1 / totalLength,
-        descentStartProgress: descentStartDistance / totalLength
-      };
-    }
-
-    function evaluateTrackAtDistance(distance, path) {
-      var geometry = path.geometry;
-      var track = path.track || createExactTrackMetrics(path.start, path.end, geometry);
-      var s = clamp(distance, 0, track.totalLength);
-      var arcS;
-      var arcProgress;
-      var sx;
-      var fallS;
-
-      if (s <= track.length1) {
-        return {
-          x: path.start.x,
-          y: path.start.y - s
-        };
-      }
-
-      if (track.length2 > 0 && s <= track.descentStartDistance) {
-        arcS = s - track.length1;
-        arcProgress = clamp(arcS / track.length2, 0, 1);
-        sx = smoothstep(arcProgress);
-
-        return {
-          x: geometry.D.x + (geometry.E.x - geometry.D.x) * sx,
-          y: geometry.arcBaseY - geometry.arcHeight * 4 * arcProgress * (1 - arcProgress)
-        };
-      }
-
-      fallS = s - track.length1 - track.length2;
-      return {
-        x: path.end.x,
-        y: geometry.E.y + fallS
-      };
-    }
-
-    function navBallMasterHeight(ballSize) {
-      return isMobileViewport() ?
-        clamp(ballSize * 1.55, 44, 78) :
-        clamp(ballSize * 2, 64, 120);
-    }
-
-    function visiblePathTopMargin(options) {
-      var fallback = ballRadius() + 24;
-
-      if (options && Number.isFinite(options.safeTop)) {
-        return Math.max(0, options.safeTop);
-      }
-
-      if (options && options.bounds && Number.isFinite(options.bounds.minY)) {
-        return Math.max(fallback, options.bounds.minY);
-      }
-
-      return fallback;
-    }
-
-    function createExactPathGeometry(start, landing, baseZ, options) {
-      var safeTop = visiblePathTopMargin(options);
-      var dx = landing.x - start.x;
-      var horizontalSpan = Math.abs(dx);
-      var r = horizontalSpan / 2;
-      var topY = Math.min(start.y, landing.y);
-      var z = Math.max(0, baseZ);
-      var prepBounceZMax = Math.max(0, (start.y - safeTop) / 0.75);
-      var landingBounceZMax = Math.max(0, (landing.y - safeTop) / 0.75);
-      var bounceVisibleZMax = Math.min(prepBounceZMax, landingBounceZMax);
-      var requestedOvershoot;
-      var availableRise;
-      var minimumOvershoot;
-      var overshoot;
-      var arcBaseY;
-      var arcHeight;
-      var apexY;
-      var m;
-      var centerX = (start.x + landing.x) / 2;
-      var centerY;
-
-      z = Math.min(z, bounceVisibleZMax);
-      requestedOvershoot = clamp(z * 0.75, 42, 92);
-      availableRise = topY - safeTop;
-      minimumOvershoot = Math.min(Math.max(z * 0.35, 18), Math.max(1, availableRise));
-      overshoot = availableRise > 0 ?
-        Math.min(requestedOvershoot, Math.max(minimumOvershoot, availableRise * 0.72)) :
-        1;
-      arcBaseY = topY - overshoot;
-      arcHeight = clamp(horizontalSpan * 0.18, 36, 96);
-      arcHeight = Math.min(arcHeight, Math.max(1, arcBaseY - safeTop));
-      apexY = arcBaseY - arcHeight;
-      m = start.y - arcBaseY;
-      centerY = arcBaseY;
-
-      return {
-        z: z,
-        a: m,
-        m: m,
-        topY: topY,
-        overshoot: overshoot,
-        requestedOvershoot: requestedOvershoot,
-        arcBaseY: arcBaseY,
-        arcHeight: arcHeight,
-        horizontalSpan: horizontalSpan,
-        safeTop: safeTop,
-        bounceVisibleZMax: bounceVisibleZMax,
-        apexY: apexY,
-        visibilityLimited: overshoot < requestedOvershoot || apexY < safeTop,
-        D: {
-          x: start.x,
-          y: arcBaseY
-        },
-        C: {
-          x: centerX,
-          y: apexY
-        },
-        E: {
-          x: landing.x,
-          y: arcBaseY
-        },
-        r: r,
-        centerX: centerX,
-        centerY: centerY,
-        direction: Math.sign(dx) || 1,
-        startTheta: landing.x < start.x ? 0 : Math.PI,
-        endTheta: landing.x < start.x ? Math.PI : 0
-      };
-    }
-
-    function evaluateExactNavTrajectory(raw, start, landing, options) {
-      var t = clamp(raw, 0, 1);
-      var geometry = options && options.geometry ?
-        options.geometry :
-        createExactPathGeometry(start, landing, navBallMasterHeight(ballRadius() * 2), options);
-      var track = options && options.track ? options.track : createExactTrackMetrics(start, landing, geometry);
-
-      return evaluateTrackAtDistance(track.totalLength * t, {
-        start: start,
-        end: landing,
-        geometry: geometry,
-        track: track
-      });
-    }
-
-    function pathPointAt(raw, path) {
-      if (path && path.kind === "exact-nav-trajectory") {
-        return evaluateExactNavTrajectory(raw, path.start, path.end, path);
-      }
-
-      return cubicPointAt(clamp(raw, 0, 1), path);
-    }
-
-    function pathVelocityAt(raw, path) {
-      var safeT = clamp(raw, 0, 1);
-      var delta = 0.001;
-      var beforeT;
-      var afterT;
-      var before;
-      var after;
-
-      if (path && path.kind === "exact-nav-trajectory") {
-        beforeT = Math.max(0, safeT - delta);
-        afterT = Math.min(1, safeT + delta);
-
-        if (beforeT === afterT) {
-          return {
-            x: 0,
-            y: 0
-          };
-        }
-
-        before = pathPointAt(beforeT, path);
-        after = pathPointAt(afterT, path);
-        return {
-          x: (after.x - before.x) / (afterT - beforeT),
-          y: (after.y - before.y) / (afterT - beforeT)
-        };
-      }
-
-      return cubicVelocityAt(safeT, path);
-    }
-
-    function resolveFinalScroll(endPoint, startScreen, downward, targetId, bounds) {
-      var radius = ballRadius();
-      var maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-      var desiredCenterY = 0;
-
-      var visualScroll = sectionVisualScroll(targetId, endPoint);
-
-      if (visualScroll !== null) {
-        return visualScroll;
-      }
-
-      if (endPoint.kind === "floor" && endPoint.section === "contact") {
-        return sectionTopScroll("contact");
-      }
-
-      if (endPoint.kind === "floor") {
-        return maxScroll;
-      }
-
-      if (targetId === "landing") {
-        desiredCenterY = clamp(window.innerHeight * 0.42, bounds.minY, bounds.maxY);
-      } else if (downward) {
-        desiredCenterY = clamp(Math.max(startScreen.y + 48, window.innerHeight * 0.7), bounds.minY, bounds.maxY);
-      } else {
-        desiredCenterY = clamp(Math.min(startScreen.y - 40, window.innerHeight * 0.52), bounds.minY, bounds.maxY);
-      }
-
-      return clamp(endPoint.y - (desiredCenterY + radius), 0, maxScroll);
-    }
-
-    function resolveCameraFinalScroll(endPoint, startScreen, targetId, bounds) {
-      var radius = ballRadius();
-      var maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-      var safeTop = visiblePathTopMargin({ bounds: bounds });
-      var z = navBallMasterHeight(radius * 2);
-      var overshoot = clamp(z * 0.75, 42, 92);
-      var horizontalSpan = Math.abs(endPoint.x - startScreen.x);
-      var arcHeight = clamp(horizontalSpan * 0.18, 36, 96);
-      var minLandingY = safeTop + arcHeight + overshoot + 8;
-      var preferredLandingY = Math.max(window.innerHeight * 0.58, minLandingY);
-      var desiredLandingY = clamp(preferredLandingY, bounds.minY, bounds.maxY);
+    /* the scroll position that puts the landing point at a comfortable height of the final screen */
+    function resolveScrollTarget(endPoint, targetId, bounds) {
+      const radius = ballRadius();
+      const maxScroll = maxScrollY();
+      const safeTop = visiblePathTopMargin(bounds);
+      const z = tripBounceHeight(false);
+      const overshoot = clamp(z * 0.65, 36, 84);
+      const minLandingY = safeTop + overshoot + 8;
+      const preferredLandingY = Math.max(window.innerHeight * 0.58, minLandingY);
+      const desiredLandingY = clamp(preferredLandingY, bounds.minY, bounds.maxY);
 
       if (endPoint.kind === "floor" && endPoint.section === "contact") {
         return sectionTopScroll("contact");
@@ -1802,472 +1333,76 @@
       return clamp(endPoint.y - (desiredLandingY + radius), 0, maxScroll);
     }
 
-    function updatePathApex(path) {
-      var apex = path.start;
-
-      if (path && path.kind === "exact-nav-trajectory" && path.geometry && hasFinitePoint(path.geometry.C)) {
-        path.apex = path.geometry.C;
-        return;
-      }
-
-      for (var step = 1; step <= 48; step += 1) {
-        var point = pathPointAt(step / 48, path);
-
-        if (point.y < apex.y) {
-          apex = point;
-        }
-      }
-
-      path.apex = apex;
-    }
-
-    function landingApproachHeight() {
-      return clamp(window.innerHeight * 0.18, 130, 230);
-    }
-
-    function directionXFor(start, landing) {
-      var dx = landing.x - start.x;
-
-      return dx === 0 ? 1 : dx / Math.abs(dx);
-    }
-
-    function finalApproachControlX(start, landing, upward) {
-      var directionX = directionXFor(start, landing);
-      var absDeltaX = Math.abs(landing.x - start.x);
-
-      if (upward) {
-        return landing.x + directionX * clamp(absDeltaX * 0.02, 0, 20);
-      }
-
-      return landing.x + directionX * clamp(absDeltaX * 0.02, 0, 24);
-    }
-
-    function createCompositePath(start, firstA, firstB, apex, secondA, secondB, landing, bounds, split, direction) {
-      var fittedApex = fitControlPointInsideBounds(apex, bounds);
-      var segmentA = {
-        start: start,
-        controlA: fitControlPointInsideBounds(firstA, bounds),
-        controlB: fitControlPointInsideBounds(firstB, bounds),
-        end: fittedApex
-      };
-      var segmentB = {
-        start: fittedApex,
-        controlA: fitControlPointInsideBounds(secondA, bounds),
-        controlB: fitControlPointInsideBounds(secondB, bounds),
-        end: landing
-      };
-      var path = {
-        start: start,
-        controlA: segmentA.controlA,
-        controlB: segmentB.controlB,
-        end: landing,
-        split: split,
-        direction: direction,
-        joinPoint: fittedApex,
-        segments: [segmentA, segmentB]
-      };
-
-      updatePathApex(path);
-      return path;
-    }
-
-    function syncCompositePath(path) {
-      if (!path || !Array.isArray(path.segments) || path.segments.length !== 2) {
-        return;
-      }
-
-      path.start = path.segments[0].start;
-      path.controlA = path.segments[0].controlA;
-      path.controlB = path.segments[1].controlB;
-      path.end = path.segments[1].end;
-      path.joinPoint = path.segments[0].end;
-    }
-
-    function enforceLandingVelocity(path, bounds) {
-      var minVisibleY = Math.max(bounds.minY, 36);
-      var approachHeight = landingApproachHeight();
-      var finalControl;
-
-      if (path && path.kind === "exact-nav-trajectory") {
-        path.controlA = path.geometry.D;
-        path.controlB = path.geometry.E;
-        updatePathApex(path);
-        return;
-      }
-
-      if (path && Array.isArray(path.segments) && path.segments.length === 2) {
-        finalControl = path.segments[1].controlB;
-        path.segments[1].controlB = fitControlPointInsideBounds({
-          x: hasFinitePoint(finalControl) ? finalControl.x : path.end.x,
-          y: Math.max(minVisibleY, path.end.y - approachHeight)
-        }, bounds);
-        syncCompositePath(path);
-        updatePathApex(path);
-        return;
-      }
-
-      path.controlB = fitControlPointInsideBounds({
-        x: hasFinitePoint(path.controlB) ? path.controlB.x : path.end.x,
-        y: Math.max(minVisibleY, path.end.y - approachHeight)
-      }, bounds);
-
-      updatePathApex(path);
-    }
-
-    function hasFinitePoint(point) {
-      return Boolean(point) && Number.isFinite(point.x) && Number.isFinite(point.y);
-    }
-
-    function hasFinitePath(path) {
-      if (!path) {
-        return false;
-      }
-
-      if (path.kind === "exact-nav-trajectory") {
-        return hasFinitePoint(path.start) &&
-          hasFinitePoint(path.end) &&
-          hasFinitePoint(path.apex) &&
-          hasFinitePoint(path.controlA) &&
-          hasFinitePoint(path.controlB) &&
-          path.geometry &&
-          hasFinitePoint(path.geometry.D) &&
-          hasFinitePoint(path.geometry.C) &&
-          hasFinitePoint(path.geometry.E) &&
-          Number.isFinite(path.geometry.z) &&
-          Number.isFinite(path.geometry.m) &&
-          Number.isFinite(path.geometry.r) &&
-          Number.isFinite(path.geometry.apexY) &&
-          Number.isFinite(path.geometry.topY) &&
-          Number.isFinite(path.geometry.arcBaseY) &&
-          Number.isFinite(path.geometry.arcHeight) &&
-          Number.isFinite(path.geometry.horizontalSpan) &&
-          Number.isFinite(path.geometry.overshoot) &&
-          Number.isFinite(path.geometry.centerX) &&
-          Number.isFinite(path.geometry.centerY);
-      }
-
-      if (Array.isArray(path.segments)) {
-        return path.segments.length === 2 &&
-          path.segments.every(function (segment) {
-            return hasFinitePoint(segment.start) &&
-              hasFinitePoint(segment.controlA) &&
-              hasFinitePoint(segment.controlB) &&
-              hasFinitePoint(segment.end);
-          }) &&
-          hasFinitePoint(path.start) &&
-          hasFinitePoint(path.end);
-      }
-
-      return Boolean(path) &&
-        hasFinitePoint(path.start) &&
-        hasFinitePoint(path.controlA) &&
-        hasFinitePoint(path.controlB) &&
-        hasFinitePoint(path.end);
-    }
-
-    function createExactNavTrajectoryPath(start, landing, config, direction) {
-      var z = navBallMasterHeight(ballRadius() * 2);
-      var geometry = createExactPathGeometry(start, landing, z, {
-        bounds: config.bounds
-      });
-      var path = {
-        kind: "exact-nav-trajectory",
-        start: start,
-        controlA: geometry.D,
-        controlB: geometry.E,
-        end: landing,
-        apex: geometry.C,
-        geometry: geometry,
-        z: geometry.z,
-        track: createExactTrackMetrics(start, landing, geometry),
-        direction: direction
-      };
-
-      updatePathApex(path);
-      return path;
-    }
-
-    function createDownwardFlightPath(start, landing, config) {
-      var path = createExactNavTrajectoryPath(start, landing, config, "downward");
-
-      enforceLandingVelocity(path, config.bounds);
-      return path;
-    }
-
-    function fallbackUpwardFlightPath(start, landing, config) {
-      var path = createExactNavTrajectoryPath(start, landing, config, "upward");
-
-      enforceLandingVelocity(path, config.bounds);
-      return path;
-    }
-
-    function createUpwardFlightPath(start, landing, config) {
-      var path = createExactNavTrajectoryPath(start, landing, config, "upward");
-
-      if (!hasFinitePath(path)) {
-        return fallbackUpwardFlightPath(start, landing, config);
-      }
-
-      enforceLandingVelocity(path, config.bounds);
-      if (!hasFinitePath(path)) {
-        return fallbackUpwardFlightPath(start, landing, config);
-      }
-
-      return path;
-    }
-
-    function createSmoothFlightPath(startScreen, endScreen, config) {
-      var bounds = config.bounds;
-      var start = fitControlPointInsideBounds(startScreen, bounds);
-      var landing = config.targetId === "contact" ? {
-        x: clamp(endScreen.x, bounds.minX, bounds.maxX),
-        y: bounds.floorY
-      } : fitControlPointInsideBounds(endScreen, bounds);
-
-      if (config.upward) {
-        return createUpwardFlightPath(start, landing, config);
-      }
-
-      return createDownwardFlightPath(start, landing, config);
-    }
-
-    function createFlightConfig(startPoint, endPoint, targetId, startScroll) {
-      var fromIndex = sectionIndex(currentSection || detectCurrentSection());
-      var toIndex = sectionIndex(targetId);
-      var upward = toIndex < fromIndex;
-      var side = targetSideFor(targetId);
-      var horizontalDirection = side === "right" ? 1 : side === "left" ? -1 : endPoint.x >= startPoint.x ? 1 : -1;
-      var distanceX = Math.abs(endPoint.x - startPoint.x);
-      var distanceY = Math.abs(endPoint.y - startPoint.y);
-      var pathDistance = Math.sqrt(distanceX * distanceX + distanceY * distanceY);
-      var downward = toIndex > fromIndex;
-      var bounds = getSafeBounds({ allowFloor: targetId === "contact" });
-      var startScreen = fitControlPointInsideBounds(documentPointToScreen(startPoint, startScroll), bounds);
-      var finalScroll = resolveCameraFinalScroll(endPoint, startScreen, targetId, bounds);
-      var endScreen = documentPointToScreen(endPoint, finalScroll);
-      var duration = reducedMotion.matches ? 1 : clamp((pathDistance * 0.34 + 820) * FLIGHT_DURATION_MULTIPLIER, 1400, 2600);
+    /* final visible landing point F (viewport coordinates, after the page has reached scrollTarget) */
+    function resolveFinalLandingPoint(endPoint, scrollTarget, targetId, bounds) {
+      const raw = { x: endPoint.x, y: endPoint.y - scrollTarget - ballRadius() };
 
       if (targetId === "contact") {
-        endScreen = {
-          x: clamp(endScreen.x, bounds.minX, bounds.maxX),
-          y: bounds.floorY
-        };
-      } else {
-        endScreen = fitControlPointInsideBounds(endScreen, bounds);
+        return { x: clamp(raw.x, bounds.minX, bounds.maxX), y: bounds.floorY };
       }
 
-      var config = {
-        targetId: targetId,
-        startPoint: startPoint,
-        endPoint: endPoint,
-        startScroll: startScroll,
-        finalScroll: finalScroll,
-        startScreen: startScreen,
-        endScreen: endScreen,
-        bounds: bounds,
-        horizontalDirection: horizontalDirection,
-        upward: upward,
-        downward: downward,
-        duration: duration,
-        scrollDelay: 0,
-        cameraMode: upward ? "pre-scroll-before-flight" : "delayed-descent-scroll",
-        initialScroll: startScroll,
-        hasShadow: endPoint.kind !== "floor",
-        emergencyClampLogged: false,
-        path: null
-      };
-
-      config.path = createSmoothFlightPath(startScreen, endScreen, config);
-      adjustPathForObstacles(config);
-      enforceLandingVelocity(config.path, bounds);
-      if (!hasFinitePath(config.path)) {
-        config.path = config.upward ? fallbackUpwardFlightPath(startScreen, endScreen, config) : createSmoothFlightPath(startScreen, endScreen, config);
-      }
-      debugNavBallPath(config);
-      return config;
+      return { x: clamp(raw.x, bounds.minX, bounds.maxX), y: clamp(raw.y, bounds.minY, bounds.maxY) };
     }
 
-    function flightPointAt(raw, config) {
-      return pathPointAt(clamp(raw, 0, 1), config.path);
-    }
+    /* -------------------------------------------------------------- plus reappears in place */
 
-    function flightVelocityAt(raw, config) {
-      return pathVelocityAt(clamp(raw, 0, 1), config.path);
-    }
-
-    function flightScrollAt(raw, config) {
-      var progress = clamp(raw, 0, 1);
-      var arcEnd = config.path && config.path.track && Number.isFinite(config.path.track.descentStartProgress) ?
-        config.path.track.descentStartProgress :
-        0.68;
-      var fallProgress;
-
-      if (config.cameraMode === "pre-scrolled-freeze") {
-        return config.finalScroll;
-      }
-
-      if (config.cameraMode === "delayed-descent-scroll") {
-        if (progress < arcEnd) {
-          return config.startScroll;
-        }
-
-        fallProgress = (progress - arcEnd) / (1 - arcEnd);
-        return mix(config.startScroll, config.finalScroll, clamp(fallProgress, 0, 1));
-      }
-
-      return mix(config.startScroll, config.finalScroll, progress);
-    }
-
-    function debugNavBallPath(config) {
-      var samples;
-      var p0;
-      var p28;
-      var p48;
-      var p68;
-      var p100;
-      var finalVelocity;
-      var geometry;
-
-      if (!(DEBUG_BALL_PATH || DEBUG_NAV_BALL_PATH || DEBUG_NAV_BALL_TRAJECTORY || DEBUG_NAV_BALL_EXACT_PATH) || !config || !config.path) {
-        return;
-      }
-
-      samples = [0, 0.28, 0.48, 0.68, 1].map(function (raw) {
-        var point = flightPointAt(raw, config);
-
-        return {
-          t: raw,
-          x: round(point.x),
-          y: round(point.y)
-        };
-      });
-      p0 = flightPointAt(0, config);
-      p28 = flightPointAt(0.28, config);
-      p48 = flightPointAt(0.48, config);
-      p68 = flightPointAt(0.68, config);
-      p100 = flightPointAt(1, config);
-      finalVelocity = flightVelocityAt(1, config);
-      geometry = config.path.geometry || {};
-
-      if (geometry.D && geometry.E) {
-        console.assert(geometry.D.y < config.path.start.y, "D must be above A");
-        console.assert(geometry.E.y < config.path.end.y, "E must be above B");
-        console.assert(Math.abs(geometry.D.x - config.path.start.x) < 0.001, "A-D must be vertical");
-        console.assert(Math.abs(geometry.E.x - config.path.end.x) < 0.001, "E-B must be vertical");
-      }
-
-      console.table({
-        targetId: config.targetId,
-        direction: config.upward ? "upward" : "downward",
-        pathKind: config.path.kind || "cubic",
-        usesCompositePath: Array.isArray(config.path.segments),
-        Ax: round(config.path.start.x),
-        Ay: round(config.path.start.y),
-        Bx: round(config.path.end.x),
-        By: round(config.path.end.y),
-        z: round(geometry.z),
-        a: round(geometry.a),
-        m: round(geometry.m),
-        topY: round(geometry.topY),
-        arcBaseY: round(geometry.arcBaseY),
-        arcHeight: round(geometry.arcHeight),
-        overshoot: round(geometry.overshoot),
-        requestedOvershoot: round(geometry.requestedOvershoot),
-        safeTop: round(geometry.safeTop),
-        bounceVisibleZMax: round(geometry.bounceVisibleZMax),
-        apexY: round(geometry.apexY),
-        visibilityLimited: Boolean(geometry.visibilityLimited),
-        Dx: round(geometry.D && geometry.D.x),
-        Dy: round(geometry.D && geometry.D.y),
-        Cx: round(geometry.C && geometry.C.x),
-        Cy: round(geometry.C && geometry.C.y),
-        Ex: round(geometry.E && geometry.E.x),
-        Ey: round(geometry.E && geometry.E.y),
-        radius: round(geometry.r),
-        horizontalSpan: round(geometry.horizontalSpan),
-        centerX: round(geometry.centerX),
-        centerY: round(geometry.centerY),
-        launchXFixed: Math.abs(p0.x - p28.x) < 0.5,
-        capMovesX: Math.abs(p28.x - p48.x) > 0.5 || Math.abs(p48.x - p68.x) > 0.5,
-        capHasSingleArch: p48.y < p28.y && p48.y < p68.y,
-        fallXFixed: Math.abs(p68.x - p100.x) < 0.5,
-        finalVelocityNonZero: Math.abs(finalVelocity.x) + Math.abs(finalVelocity.y) > 0.5,
-        finalVelocityX: round(finalVelocity.x),
-        finalVelocityY: round(finalVelocity.y)
-      });
-      console.debug("nav ball path samples", samples);
-    }
-
-    function debugRenderTrajectory(startPoint, endPoint, targetId, startScroll) {
-      if (!DEBUG_NAV_GEOMETRY) {
-        return;
-      }
-
-      var config = createFlightConfig(startPoint, endPoint, targetId, startScroll);
-      var points = [];
-
-      for (var step = 0; step <= 72; step += 1) {
-        var raw = step / 72;
-        var point = flightPointAt(raw, config);
-        points.push(point);
-      }
-
-      debugOverlay.trajectory(points);
-      debugOverlay.marker("start point", config.path.start.x, config.path.start.y, "rgb(132, 0, 255)");
-      debugOverlay.marker("ascent control", config.path.controlA.x, config.path.controlA.y, "rgb(0, 98, 190)");
-      debugOverlay.marker("descent control", config.path.controlB.x, config.path.controlB.y, "rgb(0, 130, 96)");
-      debugOverlay.marker("apex point", config.path.apex.x, config.path.apex.y, "rgb(194, 0, 160)");
-      debugOverlay.marker("landing point", config.path.end.x, config.path.end.y, "rgb(210, 0, 0)");
-    }
-
-    function restorePlusAfterRoll(token, targetId) {
-      var restoreDuration = scaleMotionDuration(340);
+    function showPlusInPlace(token, targetId) {
+      const restoreDuration = reducedMotion.matches ? 1 : 420; // matches the plusRestore animation in motion.css
 
       if (!isCurrentAnimation(token)) {
-        debugNavBall("stale nav ball frame cancelled");
         return;
       }
 
-      debugNavBall("normal roll complete: hiding travel ball and restoring plus");
+      setBallPhase(PHASE.PLUS);
+
+      if (DEBUG_NAV_BALL_SEQUENCE) {
+        console.table({ stage: "plus-reappear-in-place", targetId: targetId, travelBallHidden: true, plusState: STATES.PLUS_RESTORED });
+      }
+
       hideTravelBallForPlusRestore();
       nav.classList.add("is-plus-restoring");
       document.documentElement.classList.remove("is-ball-animating");
+      unlockUserScroll();
       clearChoiceState(STATES.PLUS_RESTORED);
 
       resetTimer = setBallTimeout(function () {
         nav.classList.remove("is-plus-restoring");
-        hideTravelBallForPlusRestore();
+        hideTravelBallImmediately();
+        isBallAnimating = false;
         setState(STATES.PLUS_IDLE);
         updateCurrentSection(detectCurrentSection(), true);
       }, restoreDuration, token);
     }
 
-    function morphBallIntoPlus(token, targetId, options) {
-      var restoreDuration = scaleMotionDuration(options && typeof options.duration === "number" ? options.duration : 260);
+    function morphBallIntoPlus(token, options) {
+      const restoreDuration = scaleMotionDuration(options && typeof options.duration === "number" ? options.duration : 260);
 
       if (!isCurrentAnimation(token)) {
-        debugNavBall("stale nav ball frame cancelled");
         return;
       }
 
-      debugNavBall("home return: morphing ball into plus");
       setState(STATES.PLUS_RESTORED);
       ball.style.setProperty("--restore-duration", restoreDuration + "ms");
+      ball.style.removeProperty("--ball-scale-x"); // let the is-restoring class shrink the ball into the plus
+      ball.style.removeProperty("--ball-scale-y");
       ball.classList.add("is-restoring");
+      nav.classList.add("is-ball-closing");
       clearChoiceState(STATES.PLUS_RESTORED);
       document.documentElement.classList.remove("is-ball-animating");
+      unlockUserScroll();
 
       resetTimer = setBallTimeout(function () {
-        debugNavBall("nav ball animation end", targetId);
         resetBallState(STATES.PLUS_IDLE);
         setState(STATES.PLUS_IDLE);
         updateCurrentSection(detectCurrentSection(), true);
-      }, reducedMotion.matches ? 1 : restoreDuration);
+      }, reducedMotion.matches ? 1 : restoreDuration, token);
     }
 
+    /* -------------------------------------------------------------- home: three prep bounces, arc to the plus, ball becomes the plus */
+
     function bounceLift(raw, height) {
-      var safeRaw = clamp(raw, 0, 1);
-      var apexAt = 0.43;
+      const safeRaw = clamp(raw, 0, 1);
+      const apexAt = 0.43;
 
       if (safeRaw <= apexAt) {
         return Math.sin((safeRaw / apexAt) * (Math.PI / 2)) * height;
@@ -2276,87 +1411,48 @@
       return Math.cos(((safeRaw - apexAt) / (1 - apexAt)) * (Math.PI / 2)) * height;
     }
 
-    function runHomeReturnMotion(startPoint, targetId, token) {
-      var startScroll = window.scrollY || window.pageYOffset;
-      var startScreen = documentPointToScreen(startPoint, startScroll);
-      var plus = readPlusGeometry();
-      var endScreen = {
-        x: plus.measuredPlusCentreX,
-        y: plus.measuredPlusCentreY
-      };
-      var dx = endScreen.x - startScreen.x;
-      var firstPrepHeight = clamp(window.innerHeight * 0.034, 24, 34);
-      var secondPrepHeight = clamp(firstPrepHeight * 1.7, 40, 58);
-      var thirdPrepHeight = clamp(secondPrepHeight * 1.34, 52, 76);
-      var baseFirstPrepDuration = clamp(window.innerHeight * 0.52, 380, 440);
-      var baseSecondPrepDuration = clamp(baseFirstPrepDuration + 80, 420, 540);
-      var baseThirdPrepDuration = clamp(baseSecondPrepDuration + 70, 460, 620);
-      var firstPrepDuration = scaleMotionDuration(baseFirstPrepDuration);
-      var secondPrepDuration = scaleMotionDuration(baseSecondPrepDuration);
-      var thirdPrepDuration = scaleMotionDuration(baseThirdPrepDuration);
-      var previousHomeArcDuration = scaleMotionDuration(clamp(Math.abs(startScreen.y - endScreen.y) * 0.78 + Math.abs(dx) * 0.28 + 900, 1300, 2200) * 2.1);
-      var homeRouteLeadProgress = 0.65;
-      var routeLeadDuration = previousHomeArcDuration * homeRouteLeadProgress;
-      var finalHomeApproachDuration = previousHomeArcDuration * (1 - homeRouteLeadProgress) * 1.6;
-      var homeArcDuration = routeLeadDuration + finalHomeApproachDuration;
-      var homeMorphDuration = 680;
-      var arcDuration = homeArcDuration;
-      var prep1End = firstPrepDuration;
-      var prep2End = prep1End + secondPrepDuration;
-      var prep3End = prep2End + thirdPrepDuration;
-      var arcEnd = prep3End + arcDuration;
-      var apexY = clamp(window.innerHeight * 0.12, 72, 128);
-      var launchLift = clamp(window.innerHeight * 0.42, 260, 480);
-      var path = {
-        start: startScreen,
-        controlA: {
-          x: startScreen.x + dx * 0.08,
-          y: Math.min(startScreen.y - launchLift, apexY + 120)
-        },
-        controlB: {
-          x: window.innerWidth / 2,
-          y: apexY
-        },
-        end: endScreen
-      };
-      var startTime = 0;
-      var cleanUrl = window.location.pathname + window.location.search;
+    function runHomeReturnMotion(startScreen, targetId, token) {
+      const startScroll = currentScrollY();
+      const plus = readPlusGeometry();
+      const endScreen = { x: plus.measuredPlusCentreX, y: plus.measuredPlusCentreY };
+      const dx = endScreen.x - startScreen.x;
+      const prepHeights = [clamp(window.innerHeight * 0.034, 24, 34)];
+      prepHeights.push(clamp(prepHeights[0] * 1.7, 40, 58));
+      prepHeights.push(clamp(prepHeights[1] * 1.34, 52, 76));
+      const baseDurations = [clamp(window.innerHeight * 0.52, 380, 440)];
+      baseDurations.push(clamp(baseDurations[0] + 80, 420, 540));
+      baseDurations.push(clamp(baseDurations[1] + 70, 460, 620));
+      const prepDurations = baseDurations.map(scaleMotionDuration);
+      const previousArc = scaleMotionDuration(clamp(Math.abs(startScreen.y - endScreen.y) * 0.78 + Math.abs(dx) * 0.28 + 900, 1300, 2200) * 2.1);
+      const leadProgress = 0.65;
+      const leadDuration = previousArc * leadProgress;
+      const finalDuration = previousArc * (1 - leadProgress) * 1.6;
+      const arcDuration = leadDuration + finalDuration;
+      const prep1End = prepDurations[0];
+      const prep2End = prep1End + prepDurations[1];
+      const prep3End = prep2End + prepDurations[2];
+      const arcEnd = prep3End + arcDuration;
+      const apexY = clamp(window.innerHeight * 0.12, 72, 128);
+      const launchLift = clamp(window.innerHeight * 0.42, 260, 480);
+      const p0 = startScreen;
+      const p1 = { x: startScreen.x + dx * 0.08, y: Math.min(startScreen.y - launchLift, apexY + 120) };
+      const p2 = { x: window.innerWidth / 2, y: apexY };
+      const p3 = endScreen;
+      const cleanUrl = window.location.pathname + window.location.search;
+      let startTime = 0;
 
       if (!isCurrentAnimation(token)) {
-        debugNavBall("stale nav ball frame cancelled");
         return;
       }
 
       document.documentElement.classList.add("is-ball-animating");
 
       if (reducedMotion.matches) {
-        window.scrollTo(0, 0);
+        scrollInstantly(0);
         setBallPosition(endScreen.x, endScreen.y);
         updateCurrentSection("landing", true);
-        morphBallIntoPlus(token, targetId);
+        morphBallIntoPlus(token, {});
         return;
-      }
-
-      if (DEBUG_NAV_GEOMETRY) {
-        console.table({
-          isHomeReturn: true,
-          timelinePhases: "prepBounceSmall, prepBounceHigher, prepBounceHighest, homeReturnArc, morphToPlus",
-          firstPrepBounceHeight: round(firstPrepHeight),
-          secondPrepBounceHeight: round(secondPrepHeight),
-          thirdPrepBounceHeight: round(thirdPrepHeight),
-          firstPrepBounceDuration: round(firstPrepDuration),
-          secondPrepBounceDuration: round(secondPrepDuration),
-          thirdPrepBounceDuration: round(thirdPrepDuration),
-          noLandingBounces: true,
-          noRollAway: true,
-          homeTargetX: round(endScreen.x),
-          homeTargetY: round(endScreen.y)
-        });
-        console.debug("home timing", {
-          homeArcDuration: homeArcDuration,
-          finalHomeApproachDuration: finalHomeApproachDuration,
-          homeMorphDuration: homeMorphDuration
-        });
       }
 
       ball.classList.remove("is-forming", "is-landed", "is-ready", "is-landing", "is-contact-landing");
@@ -2364,14 +1460,7 @@
       resetTimelineShadow();
 
       function frame(now) {
-        var elapsed;
-        var arcElapsed;
-        var finalRaw;
-        var raw;
-        var point;
-
         if (!isCurrentAnimation(token)) {
-          debugNavBall("stale nav ball frame cancelled");
           return;
         }
 
@@ -2379,41 +1468,36 @@
           startTime = now;
         }
 
-        elapsed = clamp(now - startTime, 0, arcEnd);
+        const elapsed = clamp(now - startTime, 0, arcEnd);
+        let raw;
 
-        if (elapsed < prep1End) {
-          raw = elapsed / firstPrepDuration;
+        if (elapsed < prep3End) {
+          const index = elapsed < prep1End ? 0 : elapsed < prep2End ? 1 : 2;
+          const phaseStart = index === 0 ? 0 : index === 1 ? prep1End : prep2End;
+
+          raw = (elapsed - phaseStart) / prepDurations[index];
+          setBallPhase([PHASE.PREP1, PHASE.PREP2, PHASE.PREP3][index]);
           setState(STATES.BALL_TAKEOFF);
           ball.classList.add("is-launching", "is-lifting");
-          setBallPosition(startScreen.x, startScreen.y - bounceLift(raw, firstPrepHeight));
-        } else if (elapsed < prep2End) {
-          raw = (elapsed - prep1End) / secondPrepDuration;
-          setState(STATES.BALL_TAKEOFF);
-          ball.classList.add("is-launching", "is-lifting");
-          setBallPosition(startScreen.x, startScreen.y - bounceLift(raw, secondPrepHeight));
-        } else if (elapsed < prep3End) {
-          raw = (elapsed - prep2End) / thirdPrepDuration;
-          setState(STATES.BALL_TAKEOFF);
-          ball.classList.add("is-launching", "is-lifting");
-          setBallPosition(startScreen.x, startScreen.y - bounceLift(raw, thirdPrepHeight));
+          setBallPosition(startScreen.x, startScreen.y - bounceLift(raw, prepHeights[index]));
         } else if (elapsed < arcEnd) {
-          arcElapsed = elapsed - prep3End;
+          const arcElapsed = elapsed - prep3End;
 
-          if (arcElapsed < routeLeadDuration) {
-            raw = (arcElapsed / routeLeadDuration) * homeRouteLeadProgress;
+          if (arcElapsed < leadDuration) {
+            raw = (arcElapsed / leadDuration) * leadProgress;
           } else {
-            finalRaw = (arcElapsed - routeLeadDuration) / finalHomeApproachDuration;
-            raw = homeRouteLeadProgress + (1 - homeRouteLeadProgress) * easeOutCubic(finalRaw);
+            raw = leadProgress + (1 - leadProgress) * easeOutCubic((arcElapsed - leadDuration) / finalDuration);
           }
 
-          point = cubicPointAt(raw, path);
+          const point = cubicBezierPoint(p0, p1, p2, p3, raw);
+          setBallPhase(PHASE.MAIN);
           setState(STATES.BALL_FLYING);
           ball.classList.remove("is-launching", "is-lifting");
           ball.classList.add("is-flying");
-          window.scrollTo(0, mix(startScroll, 0, easeInOut(raw)));
+          scrollInstantly(mix(startScroll, 0, easeInOutCubic(raw)));
           setBallPosition(point.x, point.y);
         } else {
-          window.scrollTo(0, 0);
+          scrollInstantly(0);
           setBallPosition(endScreen.x, endScreen.y);
           resetTimelineShadow();
           updateCurrentSection("landing", true);
@@ -2422,7 +1506,7 @@
             window.history.replaceState(null, "", cleanUrl);
           }
 
-          morphBallIntoPlus(token, targetId, { duration: homeMorphDuration });
+          morphBallIntoPlus(token, { duration: 680 });
           return;
         }
 
@@ -2433,558 +1517,431 @@
       requestBallFrame(frame, token);
     }
 
-    function flyBall(startPoint, targetId, token) {
-      if (targetId === "landing") {
-        runHomeReturnMotion(startPoint, targetId, token);
-        return;
-      }
+    /* -------------------------------------------------------------- the trip: prep bounces -> main path (+ scroll) -> landing bounces -> roll */
 
-      var endPoint = targetPlatformFor(targetId);
-      var startScroll = window.scrollY || window.pageYOffset;
-      var config = createFlightConfig(startPoint, endPoint, targetId, startScroll);
-      var startTime = 0;
-      var impactVelocity = flightVelocityAt(1, config);
-      var impactVelocityY = Math.max(0, impactVelocity.y);
-      var ballSize = ballRadius() * 2;
-      var z = config.path && config.path.geometry && Number.isFinite(config.path.geometry.z) ?
-        config.path.geometry.z :
-        navBallMasterHeight(ballSize);
-      var bounceZ = z * NAV_BALL_BOUNCE_HEIGHT_SCALE;
-      var firstPrepHeight = bounceZ / 4;
-      var secondPrepHeight = bounceZ / 2;
-      var thirdPrepHeight = (3 * bounceZ) / 4;
-      var track = config.path && config.path.track ? config.path.track : createExactTrackMetrics(config.path.start, config.path.end, config.path.geometry);
-      var trajectoryDurationScale = clamp(track.totalLength / 720, 0.85, 1.08);
-      var firstPrepDuration = scaleMotionDuration(NAV_BALL_PREP_DURATIONS[0]);
-      var secondPrepDuration = scaleMotionDuration(NAV_BALL_PREP_DURATIONS[1]);
-      var thirdPrepDuration = scaleMotionDuration(NAV_BALL_PREP_DURATIONS[2]);
-      var preScrollDistance = Math.abs(config.finalScroll - config.startScroll);
-      var shouldPreScrollBeforeFlight = config.upward && preScrollDistance > 1;
-      var preScrollMotionDuration = shouldPreScrollBeforeFlight ?
-        scaleMotionDuration(clamp(preScrollDistance * 0.45, 520, 700)) :
-        0;
-      var launchDuration = scaleMotionDuration(NAV_BALL_TRAJECTORY_DURATIONS.launch * trajectoryDurationScale);
-      var arcDuration = scaleMotionDuration(NAV_BALL_TRAJECTORY_DURATIONS.arc * trajectoryDurationScale);
-      var fallDuration = scaleMotionDuration(NAV_BALL_TRAJECTORY_DURATIONS.fall * trajectoryDurationScale);
-      var firstLandingHeight = (3 * bounceZ) / 4;
-      var secondLandingHeight = bounceZ / 2;
-      var thirdLandingHeight = bounceZ / 4;
-      var firstLandingDuration = scaleMotionDuration(NAV_BALL_LANDING_DURATIONS[0]);
-      var secondLandingDuration = scaleMotionDuration(NAV_BALL_LANDING_DURATIONS[1]);
-      var thirdLandingDuration = scaleMotionDuration(NAV_BALL_LANDING_DURATIONS[2]);
-      var rollDuration = scaleMotionDuration(2180);
-      var prep1End = firstPrepDuration;
-      var prep2End = prep1End + secondPrepDuration;
-      var prep3End = prep2End + thirdPrepDuration;
-      var launchEnd = prep3End + launchDuration;
-      var arcEnd = launchEnd + arcDuration;
-      var fallEnd = arcEnd + fallDuration;
-      var rebound1End = fallEnd + firstLandingDuration;
-      var rebound2End = rebound1End + secondLandingDuration;
-      var rebound3End = rebound2End + thirdLandingDuration;
-      var rollEnd = rebound3End + rollDuration;
-      var rollDirection = rollDirectionFor(targetId);
-      var rollStartX = config.endScreen.x;
-      var rollEndX = rollDirection < 0 ? -ballRadius() - 18 : window.innerWidth + ballRadius() + 18;
-      var rollCircumference = Math.max(1, Math.PI * ballRadius() * 2);
-      var target = document.getElementById(targetId);
-      var cleanUrl = window.location.pathname + window.location.search;
-      var impactHandled = false;
-      var rollStarted = false;
-      var preScrollPrepared = !shouldPreScrollBeforeFlight;
-      var cameraDebugPhase = "";
-      var timingLogged = false;
-
-      if (config.upward && !shouldPreScrollBeforeFlight) {
-        config.cameraMode = "pre-scrolled-freeze";
-      }
+    function runTrip(A0, targetId, token) {
+      const isPhone = isMobileViewport();
+      const bounds = getSafeBounds({ allowFloor: targetId === "contact" });
+      const radius = ballRadius();
+      const z = tripBounceHeight(isPhone);
+      const prepHeights = [z / 4, z / 2, (3 * z) / 4];
+      const landingHeights = [(3 * z) / 4, z / 2, z / 4];
+      const prepDurations = NAV_BALL_PREP_DURATIONS.map(scaleMotionDuration);
+      const landingDurations = NAV_BALL_LANDING_DURATIONS.map(scaleMotionDuration);
+      const rollDuration = scaleMotionDuration(NAV_BALL_ROLL_DURATION);
+      const rollDirection = rollDirectionFor(targetId);
+      const rollCircumference = Math.max(1, Math.PI * radius * 2);
+      const target = document.getElementById(targetId);
+      const cleanUrl = window.location.pathname + window.location.search;
+      const scrollStart = currentScrollY(); // captured once; frozen until the main path starts
+      const debugInfo = {
+        deviceType: isPhone ? "phone" : "desktop/tablet",
+        pathMode: isPhone ? "phone-vertical" : NAV_BALL_PATH_MODE,
+        A0: copyPoint(A0),
+        z: z,
+        prepBases: [],
+        prepScroll: [],
+        landingBases: [],
+        scrollMovedDuringPrep: false,
+        scrollMovedDuringLanding: false,
+        lastPathProgress: 0,
+        lastScrollProgress: 0,
+        lateral: { min: A0.x, max: A0.x }
+      };
+      let endPoint = null; // measured only after the third prep bounce (the page has not moved, so nothing changes - but nothing is recomputed early either)
+      let scrollTarget = scrollStart;
+      let F = null;
+      let path = null;
+      let mainMs = 1;
+      let phase = PHASE.PREP1;
+      let phaseStart = 0;
+      let speedMin = Infinity;
+      let speedMax = 0;
+      let previousSample = null;
+      let rollStartX = 0;
+      let rollEndX = 0;
 
       if (!isCurrentAnimation(token)) {
-        debugNavBall("stale nav ball frame cancelled");
         return;
       }
 
       document.documentElement.classList.add("is-ball-animating");
 
       if (reducedMotion.matches) {
-        window.scrollTo(0, config.finalScroll);
-        setBallPosition(config.endScreen.x, config.endScreen.y);
+        const reducedEnd = targetPlatformFor(targetId);
+        const reducedScroll = resolveScrollTarget(reducedEnd, targetId, bounds);
+        const reducedPoint = resolveFinalLandingPoint(reducedEnd, reducedScroll, targetId, bounds);
+
+        scrollInstantly(reducedScroll);
+        setBallPosition(reducedPoint.x, reducedPoint.y);
         updateCurrentSection(targetId, true);
-        restorePlusAfterRoll(token, targetId);
+        showPlusInPlace(token, targetId);
         return;
-      }
-
-      if (DEBUG_NAV_GEOMETRY) {
-        var debugP0 = flightPointAt(0, config);
-        var debugP28 = flightPointAt(0.28, config);
-        var debugP48 = flightPointAt(0.48, config);
-        var debugP68 = flightPointAt(0.68, config);
-        var debugP100 = flightPointAt(1, config);
-        var debugGeometry = config.path.geometry || {};
-        var debugFinalVelocity = flightVelocityAt(1, config);
-
-        console.table({
-          isUpwardNavigation: config.upward,
-          timelinePhases: "prepBounceSmall, prepBounceHigher, prepBounceHighest, launchArc, impactReboundLarge, impactReboundSmall, impactReboundTiny, rollOut",
-          usedSetTimeoutForBounce: false,
-          transformTransitionDuringFlight: false,
-          usedEaseOutIntoLanding: false,
-          trajectoryKind: config.path.kind || "cubic",
-          launchXFixed: Math.abs(debugP0.x - debugP28.x) < 0.5,
-          capMovesX: Math.abs(debugP28.x - debugP48.x) > 0.5 || Math.abs(debugP48.x - debugP68.x) > 0.5,
-          fallXFixed: Math.abs(debugP68.x - debugP100.x) < 0.5,
-          z: round(z),
-          bounceZ: round(bounceZ),
-          a: round(debugGeometry.a),
-          m: round(debugGeometry.m),
-          topY: round(debugGeometry.topY),
-          arcBaseY: round(debugGeometry.arcBaseY),
-          overshoot: round(debugGeometry.overshoot),
-          requestedOvershoot: round(debugGeometry.requestedOvershoot),
-          safeTop: round(debugGeometry.safeTop),
-          bounceVisibleZMax: round(debugGeometry.bounceVisibleZMax),
-          apexY: round(debugGeometry.apexY),
-          visibilityLimited: Boolean(debugGeometry.visibilityLimited),
-          pointD: debugGeometry.D ? {
-            x: round(debugGeometry.D.x),
-            y: round(debugGeometry.D.y)
-          } : null,
-          pointC: debugGeometry.C ? {
-            x: round(debugGeometry.C.x),
-            y: round(debugGeometry.C.y)
-          } : null,
-          pointE: debugGeometry.E ? {
-            x: round(debugGeometry.E.x),
-            y: round(debugGeometry.E.y)
-          } : null,
-          firstPrepBounceHeight: round(firstPrepHeight),
-          secondPrepBounceHeight: round(secondPrepHeight),
-          thirdPrepBounceHeight: round(thirdPrepHeight),
-          firstPrepBounceDuration: round(firstPrepDuration),
-          secondPrepBounceDuration: round(secondPrepDuration),
-          thirdPrepBounceDuration: round(thirdPrepDuration),
-          bounceHeightScale: NAV_BALL_BOUNCE_HEIGHT_SCALE,
-          trajectoryDurationScale: round(trajectoryDurationScale),
-          launchDuration: round(launchDuration),
-          arcDuration: round(arcDuration),
-          fallDuration: round(fallDuration),
-          preScrollMotionDuration: round(preScrollMotionDuration),
-          trackLengthAscent: round(track.length1),
-          trackLengthArc: round(track.length2),
-          trackLengthDescent: round(track.length3),
-          trackLengthTotal: round(track.totalLength),
-          ascentEndProgress: round(track.ascentEndProgress),
-          descentStartProgress: round(track.descentStartProgress),
-          firstLandingBounceHeight: round(firstLandingHeight),
-          secondLandingBounceHeight: round(secondLandingHeight),
-          thirdLandingBounceHeight: round(thirdLandingHeight),
-          firstLandingBounceDuration: round(firstLandingDuration),
-          secondLandingBounceDuration: round(secondLandingDuration),
-          thirdLandingBounceDuration: round(thirdLandingDuration),
-          delayBetweenImpactAndBounceMs: 0,
-          impactVelocityY: round(impactVelocityY),
-          upwardArcLiftNew: config.upward ? round(config.path.start.y - config.path.apex.y) : 0,
-          usesCompositeTrajectory: Array.isArray(config.path.segments),
-          usesEaseOutNearLanding: false,
-          morphDurationNew: BALL_MORPH_DURATION
-        });
-        console.debug("exact landing velocity check", {
-          usedEaseOutNearLanding: false,
-          finalVelocity: debugFinalVelocity
-        });
-        console.debug("roll duration active", rollDuration);
       }
 
       ball.classList.remove("is-forming", "is-landed", "is-ready", "is-landing", "is-contact-landing");
       ball.classList.add("is-visible", "is-moving");
       resetTimelineShadow();
 
-      function markPreScrollComplete() {
-        if (preScrollPrepared) {
-          return;
-        }
-
-        preScrollPrepared = true;
-        config.cameraMode = "pre-scrolled-freeze";
-        window.scrollTo(0, config.finalScroll);
-      }
-
-      function syncPrepScroll(elapsedMs) {
-        var prepScrollRaw;
-        var prepScrollY;
-
-        if (!shouldPreScrollBeforeFlight || preScrollPrepared) {
-          return;
-        }
-
-        prepScrollRaw = clamp(preScrollMotionDuration > 0 ? elapsedMs / preScrollMotionDuration : 1, 0, 1);
-        prepScrollY = mix(config.startScroll, config.finalScroll, easeInOutSine(prepScrollRaw));
-        window.scrollTo(0, prepScrollY);
-
-        if (prepScrollRaw >= 1) {
-          preScrollPrepared = true;
-          config.cameraMode = "pre-scrolled-freeze";
+      function freezeScrollAt(y, flagName) {
+        if (Math.abs(currentScrollY() - y) > 0.5) {
+          debugInfo[flagName] = true;
+          scrollInstantly(y);
         }
       }
 
-      function debugCamera(phase, raw, scrollY, screenPoint) {
-        if (!DEBUG_NAV_BALL_CAMERA || cameraDebugPhase === phase) {
+      /* after prep bounce 3: compute the final scroll target, the final visible landing point F and the one continuous path */
+      function buildMainPath() {
+        endPoint = targetPlatformFor(targetId);
+        scrollTarget = resolveScrollTarget(endPoint, targetId, bounds);
+        F = resolveFinalLandingPoint(endPoint, scrollTarget, targetId, bounds);
+
+        if (isPhone) {
+          F = { x: A0.x, y: F.y }; // phone: the ball never moves sideways before the roll-away
+        }
+
+        const safeTop = visiblePathTopMargin(bounds);
+
+        path = isPhone ? buildPhonePath(A0, F, z, safeTop) : buildDesktopPath(A0, F, z, safeTop, NAV_BALL_PATH_MODE);
+        mainMs = Math.max(1, (path.totalLength / path.speed) * 1000);
+        rollStartX = F.x;
+        rollEndX = rollDirection < 0 ? -radius - 18 : window.innerWidth + radius + 18;
+
+        if (DEBUG_NAV_BALL_SEQUENCE || DEBUG_NAV_BALL_SPLINE || DEBUG_PHONE_NAV_BALL) {
+          const geometry = path.geometry || {};
+
+          console.table({
+            device: debugInfo.deviceType,
+            pathMode: path.mode,
+            A0: JSON.stringify(A0),
+            z: round(z),
+            prepBounceBase1: JSON.stringify(debugInfo.prepBases[0] || null),
+            prepBounceBase2: JSON.stringify(debugInfo.prepBases[1] || null),
+            prepBounceBase3: JSON.stringify(debugInfo.prepBases[2] || null),
+            prepScroll: JSON.stringify(debugInfo.prepScroll.map(round)),
+            scrollStart: round(scrollStart),
+            scrollTarget: round(scrollTarget),
+            F: JSON.stringify(F),
+            pathTotalLength: round(path.totalLength),
+            speed: path.speed,
+            visibilityAdjustment: round(path.visibilityAdjustment || 0),
+            safeTop: round(safeTop)
+          });
+
+          if (DEBUG_NAV_BALL_SPLINE && geometry.B) {
+            console.debug("nav ball spline points", { A: geometry.A, B: geometry.B, C: geometry.C, D: geometry.D, E: geometry.E, F: geometry.F });
+          }
+        }
+
+        if (debugInfo.scrollMovedDuringPrep) {
+          console.warn("BUG: scroll moved during prep bounces");
+        }
+
+        if (debugInfo.prepBases.some(function (base) {
+          return base && (Math.abs(base.x - A0.x) > 0.5 || Math.abs(base.y - A0.y) > 0.5);
+        })) {
+          console.warn("BUG: prep bounce base changed");
+        }
+      }
+
+      function phaseDuration(name) {
+        switch (name) {
+          case PHASE.PREP1:
+            return prepDurations[0];
+          case PHASE.PREP2:
+            return prepDurations[1];
+          case PHASE.PREP3:
+            return prepDurations[2];
+          case PHASE.MAIN:
+            return mainMs;
+          case PHASE.LAND1:
+            return landingDurations[0];
+          case PHASE.LAND2:
+            return landingDurations[1];
+          case PHASE.LAND3:
+            return landingDurations[2];
+          default:
+            return rollDuration;
+        }
+      }
+
+      function enterPhase(name) {
+        phase = name;
+        setBallPhase(name);
+
+        if (name === PHASE.PREP1 || name === PHASE.PREP2 || name === PHASE.PREP3) {
+          setState(STATES.BALL_TAKEOFF);
+          ball.classList.add("is-launching", "is-lifting");
+          debugInfo.prepBases.push(copyPoint(A0));
+          debugInfo.prepScroll.push(currentScrollY());
+          setTimelineShadow(0, 0.72);
           return;
         }
 
-        cameraDebugPhase = phase;
-        console.table({
-          phase: phase,
-          targetId: targetId,
-          scenario: config.upward ?
-            (config.endScreen.x < config.startScreen.x ? "B left of A and above A" : "B right of A and above A") :
-            (config.endScreen.x < config.startScreen.x ? "B left of A and below A" : "B right of A and below A"),
-          cameraMode: config.cameraMode,
-          progress: round(raw),
-          initialScroll: round(config.initialScroll),
-          startScroll: round(config.startScroll),
-          finalScroll: round(config.finalScroll),
-          currentScrollY: round(scrollY),
-          Ax: round(config.startScreen.x),
-          Ay: round(config.startScreen.y),
-          Bx: round(config.endScreen.x),
-          By: round(config.endScreen.y),
-          Dx: round(config.path.geometry && config.path.geometry.D && config.path.geometry.D.x),
-          Dy: round(config.path.geometry && config.path.geometry.D && config.path.geometry.D.y),
-          Cx: round(config.path.geometry && config.path.geometry.C && config.path.geometry.C.x),
-          Cy: round(config.path.geometry && config.path.geometry.C && config.path.geometry.C.y),
-          Ex: round(config.path.geometry && config.path.geometry.E && config.path.geometry.E.x),
-          Ey: round(config.path.geometry && config.path.geometry.E && config.path.geometry.E.y),
-          screenX: round(screenPoint && screenPoint.x),
-          screenY: round(screenPoint && screenPoint.y)
+        if (name === PHASE.MAIN) {
+          buildMainPath();
+          setState(STATES.BALL_FLYING);
+          ball.classList.remove("is-launching", "is-lifting", "is-landing", "is-landed", "is-arrived");
+          ball.classList.add("is-flying");
+          previousSample = null;
+          return;
+        }
+
+        if (name === PHASE.LAND1) {
+          /* exact landing: ball at F, scroll exactly at scrollTarget, then everything is frozen */
+          scrollInstantly(scrollTarget);
+          setBallPosition(F.x, F.y);
+          setState(STATES.BALL_LANDING);
+          ball.classList.remove("is-moving", "is-flying", "is-lifting", "is-launching");
+
+          if (endPoint.kind === "floor") {
+            ball.classList.add("is-contact-landing", "is-arrived");
+            setTimelineShadow(0, 0.72);
+          } else {
+            ball.classList.add("is-landing", "is-landed", "is-arrived");
+            setTimelineShadow(0.42, 1.32);
+          }
+
+          if (target) {
+            target.focus({ preventScroll: true });
+          }
+
+          updateCurrentSection(targetId, true);
+
+          if (window.history && window.history.replaceState) {
+            window.history.replaceState(null, "", "#" + targetId);
+          }
+
+          debugInfo.landingBases.push(copyPoint(F));
+          return;
+        }
+
+        if (name === PHASE.LAND2 || name === PHASE.LAND3) {
+          debugInfo.landingBases.push(copyPoint(F));
+          return;
+        }
+
+        if (name === PHASE.ROLL) {
+          setState(STATES.BALL_ROLLING_OUT);
+          ball.classList.remove("is-arrived", "is-landing", "is-landed");
+          ball.classList.add("is-rolling");
+
+          reportLandingSummary();
+        }
+      }
+
+      /* the BUG warnings only fire when something is really wrong; the tables only print when a debug flag is on */
+      function reportLandingSummary() {
+        const baseDrift = debugInfo.landingBases.some(function (base) {
+          return Math.abs(base.x - F.x) > 0.5 || Math.abs(base.y - F.y) > 0.5;
         });
+        const phoneLateral = isPhone && debugInfo.lateral.max - debugInfo.lateral.min > 0.5;
+
+        if (DEBUG_NAV_BALL_SEQUENCE || DEBUG_NAV_BALL_SPLINE || DEBUG_PHONE_NAV_BALL) {
+          console.table({
+            stage: "after-landing-bounces",
+            targetId: targetId,
+            mainSpeedMin: round(speedMin),
+            mainSpeedMax: round(speedMax),
+            lastPathProgress: round(debugInfo.lastPathProgress),
+            lastScrollProgress: round(debugInfo.lastScrollProgress),
+            scrollAtLanding: round(currentScrollY()),
+            scrollTarget: round(scrollTarget),
+            landingBase1: JSON.stringify(debugInfo.landingBases[0] || null),
+            landingBase2: JSON.stringify(debugInfo.landingBases[1] || null),
+            landingBase3: JSON.stringify(debugInfo.landingBases[2] || null),
+            scrollMovedDuringLanding: debugInfo.scrollMovedDuringLanding,
+            lateralRange: round(debugInfo.lateral.max - debugInfo.lateral.min)
+          });
+        }
+
+        if (baseDrift) {
+          console.warn("BUG: landing bounce base changed");
+        }
+
+        if (debugInfo.scrollMovedDuringLanding) {
+          console.warn("BUG: scroll moved during landing bounces");
+        }
+
+        if (phoneLateral) {
+          console.warn("BUG: phone ball has lateral motion");
+        }
       }
 
-      function applyImpact() {
-        if (impactHandled) {
-          return;
-        }
+      function renderPhase(name, elapsed, now) {
+        let raw;
+        let point;
 
-        impactHandled = true;
-        window.scrollTo(0, config.finalScroll);
-        setBallPosition(config.endScreen.x, config.endScreen.y);
-        debugRenderLandingTarget(endPoint, config.finalScroll);
-        setState(STATES.BALL_LANDING);
-        ball.classList.remove("is-moving", "is-flying", "is-lifting", "is-launching");
+        switch (name) {
+          case PHASE.PREP1:
+          case PHASE.PREP2:
+          case PHASE.PREP3: {
+            const index = name === PHASE.PREP1 ? 0 : name === PHASE.PREP2 ? 1 : 2;
 
-        if (endPoint.kind === "floor") {
-          ball.classList.add("is-contact-landing", "is-arrived");
-          setTimelineShadow(0, 0.72);
-        } else {
-          ball.classList.add("is-landing", "is-landed", "is-arrived");
-          setTimelineShadow(0.42, 1.32);
-        }
+            raw = elapsed / prepDurations[index];
+            freezeScrollAt(scrollStart, "scrollMovedDuringPrep");
+            point = bouncePoint(A0, prepHeights[index], raw);
+            setBallPosition(point.x, point.y);
+            applyBounceScale(raw, [0.68, 0.78, 0.9][index]);
+            setTimelineShadow(0, 0.72);
+            break;
+          }
 
-        if (target) {
-          target.focus({ preventScroll: true });
-        }
+          case PHASE.MAIN: {
+            const distance = Math.min(path.totalLength, (elapsed / 1000) * path.speed);
+            const progress = path.totalLength > 0 ? distance / path.totalLength : 1;
+            const scrollProgress = SCROLL_PROGRESS_MODE === "linear" ? progress : smootherstep(progress);
 
-        updateCurrentSection(targetId, true);
+            point = getPointAtDistance(path, distance);
+            debugInfo.lastPathProgress = progress;
+            debugInfo.lastScrollProgress = scrollProgress;
+            scrollInstantly(mix(scrollStart, scrollTarget, scrollProgress));
+            setBallPosition(point.x, point.y);
+            setBallScale(progress >= 0.72 ? 0.985 : 1, progress >= 0.72 ? 1.025 : 1);
 
-        if (window.history && window.history.replaceState) {
-          window.history.replaceState(null, "", targetId === "landing" ? cleanUrl : "#" + targetId);
-        }
-      }
+            if (endPoint.kind === "floor") {
+              setTimelineShadow(0, 0.72);
+            } else {
+              const approach = clamp((progress - 0.78) / 0.22, 0, 1);
 
-      function applyApproachShadow(raw) {
-        var approach = clamp((raw - 0.78) / 0.22, 0, 1);
-
-        if (endPoint.kind === "floor" || approach <= 0) {
-          setTimelineShadow(0, 0.72);
-          return;
-        }
-
-        setTimelineShadow(mix(0.06, 0.34, approach), mix(0.72, 1.18, approach));
-      }
-
-      function applyBounceShadow(raw, bounceIndex) {
-        var liftRatio = Math.sin(Math.PI * raw);
-        var compressedOpacity = bounceIndex === 1 ? 0.42 : bounceIndex === 2 ? 0.32 : 0.24;
-        var airborneOpacity = bounceIndex === 1 ? 0.1 : bounceIndex === 2 ? 0.16 : 0.2;
-        var compressedScale = bounceIndex === 1 ? 1.32 : bounceIndex === 2 ? 1.14 : 1.04;
-        var airborneScale = bounceIndex === 1 ? 0.62 : bounceIndex === 2 ? 0.8 : 0.92;
-
-        if (endPoint.kind === "floor") {
-          setTimelineShadow(0, 0.72);
-          return;
-        }
-
-        setTimelineShadow(mix(compressedOpacity, airborneOpacity, liftRatio), mix(compressedScale, airborneScale, liftRatio));
-      }
-
-      function launchPointAt(raw) {
-        var geometry = config.path.geometry;
-        var progress = launchProgress(raw);
-
-        return {
-          x: config.path.start.x,
-          y: mix(config.path.start.y, geometry.D.y, progress)
-        };
-      }
-
-      function arcPointAt(raw) {
-        var geometry = config.path.geometry;
-        var progress = clamp(raw, 0, 1);
-        var sx = smoothstep(progress);
-
-        return {
-          x: geometry.D.x + (geometry.E.x - geometry.D.x) * sx,
-          y: geometry.arcBaseY - geometry.arcHeight * 4 * progress * (1 - progress)
-        };
-      }
-
-      function fallPointAt(raw) {
-        var geometry = config.path.geometry;
-        var progress = fallProgress(raw);
-
-        return {
-          x: config.path.end.x,
-          y: mix(geometry.E.y, config.path.end.y, progress)
-        };
-      }
-
-      function scrollDuringFall(raw) {
-        if (!config.downward) {
-          return config.finalScroll;
-        }
-
-        return mix(config.startScroll, config.finalScroll, fallProgress(raw));
-      }
-
-      function logTimingSummary() {
-        if (!DEBUG_NAV_BALL_TIMING || timingLogged) {
-          return;
-        }
-
-        timingLogged = true;
-        console.table({
-          targetId: targetId,
-          prepBounceTotalDuration: round(prep3End),
-          launchDuration: round(launchDuration),
-          arcDuration: round(arcDuration),
-          fallDuration: round(fallDuration),
-          mainTrajectoryDuration: round(launchDuration + arcDuration + fallDuration),
-          landingBounceTotalDuration: round(firstLandingDuration + secondLandingDuration + thirdLandingDuration),
-          scrollDuration: round(preScrollMotionDuration),
-          rollDuration: round(rollDuration),
-          totalUntilRollStarts: round(rebound3End),
-          totalIncludingRoll: round(rollEnd)
-        });
-      }
-
-      function frame(now) {
-        if (!isCurrentAnimation(token)) {
-          debugNavBall("stale nav ball frame cancelled");
-          return;
-        }
-
-        if (!startTime) {
-          startTime = now;
-        }
-
-        var elapsed = now - startTime;
-        var raw = 0;
-        var point;
-        var screen;
-        var actualScroll;
-        var bouncePoint;
-        var rollRaw;
-        var easedRoll;
-        var x;
-        var rotation;
-
-        if (elapsed < prep1End) {
-          raw = elapsed / firstPrepDuration;
-          bouncePoint = evaluateBounce(config.startScreen.x, config.startScreen.y, firstPrepHeight, elapsed, firstPrepDuration);
-          setState(STATES.BALL_TAKEOFF);
-          ball.classList.add("is-launching", "is-lifting");
-          setBallPosition(bouncePoint.x, bouncePoint.y);
-          applyBounceScale(raw, 0.68);
-          syncPrepScroll(elapsed);
-          setTimelineShadow(0, 0.72);
-        } else if (elapsed < prep2End) {
-          raw = (elapsed - prep1End) / secondPrepDuration;
-          bouncePoint = evaluateBounce(config.startScreen.x, config.startScreen.y, secondPrepHeight, elapsed - prep1End, secondPrepDuration);
-          setState(STATES.BALL_TAKEOFF);
-          ball.classList.add("is-launching", "is-lifting");
-          setBallPosition(bouncePoint.x, bouncePoint.y);
-          applyBounceScale(raw, 0.78);
-          syncPrepScroll(elapsed);
-          setTimelineShadow(0, 0.72);
-        } else if (elapsed < prep3End) {
-          raw = (elapsed - prep2End) / thirdPrepDuration;
-          bouncePoint = evaluateBounce(config.startScreen.x, config.startScreen.y, thirdPrepHeight, elapsed - prep2End, thirdPrepDuration);
-          setState(STATES.BALL_TAKEOFF);
-          ball.classList.add("is-launching", "is-lifting");
-          setBallPosition(bouncePoint.x, bouncePoint.y);
-          applyBounceScale(raw, 0.9);
-          syncPrepScroll(elapsed);
-          setTimelineShadow(0, 0.72);
-        } else if (elapsed < launchEnd) {
-          markPreScrollComplete();
-          raw = (elapsed - prep3End) / launchDuration;
-          point = launchPointAt(raw);
-          actualScroll = config.downward ? config.startScroll : config.finalScroll;
-          screen = point;
-
-          setState(STATES.BALL_FLYING);
-          ball.classList.remove("is-launching", "is-lifting", "is-landing", "is-landed", "is-arrived");
-          ball.classList.add("is-flying");
-          window.scrollTo(0, actualScroll);
-          setBallPosition(screen.x, screen.y);
-          setBallScale(1, 1);
-          debugRenderLandingTarget(endPoint, config.finalScroll);
-          setTimelineShadow(0, 0.72);
-          debugCamera("main-flight-launch", raw, actualScroll, screen);
-        } else if (elapsed < arcEnd) {
-          raw = (elapsed - launchEnd) / arcDuration;
-          point = arcPointAt(raw);
-          actualScroll = config.downward ? config.startScroll : config.finalScroll;
-          screen = point;
-
-          setState(STATES.BALL_FLYING);
-          ball.classList.remove("is-launching", "is-lifting", "is-landing", "is-landed", "is-arrived");
-          ball.classList.add("is-flying");
-          window.scrollTo(0, actualScroll);
-          setBallPosition(screen.x, screen.y);
-          setBallScale(1, 1);
-          debugRenderLandingTarget(endPoint, config.finalScroll);
-          setTimelineShadow(0, 0.72);
-          debugCamera("main-flight-arc", raw, actualScroll, screen);
-        } else if (elapsed < fallEnd) {
-          raw = (elapsed - arcEnd) / fallDuration;
-          point = fallPointAt(raw);
-          actualScroll = scrollDuringFall(raw);
-          screen = point;
-
-          setState(STATES.BALL_FLYING);
-          ball.classList.remove("is-launching", "is-lifting", "is-landing", "is-landed", "is-arrived");
-          ball.classList.add("is-flying");
-          window.scrollTo(0, actualScroll);
-          setBallPosition(screen.x, screen.y);
-          setBallScale(0.985, 1.025);
-          debugRenderLandingTarget(endPoint, config.finalScroll);
-          applyApproachShadow(0.78 + 0.22 * fallProgress(raw));
-          debugCamera("main-flight-descent", raw, actualScroll, screen);
-        } else {
-          applyImpact();
-
-          if (elapsed < rebound1End) {
-            raw = (elapsed - fallEnd) / firstLandingDuration;
-            bouncePoint = evaluateBounce(config.endScreen.x, config.endScreen.y, firstLandingHeight, elapsed - fallEnd, firstLandingDuration);
-            setBallPosition(bouncePoint.x, bouncePoint.y);
-            applyBounceScale(raw, 1);
-            applyBounceShadow(raw, 1);
-          } else if (elapsed < rebound2End) {
-            raw = (elapsed - rebound1End) / secondLandingDuration;
-            bouncePoint = evaluateBounce(config.endScreen.x, config.endScreen.y, secondLandingHeight, elapsed - rebound1End, secondLandingDuration);
-            setBallPosition(bouncePoint.x, bouncePoint.y);
-            applyBounceScale(raw, 0.72);
-            applyBounceShadow(raw, 2);
-          } else if (elapsed < rebound3End) {
-            raw = (elapsed - rebound2End) / thirdLandingDuration;
-            bouncePoint = evaluateBounce(config.endScreen.x, config.endScreen.y, thirdLandingHeight, elapsed - rebound2End, thirdLandingDuration);
-            setBallPosition(bouncePoint.x, bouncePoint.y);
-            applyBounceScale(raw, 0.48);
-            applyBounceShadow(raw, 3);
-          } else if (elapsed < rollEnd) {
-            logTimingSummary();
-
-            if (!rollStarted) {
-              rollStarted = true;
-              setState(STATES.BALL_ROLLING_OUT);
-              ball.classList.remove("is-arrived", "is-landing", "is-landed");
-              ball.classList.add("is-rolling");
+              setTimelineShadow(approach <= 0 ? 0 : mix(0.06, 0.34, approach), approach <= 0 ? 0.72 : mix(0.72, 1.18, approach));
             }
 
-            rollRaw = (elapsed - rebound3End) / rollDuration;
-            easedRoll = easeRollOut(rollRaw);
-            x = mix(rollStartX, rollEndX, easedRoll);
-            rotation = rollDirection * (Math.abs(x - rollStartX) / rollCircumference) * 360;
+            if (previousSample && now > previousSample.now) {
+              const speed = Math.hypot(point.x - previousSample.x, point.y - previousSample.y) / ((now - previousSample.now) / 1000);
 
-            ball.style.setProperty("--ball-rotation", rotation + "deg");
-            setBallPosition(x, config.endScreen.y);
+              speedMin = Math.min(speedMin, speed);
+              speedMax = Math.max(speedMax, speed);
+            }
+
+            previousSample = { x: point.x, y: point.y, now: now };
+            debugInfo.lateral.min = Math.min(debugInfo.lateral.min, point.x);
+            debugInfo.lateral.max = Math.max(debugInfo.lateral.max, point.x);
+            break;
+          }
+
+          case PHASE.LAND1:
+          case PHASE.LAND2:
+          case PHASE.LAND3: {
+            const index = name === PHASE.LAND1 ? 0 : name === PHASE.LAND2 ? 1 : 2;
+
+            raw = elapsed / landingDurations[index];
+            freezeScrollAt(scrollTarget, "scrollMovedDuringLanding");
+            point = bouncePoint(F, landingHeights[index], raw);
+            setBallPosition(point.x, point.y);
+            applyBounceScale(raw, [1, 0.72, 0.48][index]);
+
+            if (endPoint.kind === "floor") {
+              setTimelineShadow(0, 0.72);
+            } else {
+              const lift = Math.sin(Math.PI * clamp(raw, 0, 1));
+              const compressedOpacity = [0.42, 0.32, 0.24][index];
+              const airborneOpacity = [0.1, 0.16, 0.2][index];
+              const compressedScale = [1.32, 1.14, 1.04][index];
+              const airborneScale = [0.62, 0.8, 0.92][index];
+
+              setTimelineShadow(mix(compressedOpacity, airborneOpacity, lift), mix(compressedScale, airborneScale, lift));
+            }
+
+            break;
+          }
+
+          default: {
+            raw = elapsed / rollDuration;
+            freezeScrollAt(scrollTarget, "scrollMovedDuringLanding");
+            const eased = easeRollOut(raw);
+            const x = mix(rollStartX, rollEndX, eased);
+
+            ball.style.setProperty("--ball-rotation", rollDirection * (Math.abs(x - rollStartX) / rollCircumference) * 360 + "deg");
+            setBallPosition(x, F.y);
             setBallScale(1, 1);
 
             if (endPoint.kind === "floor") {
               setTimelineShadow(0, 0.72);
             } else {
-              setTimelineShadow(mix(0.3, 0, rollRaw), mix(1.08, 0.72, rollRaw));
+              setTimelineShadow(mix(0.3, 0, clamp(raw, 0, 1)), mix(1.08, 0.72, clamp(raw, 0, 1)));
             }
-          } else {
-            restorePlusAfterRoll(token, targetId);
-            return;
           }
         }
+      }
 
+      function frame(now) {
+        if (!isCurrentAnimation(token)) {
+          return;
+        }
+
+        if (!phaseStart) {
+          phaseStart = now;
+          enterPhase(PHASE.PREP1);
+        }
+
+        /* leave finished phases; leftover time carries into the next one so the rhythm never drifts */
+        let guard = 0;
+
+        while (guard < 12) {
+          guard += 1;
+
+          const duration = phaseDuration(phase);
+          const elapsed = now - phaseStart;
+
+          if (elapsed < duration) {
+            break;
+          }
+
+          const nextIndex = PHASE_ORDER.indexOf(phase) + 1;
+
+          renderPhase(phase, duration, now); // final, exact pose of the phase that just ended
+
+          if (nextIndex >= PHASE_ORDER.length) {
+            showPlusInPlace(token, targetId);
+            return;
+          }
+
+          phaseStart += duration;
+          enterPhase(PHASE_ORDER[nextIndex]);
+        }
+
+        renderPhase(phase, now - phaseStart, now);
         requestBallFrame(frame, token);
       }
 
       requestBallFrame(frame, token);
     }
 
-    function chooseDestination(button) {
-      if (isTravelling || isProjectMode) {
+    function flyBall(startPoint, targetId, token) {
+      if (targetId === "landing" && HOME_TRIP_CLOSES_INTO_PLUS) {
+        runHomeReturnMotion(startPoint, targetId, token);
         return;
       }
 
-      var targetId = button.getAttribute("data-nav-target");
-      var target = document.getElementById(targetId);
-      var label = button.textContent.trim();
-      var buttonRect = button.getBoundingClientRect();
-      var startX = buttonRect.left + buttonRect.width / 2;
-      var startY = buttonRect.top + buttonRect.height / 2;
-      var scrollY = window.scrollY || window.pageYOffset;
-      var delayForLandingAnimation = shouldDelayForLandingAnimation(targetId);
-      var morphDuration = reducedMotion.matches ? 1 : delayForLandingAnimation ? 1500 : BALL_MORPH_DURATION;
-      var landingInterruptPromise = null;
-      var startPoint = {
-        element: button,
-        section: "menu",
-        side: "center",
-        kind: "navi-circle",
-        x: startX,
-        y: startY + scrollY + ballRadius(),
-        width: buttonRect.width,
-        height: buttonRect.height
-      };
+      runTrip(startPoint, targetId, token);
+    }
+
+    /* -------------------------------------------------------------- choosing a destination: circle -> ball */
+
+    function chooseDestination(button) {
+      if (isTravelling || isProjectMode || isBallAnimating || isPhoneNavOpening) {
+        return;
+      }
+
+      const targetId = button.getAttribute("data-nav-target");
+      const target = document.getElementById(targetId);
 
       if (!target) {
         return;
       }
 
-      var token = beginBallAnimation(targetId);
-      var isHomeReturn = targetId === "landing";
-      var homeTarget = null;
-      var debugEndPoint = isHomeReturn ? null : targetPlatformFor(targetId);
-      var debugConfig = debugEndPoint ? createFlightConfig(startPoint, debugEndPoint, targetId, scrollY) : null;
-      debugRenderBase();
-      debugOverlay.marker("ball start", startX, startY, "rgb(132, 0, 255)");
-      if (isHomeReturn) {
-        homeTarget = readPlusGeometry();
-        debugOverlay.clearTrajectory();
-        debugOverlay.clearOutline();
-        debugOverlay.marker("landing target", homeTarget.measuredPlusCentreX, homeTarget.measuredPlusCentreY, "rgb(220, 0, 0)");
-      } else {
-        debugRenderLandingTarget(debugEndPoint, debugConfig.finalScroll);
-        debugRenderTrajectory(startPoint, debugEndPoint, targetId, scrollY);
-      }
-      debugLogGeometry({
-        selectedNaviCircle: label,
-        selectedNaviCircleCentreX: startX,
-        selectedNaviCircleCentreY: startY,
-        ballStartX: startX,
-        ballStartY: startY,
-        landingTargetX: isHomeReturn ? homeTarget.measuredPlusCentreX : debugConfig.endScreen.x,
-        landingTargetY: isHomeReturn ? homeTarget.measuredPlusCentreY : debugConfig.endScreen.y
-      });
+      const buttonRect = button.getBoundingClientRect();
+      const A0 = { x: buttonRect.left + buttonRect.width / 2, y: buttonRect.top + buttonRect.height / 2 };
+      const delayForLandingAnimation = shouldDelayForLandingAnimation(targetId);
+      const morphDuration = reducedMotion.matches ? 1 : delayForLandingAnimation ? 1500 : BALL_MORPH_DURATION;
+      let landingInterruptPromise = null;
+      const token = beginBallAnimation();
 
       isTravelling = true;
+      isBallAnimating = true;
+      lockUserScroll();
+      document.documentElement.classList.add("is-ball-animating");
       setState(STATES.NAVI_SELECTED);
       nav.classList.remove("is-open");
       nav.classList.add("is-choosing");
@@ -2994,7 +1951,7 @@
       });
       setMenuA11y(false);
 
-      setBallPosition(startX, startY);
+      setBallPosition(A0.x, A0.y);
       ball.style.opacity = "";
       ball.style.setProperty("--ball-lift", "0px");
       ball.style.setProperty("--ball-scale-x", "1");
@@ -3003,6 +1960,7 @@
       ball.style.setProperty("--nav-ball-form-duration", morphDuration + "ms");
       ballLabel.textContent = "";
       resetBallClasses();
+      setBallPhase(PHASE.MORPH);
       ball.classList.add("is-visible", "is-forming");
 
       if (delayForLandingAnimation) {
@@ -3023,21 +1981,19 @@
         ball.classList.remove("is-forming");
         ball.classList.add("is-ready");
 
-        waitForLandingAnimationBeforeFlight(targetId, landingInterruptPromise).then(function () {
+        function go() {
           if (!isCurrentAnimation(token)) {
             return;
           }
 
-          flyBall(startPoint, targetId, token);
-        }, function () {
-          if (!isCurrentAnimation(token)) {
-            return;
-          }
+          flyBall(A0, targetId, token);
+        }
 
-          flyBall(startPoint, targetId, token);
-        });
+        (landingInterruptPromise || startLandingAnimationInterrupt(targetId)).then(go, go);
       }, morphDuration, token);
     }
+
+    /* -------------------------------------------------------------- events */
 
     core.addEventListener("click", function (event) {
       if (isProjectMode) {
@@ -3050,7 +2006,25 @@
         event.preventDefault();
       }
 
+      if (isTravelling || isBallAnimating) {
+        return; // never start a second animation
+      }
+
       if (canUseHoverNav() && isOpen) {
+        return;
+      }
+
+      if (usesStagedMenuOpen() && !isOpen) {
+        if (isPhoneNavOpening) {
+          return; // repeated tap while opening: ignored
+        }
+
+        notifyLandingPlusOpened();
+        openStagedMenu();
+        return;
+      }
+
+      if (isPhoneNavOpening) {
         return;
       }
 
@@ -3058,16 +2032,11 @@
         notifyLandingPlusOpened();
       }
 
-      if ((isMobileViewport() || isTabletLandscapeTouchViewport()) && !isOpen) {
-        preparePhoneMenuOpen();
-        return;
-      }
-
       setOpen(!isOpen);
     });
 
     nav.addEventListener("pointerenter", function () {
-      if (canUseHoverNav() && !isProjectMode) {
+      if (canUseHoverNav() && !isProjectMode && !isBallAnimating) {
         if (!isOpen) {
           notifyLandingPlusOpened();
         }
@@ -3112,7 +2081,7 @@
     });
 
     document.addEventListener("click", function (event) {
-      if (!nav.contains(event.target) && isOpen) {
+      if (!nav.contains(event.target) && isOpen && !isTravelling) {
         setOpen(false);
       }
     });
@@ -3142,7 +2111,6 @@
     setMenuA11y(false);
     setState(STATES.PLUS_IDLE);
     updateCurrentSection(detectCurrentSection(), true);
-    debugRenderBase();
   }
 
   window.HariniNavigationBall = {
