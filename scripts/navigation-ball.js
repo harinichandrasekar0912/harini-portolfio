@@ -8,7 +8,7 @@
  *   -> three landing bounces at F (3z/4, z/2, z/4) -> roll out of the screen -> travelling ball hidden -> plus fades in IN PLACE.
  * Phone (max-width: 767px): same sequence, but the ball never moves sideways before the roll-away (F.x = A.x, vertical quadratic Bezier).
  *
- * Obsolete experimental path systems (obstacle nudging, "exact" trajectory, composite camera modes, debug overlay) were removed so
+ * Obsolete experimental path systems (obstacle nudging, "exact" trajectory, composite camera modes) were removed so
  * that nothing can run by accident. The path modes below share ONE arc-length engine; NAV_BALL_PATH_MODE switches them.
  */
 (function () {
@@ -26,6 +26,8 @@
   const DEBUG_NAV_BALL_SEQUENCE = false;
   const DEBUG_NAV_BALL_SPLINE = false;
   const DEBUG_PHONE_NAV_BALL = false;
+  const DEBUG_NAV_TRAJECTORY_OVERLAY = true;
+  const DEBUG_NAV_TRAJECTORY_LOGS = true;
 
   const MAIN_PATH_SPEED = 430; // px/s along the desktop/tablet path (constant, no easing)
   const PHONE_PATH_SPEED = 380; // px/s along the phone path
@@ -617,6 +619,7 @@
     let ballFrames = [];
     let ballTimers = [];
     let scrollLockActive = false;
+    let navTrajectoryDebug = null;
 
     Array.prototype.slice.call(document.querySelectorAll("[data-travel-ball]")).forEach(function (travelBall, index) {
       if (index > 0) {
@@ -659,6 +662,400 @@
 
     function canUseHoverNav() {
       return canHover.matches && !isMobileTapMode();
+    }
+
+    /* -------------------------------------------------------------- temporary trajectory debug overlay */
+
+    function createNavTrajectoryDebugOverlay() {
+      const svgNamespace = "http://www.w3.org/2000/svg";
+      const phaseColours = {
+        prep: "#ff8a00",
+        main: "#ff1f1f",
+        landing: "#ff4fb3",
+        roll: "#777777",
+        other: "#111111"
+      };
+      const state = {
+        overlay: null,
+        panel: null,
+        layers: {},
+        tracePoints: {
+          prep: [],
+          main: [],
+          landing: [],
+          roll: [],
+          other: []
+        },
+        active: false,
+        info: {},
+        panelInfo: {},
+        phoneGuideX: null,
+        phoneLateralWarned: false
+      };
+
+      function svgElement(tagName, attributes) {
+        const element = document.createElementNS(svgNamespace, tagName);
+
+        Object.keys(attributes || {}).forEach(function (key) {
+          element.setAttribute(key, String(attributes[key]));
+        });
+
+        return element;
+      }
+
+      function ensure() {
+        if (!DEBUG_NAV_TRAJECTORY_OVERLAY) {
+          return false;
+        }
+
+        if (!state.overlay) {
+          state.overlay = document.querySelector(".nav-debug-overlay");
+
+          if (!state.overlay) {
+            state.overlay = svgElement("svg", {
+              class: "nav-debug-overlay",
+              "aria-hidden": "true",
+              focusable: "false"
+            });
+            document.body.appendChild(state.overlay);
+          }
+        }
+
+        if (!state.panel) {
+          state.panel = document.querySelector(".nav-debug-panel");
+
+          if (!state.panel) {
+            state.panel = document.createElement("div");
+            state.panel.className = "nav-debug-panel";
+            document.body.appendChild(state.panel);
+          }
+        }
+
+        state.overlay.setAttribute("viewBox", "0 0 " + window.innerWidth + " " + window.innerHeight);
+        state.overlay.setAttribute("width", String(window.innerWidth));
+        state.overlay.setAttribute("height", String(window.innerHeight));
+        state.overlay.style.display = "";
+        state.panel.style.display = "";
+        return true;
+      }
+
+      function pointsToString(points) {
+        return points.map(function (point) {
+          return round(point.x) + "," + round(point.y);
+        }).join(" ");
+      }
+
+      function clear() {
+        if (!ensure()) {
+          return;
+        }
+
+        state.overlay.innerHTML = "";
+        state.layers = {
+          intended: svgElement("g", { "data-debug-layer": "intended" }),
+          samples: svgElement("g", { "data-debug-layer": "samples" }),
+          points: svgElement("g", { "data-debug-layer": "points" }),
+          bases: svgElement("g", { "data-debug-layer": "bases" }),
+          trace: svgElement("g", { "data-debug-layer": "trace" })
+        };
+
+        Object.keys(state.layers).forEach(function (key) {
+          state.overlay.appendChild(state.layers[key]);
+        });
+
+        state.tracePoints = {
+          prep: [],
+          main: [],
+          landing: [],
+          roll: [],
+          other: []
+        };
+      }
+
+      function traceKeyForPhase(phase) {
+        if (phase === PHASE.PREP1 || phase === PHASE.PREP2 || phase === PHASE.PREP3) {
+          return "prep";
+        }
+
+        if (phase === PHASE.MAIN) {
+          return "main";
+        }
+
+        if (phase === PHASE.LAND1 || phase === PHASE.LAND2 || phase === PHASE.LAND3) {
+          return "landing";
+        }
+
+        if (phase === PHASE.ROLL) {
+          return "roll";
+        }
+
+        return "other";
+      }
+
+      function drawLabel(text, x, y, colour) {
+        state.layers.points.appendChild(svgElement("text", {
+          class: "nav-debug-label",
+          x: x + 8,
+          y: y - 8,
+          fill: colour || "#111"
+        })).textContent = text;
+      }
+
+      function drawPoint(label, point, colour, radius) {
+        if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+          return;
+        }
+
+        state.layers.points.appendChild(svgElement("circle", {
+          cx: point.x,
+          cy: point.y,
+          r: radius || 5,
+          fill: colour,
+          stroke: "#ffffff",
+          "stroke-width": 2
+        }));
+        drawLabel(label, point.x, point.y, colour);
+      }
+
+      function drawRing(label, point, colour, radius) {
+        if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+          return;
+        }
+
+        state.layers.bases.appendChild(svgElement("circle", {
+          cx: point.x,
+          cy: point.y,
+          r: radius || 7,
+          fill: "none",
+          stroke: colour,
+          "stroke-width": 2.5
+        }));
+        state.layers.bases.appendChild(svgElement("text", {
+          class: "nav-debug-label",
+          x: point.x + 9,
+          y: point.y + 14,
+          fill: colour
+        })).textContent = label;
+      }
+
+      function updateTracePath(key) {
+        const points = state.tracePoints[key];
+        let path = state.layers.trace.querySelector("[data-trace-phase='" + key + "']");
+
+        if (!path) {
+          path = svgElement("polyline", {
+            "data-trace-phase": key,
+            fill: "none",
+            stroke: phaseColours[key],
+            "stroke-width": key === "main" ? 2.5 : 2,
+            "stroke-linecap": "round",
+            "stroke-linejoin": "round",
+            opacity: key === "other" ? 0.55 : 0.9
+          });
+          state.layers.trace.appendChild(path);
+        }
+
+        path.setAttribute("points", pointsToString(points));
+      }
+
+      function setPanel(extra) {
+        if (!ensure()) {
+          return;
+        }
+
+        state.panelInfo = Object.assign({}, state.panelInfo, extra || {});
+        state.panel.innerHTML = [
+          "device: " + (state.panelInfo.deviceType || "-"),
+          "path mode: " + (state.panelInfo.pathMode || "-"),
+          "phase: " + (state.panelInfo.phase || "-"),
+          "scrollStart: " + round(state.panelInfo.scrollStart),
+          "scrollTarget: " + round(state.panelInfo.scrollTarget),
+          "scrollY: " + round(currentScrollY()),
+          "pathProgress: " + round(state.panelInfo.pathProgress || 0),
+          "distanceTravelled: " + round(state.panelInfo.distanceTravelled || 0),
+          "totalPathLength: " + round(state.panelInfo.totalPathLength || 0),
+          "scroll frozen: " + Boolean(state.panelInfo.scrollFrozen),
+          "scroll moved during prep: " + Boolean(state.panelInfo.scrollMovedDuringPrep),
+          "scroll moved during landing: " + Boolean(state.panelInfo.scrollMovedDuringLanding)
+        ].join("<br>");
+      }
+
+      function startTrip(info) {
+        clear();
+        state.active = true;
+        state.info = Object.assign({}, info || {});
+        state.panelInfo = Object.assign({}, info || {}, {
+          phase: PHASE.MORPH,
+          pathProgress: 0,
+          distanceTravelled: 0,
+          totalPathLength: 0,
+          scrollFrozen: true,
+          scrollMovedDuringPrep: false,
+          scrollMovedDuringLanding: false
+        });
+        state.phoneGuideX = null;
+        state.phoneLateralWarned = false;
+        setPanel();
+
+        if (state.info.A0) {
+          drawPoint("A", state.info.A0, "#ff8a00", 5);
+          drawRing("prep base", state.info.A0, "#ff8a00", 9);
+        }
+      }
+
+      function drawPath(path, options) {
+        const geometry = path && path.geometry ? path.geometry : {};
+        const samples = path && Array.isArray(path.samples) ? path.samples : [];
+        const sampleStep = Math.max(1, Math.ceil(samples.length / 80));
+        const FVisual = options && options.FVisual;
+        const FPhone = options && options.FPhone;
+
+        if (!ensure() || !path || samples.length === 0) {
+          return;
+        }
+
+        state.layers.intended.appendChild(svgElement("polyline", {
+          points: pointsToString(samples),
+          fill: "none",
+          stroke: "#0057ff",
+          "stroke-width": 3,
+          "stroke-linecap": "round",
+          "stroke-linejoin": "round"
+        }));
+
+        samples.forEach(function (sample, index) {
+          if (index % sampleStep !== 0 && index !== samples.length - 1) {
+            return;
+          }
+
+          state.layers.samples.appendChild(svgElement("circle", {
+            cx: sample.x,
+            cy: sample.y,
+            r: 2,
+            fill: "#0057ff",
+            opacity: 0.6
+          }));
+        });
+
+        if (path.mode === "phone-vertical") {
+          drawPoint("A", geometry.A, "#ff8a00", 5);
+          drawPoint("C", geometry.C, "#ff1f1f", 5);
+          drawPoint("F", geometry.F, "#ff00d4", 5);
+
+          if (FVisual) {
+            drawPoint("FVisual original", FVisual, "#888888", 4);
+          }
+
+          if (FPhone) {
+            drawPoint("FPhone x = A.x", FPhone, "#ff00d4", 5);
+            state.phoneGuideX = geometry.A && Number.isFinite(geometry.A.x) ? geometry.A.x : FPhone.x;
+            state.layers.intended.appendChild(svgElement("line", {
+              x1: state.phoneGuideX,
+              y1: 0,
+              x2: state.phoneGuideX,
+              y2: window.innerHeight,
+              stroke: "#32ff00",
+              "stroke-width": 2,
+              "stroke-dasharray": "8 8"
+            }));
+          }
+        } else {
+          drawPoint("A", geometry.A, "#ff8a00", 5);
+          drawPoint("B", geometry.P1 || geometry.DHigh, "#16a34a", 5);
+          drawPoint("C", geometry.C, "#ff1f1f", 5);
+          drawPoint("D", geometry.P2 || geometry.EHigh, "#7c3aed", 5);
+          drawPoint("E", geometry.E, "#00c7d9", 5);
+          drawPoint("F", geometry.F, "#ff00d4", 5);
+        }
+
+        setPanel({
+          pathMode: path.mode,
+          totalPathLength: path.totalLength
+        });
+
+        if (DEBUG_NAV_TRAJECTORY_LOGS) {
+          console.table({
+            stage: "nav-trajectory-debug-path",
+            pathMode: path.mode,
+            sampleCount: samples.length,
+            totalPathLength: round(path.totalLength),
+            A: JSON.stringify(geometry.A || null),
+            B: JSON.stringify(geometry.P1 || geometry.DHigh || null),
+            C: JSON.stringify(geometry.C || null),
+            D: JSON.stringify(geometry.P2 || geometry.EHigh || null),
+            E: JSON.stringify(geometry.E || null),
+            F: JSON.stringify(geometry.F || null),
+            FVisualOriginal: JSON.stringify(FVisual || null),
+            FPhone: JSON.stringify(FPhone || null)
+          });
+        }
+      }
+
+      function addTracePoint(phase, point) {
+        const key = traceKeyForPhase(phase);
+        const points = state.tracePoints[key];
+        const last = points[points.length - 1];
+
+        if (!state.active || !point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+          return;
+        }
+
+        if (!last || Math.abs(last.x - point.x) > 0.15 || Math.abs(last.y - point.y) > 0.15) {
+          points.push({ x: point.x, y: point.y });
+          updateTracePath(key);
+        }
+
+        if (
+          state.phoneGuideX !== null &&
+          phase !== PHASE.ROLL &&
+          phase !== PHASE.PLUS &&
+          Math.abs(point.x - state.phoneGuideX) > 0.5 &&
+          !state.phoneLateralWarned
+        ) {
+          state.phoneLateralWarned = true;
+
+          if (DEBUG_NAV_TRAJECTORY_LOGS) {
+            console.warn("BUG: phone ball has lateral motion", point.x, state.phoneGuideX);
+          }
+        }
+      }
+
+      function drawPrepBase(index, point) {
+        const colours = ["#ff8a00", "#ffd400", "#ff1f1f"];
+
+        drawRing("prep base " + (index + 1), point, colours[index] || "#ff8a00", 8 + index * 2);
+      }
+
+      function drawLandingBase(index, point) {
+        const colours = ["#ff00d4", "#8b5cf6", "#ff80c8"];
+
+        drawRing("landing base " + (index + 1), point, colours[index] || "#ff00d4", 8 + index * 2);
+      }
+
+      function updateFrame(extra) {
+        setPanel(extra);
+      }
+
+      return {
+        startTrip: startTrip,
+        drawPath: drawPath,
+        addTracePoint: addTracePoint,
+        drawPrepBase: drawPrepBase,
+        drawLandingBase: drawLandingBase,
+        updateFrame: updateFrame
+      };
+    }
+
+    function getTrajectoryDebugOverlay() {
+      if (!DEBUG_NAV_TRAJECTORY_OVERLAY) {
+        return null;
+      }
+
+      if (!navTrajectoryDebug) {
+        navTrajectoryDebug = createNavTrajectoryDebugOverlay();
+      }
+
+      return navTrajectoryDebug;
     }
 
     function motionScale() {
@@ -848,6 +1245,10 @@
     function setBallPosition(x, y) {
       ball.style.setProperty("--ball-x", x + "px");
       ball.style.setProperty("--ball-y", y + "px");
+
+      if (navTrajectoryDebug) {
+        navTrajectoryDebug.addTracePoint(ball.dataset.ballPhase || PHASE.MORPH, { x: x, y: y });
+      }
     }
 
     function setBallScale(scaleX, scaleY) {
@@ -1601,9 +2002,11 @@
         lastScrollProgress: 0,
         lateral: { min: A0.x, max: A0.x }
       };
+      const trajectoryDebug = getTrajectoryDebugOverlay();
       let endPoint = null; // measured only after the third prep bounce (the page has not moved, so nothing changes - but nothing is recomputed early either)
       let scrollTarget = scrollStart;
       let F = null;
+      let FVisual = null;
       let path = null;
       let mainMs = 1;
       let phase = PHASE.PREP1;
@@ -1632,6 +2035,19 @@
         return;
       }
 
+      if (trajectoryDebug) {
+        trajectoryDebug.startTrip({
+          targetId: targetId,
+          deviceType: debugInfo.deviceType,
+          pathMode: debugInfo.pathMode,
+          A0: copyPoint(A0),
+          scrollStart: scrollStart,
+          scrollTarget: scrollTarget,
+          z: z,
+          phase: PHASE.MORPH
+        });
+      }
+
       ball.classList.remove("is-forming", "is-landed", "is-ready", "is-landing", "is-contact-landing");
       ball.classList.add("is-visible", "is-moving");
       resetTimelineShadow();
@@ -1647,7 +2063,8 @@
       function buildMainPath() {
         endPoint = targetPlatformFor(targetId);
         scrollTarget = resolveScrollTarget(endPoint, targetId, bounds);
-        F = resolveFinalLandingPoint(endPoint, scrollTarget, targetId, bounds);
+        FVisual = resolveFinalLandingPoint(endPoint, scrollTarget, targetId, bounds);
+        F = copyPoint(FVisual);
 
         if (isPhone) {
           F = { x: A0.x, y: F.y }; // phone: the ball never moves sideways before the roll-away
@@ -1659,6 +2076,19 @@
         mainMs = Math.max(1, (path.totalLength / path.speed) * 1000);
         rollStartX = F.x;
         rollEndX = rollDirection < 0 ? -radius - 18 : window.innerWidth + radius + 18;
+
+        if (trajectoryDebug) {
+          trajectoryDebug.drawPath(path, {
+            FVisual: isPhone ? FVisual : null,
+            FPhone: isPhone ? F : null
+          });
+          trajectoryDebug.updateFrame({
+            pathMode: path.mode,
+            scrollTarget: scrollTarget,
+            totalPathLength: path.totalLength,
+            scrollFrozen: false
+          });
+        }
 
         if (DEBUG_NAV_BALL_SEQUENCE || DEBUG_NAV_BALL_SPLINE || DEBUG_PHONE_NAV_BALL) {
           const geometry = path.geometry || {};
@@ -1693,7 +2123,7 @@
         if (debugInfo.prepBases.some(function (base) {
           return base && (Math.abs(base.x - A0.x) > 0.5 || Math.abs(base.y - A0.y) > 0.5);
         })) {
-          console.warn("BUG: prep bounce base changed");
+          console.warn("BUG: prep bounce base drift", debugInfo.prepBases[0], debugInfo.prepBases[1], debugInfo.prepBases[2]);
         }
       }
 
@@ -1727,6 +2157,11 @@
           ball.classList.add("is-launching", "is-lifting");
           debugInfo.prepBases.push(copyPoint(A0));
           debugInfo.prepScroll.push(currentScrollY());
+
+          if (trajectoryDebug) {
+            trajectoryDebug.drawPrepBase(debugInfo.prepBases.length - 1, A0);
+          }
+
           setTimelineShadow(0, 0.72);
           return;
         }
@@ -1766,11 +2201,21 @@
           }
 
           debugInfo.landingBases.push(copyPoint(F));
+
+          if (trajectoryDebug) {
+            trajectoryDebug.drawLandingBase(0, F);
+          }
+
           return;
         }
 
         if (name === PHASE.LAND2 || name === PHASE.LAND3) {
           debugInfo.landingBases.push(copyPoint(F));
+
+          if (trajectoryDebug) {
+            trajectoryDebug.drawLandingBase(debugInfo.landingBases.length - 1, F);
+          }
+
           return;
         }
 
@@ -1809,7 +2254,7 @@
         }
 
         if (baseDrift) {
-          console.warn("BUG: landing bounce base changed");
+          console.warn("BUG: landing bounce base drift", debugInfo.landingBases[0], debugInfo.landingBases[1], debugInfo.landingBases[2]);
         }
 
         if (debugInfo.scrollMovedDuringLanding) {
@@ -1817,7 +2262,7 @@
         }
 
         if (phoneLateral) {
-          console.warn("BUG: phone ball has lateral motion");
+          console.warn("BUG: phone ball has lateral motion", debugInfo.lateral.min, A0.x);
         }
       }
 
@@ -1837,6 +2282,21 @@
             setBallPosition(point.x, point.y);
             applyBounceScale(raw, [0.68, 0.78, 0.9][index]);
             setTimelineShadow(0, 0.72);
+
+            if (trajectoryDebug) {
+              trajectoryDebug.updateFrame({
+                phase: name,
+                scrollStart: scrollStart,
+                scrollTarget: scrollTarget,
+                pathProgress: debugInfo.lastPathProgress,
+                distanceTravelled: 0,
+                totalPathLength: path ? path.totalLength : 0,
+                scrollFrozen: true,
+                scrollMovedDuringPrep: debugInfo.scrollMovedDuringPrep,
+                scrollMovedDuringLanding: debugInfo.scrollMovedDuringLanding
+              });
+            }
+
             break;
           }
 
@@ -1873,6 +2333,21 @@
             previousSample = { x: point.x, y: point.y, elapsed: elapsed };
             debugInfo.lateral.min = Math.min(debugInfo.lateral.min, point.x);
             debugInfo.lateral.max = Math.max(debugInfo.lateral.max, point.x);
+
+            if (trajectoryDebug) {
+              trajectoryDebug.updateFrame({
+                phase: name,
+                scrollStart: scrollStart,
+                scrollTarget: scrollTarget,
+                pathProgress: progress,
+                distanceTravelled: distance,
+                totalPathLength: path.totalLength,
+                scrollFrozen: false,
+                scrollMovedDuringPrep: debugInfo.scrollMovedDuringPrep,
+                scrollMovedDuringLanding: debugInfo.scrollMovedDuringLanding
+              });
+            }
+
             break;
           }
 
@@ -1899,6 +2374,20 @@
               setTimelineShadow(mix(compressedOpacity, airborneOpacity, lift), mix(compressedScale, airborneScale, lift));
             }
 
+            if (trajectoryDebug) {
+              trajectoryDebug.updateFrame({
+                phase: name,
+                scrollStart: scrollStart,
+                scrollTarget: scrollTarget,
+                pathProgress: debugInfo.lastPathProgress,
+                distanceTravelled: path ? path.totalLength : 0,
+                totalPathLength: path ? path.totalLength : 0,
+                scrollFrozen: true,
+                scrollMovedDuringPrep: debugInfo.scrollMovedDuringPrep,
+                scrollMovedDuringLanding: debugInfo.scrollMovedDuringLanding
+              });
+            }
+
             break;
           }
 
@@ -1916,6 +2405,20 @@
               setTimelineShadow(0, 0.72);
             } else {
               setTimelineShadow(mix(0.3, 0, clamp(raw, 0, 1)), mix(1.08, 0.72, clamp(raw, 0, 1)));
+            }
+
+            if (trajectoryDebug) {
+              trajectoryDebug.updateFrame({
+                phase: name,
+                scrollStart: scrollStart,
+                scrollTarget: scrollTarget,
+                pathProgress: debugInfo.lastPathProgress,
+                distanceTravelled: path ? path.totalLength : 0,
+                totalPathLength: path ? path.totalLength : 0,
+                scrollFrozen: true,
+                scrollMovedDuringPrep: debugInfo.scrollMovedDuringPrep,
+                scrollMovedDuringLanding: debugInfo.scrollMovedDuringLanding
+              });
             }
           }
         }
