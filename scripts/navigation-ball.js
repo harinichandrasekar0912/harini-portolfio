@@ -6,7 +6,7 @@
  *   into E -> straight down to F (vertical tangent at A and at E; constant speed along arc length, page scrolls with the ball in the same
  *   requestAnimationFrame loop) -> exact landing at F
  *   -> three landing bounces at F (3z/4, z/2, z/4) -> roll out of the screen -> travelling ball hidden -> plus fades in IN PLACE.
- * Phone (max-width: 767px): same sequence, but the ball never moves sideways before the roll-away (F.x = A.x, vertical quadratic Bezier).
+ * Phone (max-width: 767px): same sequence, but the ball never moves sideways before the roll-away (F.x = A.x, vertical bounce with a short apex hang).
  *
  * Obsolete experimental path systems (obstacle nudging, "exact" trajectory, composite camera modes) were removed so
  * that nothing can run by accident. The path modes below share ONE arc-length engine; NAV_BALL_PATH_MODE switches them.
@@ -30,7 +30,6 @@
   const DEBUG_NAV_TRAJECTORY_LOGS = true;
 
   const MAIN_PATH_SPEED = 430; // px/s along the desktop/tablet path (constant, no easing)
-  const PHONE_PATH_SPEED = 380; // px/s along the phone path
   const SPLINE_ALPHA = 0.5; // centripetal (used by the "catmull" mode)
   const SAMPLES_PER_SEGMENT = 36;
 
@@ -44,6 +43,7 @@
   const ARCH_MIN_APEX_FACTOR = 0.3; // the arch must rise at least 0.3 h above E (tall, narrow trips raise the controls to keep a visible arch)
   const ARCH_MIN_LANDING_DROP = 14; // E stays at least this far above F, so the ball always comes down into F
   const PHONE_PATH_SAMPLE_COUNT = 100;
+  const PHONE_MAIN_HANG_DURATION = 90;
   const BEZIER_SAMPLE_COUNT = 160;
   const SCROLL_PROGRESS_MODE = "smootherstep"; // page scroll easing only ("linear" = scroll progress equals path progress); the ball itself is never eased
 
@@ -57,10 +57,13 @@
   const NAV_BALL_ROLL_DURATION = 2180;
   const MOBILE_BALL_TIME_SCALE = 1.42; // calmer bounces / roll on phones
 
-  // staged (phone) menu opening: total under 650 ms
-  const PHONE_MENU_SPOKE_DURATION = 420;
-  const PHONE_MENU_SPOKE_STAGGER = 45;
-  const PHONE_MENU_READY_DELAY = 610; // circles are fully in by ~615 ms after the opening starts
+  // staged (phone) menu opening: slow enough to watch the spokes draw, still under ~1.1s total
+  const PHONE_MENU_SPOKE_DURATION = 720;
+  const PHONE_MENU_SPOKE_STAGGER = 85;
+  const PHONE_MENU_READY_DELAY = 1040;
+  const TOUCH_TABLET_MENU_SPOKE_DURATION = 420;
+  const TOUCH_TABLET_MENU_SPOKE_STAGGER = 45;
+  const TOUCH_TABLET_MENU_READY_DELAY = 610;
 
   const SECTION_IDS = ["landing", "about", "work", "archive", "contact"];
   const SECTION_INDEX = { landing: 0, about: 1, work: 2, archive: 3, contact: 4 };
@@ -108,6 +111,16 @@
   function smootherstep(t) {
     const x = clamp(t, 0, 1);
     return x * x * x * (x * (x * 6 - 15) + 10);
+  }
+
+  function easeInQuad(t) {
+    const x = clamp(t, 0, 1);
+    return x * x;
+  }
+
+  function easeOutQuad(t) {
+    const x = clamp(t, 0, 1);
+    return 1 - (1 - x) * (1 - x);
   }
 
   function easeOutCubic(t) {
@@ -357,15 +370,6 @@
     };
   }
 
-  function quadraticBezierPoint(p0, p1, p2, raw) {
-    const t = clamp(raw, 0, 1);
-    const u = 1 - t;
-    return {
-      x: u * u * p0.x + 2 * u * t * p1.x + t * t * p2.x,
-      y: u * u * p0.y + 2 * u * t * p1.y + t * t * p2.y
-    };
-  }
-
   // roughly one sample every 3 px (never fewer than BEZIER_SAMPLE_COUNT), so even wide arches keep smooth, evenly spaced samples
   function cubicSampleCount(p0, p1, p2, p3) {
     const controlLength = Math.hypot(p1.x - p0.x, p1.y - p0.y) + Math.hypot(p2.x - p1.x, p2.y - p1.y) + Math.hypot(p3.x - p2.x, p3.y - p2.y);
@@ -537,34 +541,61 @@
     return resultPath;
   }
 
-  /* phone main path: vertical quadratic Bezier A -> C -> FPhone, constant x */
-  function buildPhonePath(A, FPhone, z, safeTop) {
-    const topY = Math.min(A.y, FPhone.y);
-    const phoneLift = clamp(z * 1.15, 58, 110);
-    const C = { x: A.x, y: topY - phoneLift };
-    let path;
+  function phoneMainBouncePoint(A, apex, B, timing, elapsed) {
+    const upDuration = Math.max(1, timing.upDuration);
+    const hangDuration = Math.max(0, timing.hangDuration);
+    const downDuration = Math.max(1, timing.downDuration);
+    const upEnd = upDuration;
+    const hangEnd = upDuration + hangDuration;
+    const totalDuration = upDuration + hangDuration + downDuration;
+    const time = clamp(elapsed, 0, totalDuration);
 
-    for (let attempt = 0; attempt < 6; attempt += 1) {
-      const samples = [];
-
-      for (let index = 0; index <= PHONE_PATH_SAMPLE_COUNT; index += 1) {
-        const point = quadraticBezierPoint(A, C, FPhone, index / PHONE_PATH_SAMPLE_COUNT);
-        appendSample(samples, A.x, point.y); // x is constant by construction
-      }
-
-      path = finalizePath(samples, { mode: "phone-vertical" });
-
-      if (minSampleY(path) >= safeTop - 0.5) {
-        break;
-      }
-
-      C.y += safeTop - minSampleY(path);
+    if (time <= upEnd) {
+      const p = easeOutQuad(time / upDuration);
+      return { x: A.x, y: mix(A.y, apex.y, p) };
     }
 
-    path.geometry = { A: copyPoint(A), C: copyPoint(C), F: copyPoint(FPhone), topY: topY, phoneLift: phoneLift };
-    path.mode = "phone-vertical";
+    if (time <= hangEnd) {
+      return copyPoint(apex);
+    }
+
+    const p = easeInQuad((time - hangEnd) / downDuration);
+    return { x: A.x, y: mix(apex.y, B.y, p) };
+  }
+
+  /* phone main path: vertical bounce A -> apex -> short hang -> FPhone, constant x */
+  function buildPhonePath(A, FPhone, z, safeTop) {
+    const topY = Math.min(A.y, FPhone.y);
+    const phoneMainLift = clamp(z * 1.45, 72, 140);
+    const apex = { x: A.x, y: topY - phoneMainLift };
+    const upDistance = Math.abs(A.y - apex.y);
+    const downDistance = Math.abs(FPhone.y - apex.y);
+    const upDuration = clamp(Math.sqrt(upDistance) * 42, 520, 780);
+    const hangDuration = PHONE_MAIN_HANG_DURATION;
+    const downDuration = clamp(Math.sqrt(downDistance) * 38, 520, 820);
+    const totalDuration = upDuration + hangDuration + downDuration;
+    const timing = {
+      upDistance: upDistance,
+      downDistance: downDistance,
+      upDuration: upDuration,
+      hangDuration: hangDuration,
+      downDuration: downDuration,
+      totalDuration: totalDuration
+    };
+    const samples = [];
+
+    for (let index = 0; index <= PHONE_PATH_SAMPLE_COUNT; index += 1) {
+      const point = phoneMainBouncePoint(A, apex, FPhone, timing, totalDuration * (index / PHONE_PATH_SAMPLE_COUNT));
+      appendSample(samples, A.x, point.y); // x is constant by construction
+    }
+
+    const path = finalizePath(samples, { mode: "phone-bounce" });
+
+    path.geometry = { A: copyPoint(A), apex: copyPoint(apex), F: copyPoint(FPhone), topY: topY, phoneMainLift: phoneMainLift };
+    path.timing = timing;
+    path.mode = "phone-bounce";
     path.safeTop = safeTop;
-    path.speed = PHONE_PATH_SPEED;
+    path.speed = path.totalLength / (totalDuration / 1000);
     return path;
   }
 
@@ -937,9 +968,9 @@
           }));
         });
 
-        if (path.mode === "phone-vertical") {
+        if (path.mode === "phone-bounce") {
           drawPoint("A", geometry.A, "#ff8a00", 5);
-          drawPoint("C", geometry.C, "#ff1f1f", 5);
+          drawPoint("apex", geometry.apex, "#ff1f1f", 5);
           drawPoint("F", geometry.F, "#ff00d4", 5);
 
           if (FVisual) {
@@ -981,6 +1012,7 @@
             totalPathLength: round(path.totalLength),
             A: JSON.stringify(geometry.A || null),
             B: JSON.stringify(geometry.P1 || geometry.DHigh || null),
+            apex: JSON.stringify(geometry.apex || null),
             C: JSON.stringify(geometry.C || null),
             D: JSON.stringify(geometry.P2 || geometry.EHigh || null),
             E: JSON.stringify(geometry.E || null),
@@ -1464,7 +1496,10 @@
 
     function playSpokeDraw(options) {
       const staged = Boolean(options && options.staged);
-      const duration = reducedMotion.matches ? 1 : staged ? PHONE_MENU_SPOKE_DURATION : 560;
+      const phone = Boolean(options && options.phone);
+      const duration = reducedMotion.matches ? 1 : staged ? (phone ? PHONE_MENU_SPOKE_DURATION : TOUCH_TABLET_MENU_SPOKE_DURATION) : 560;
+      const stagger = phone ? PHONE_MENU_SPOKE_STAGGER : TOUCH_TABLET_MENU_SPOKE_STAGGER;
+      const easing = phone ? "cubic-bezier(0.16, 1, 0.3, 1)" : "cubic-bezier(0.22, 1, 0.36, 1)";
 
       ["about", "work", "archive", "contact"].forEach(function (label, index) {
         const maskParts = spokeMasks[label];
@@ -1473,8 +1508,8 @@
           return;
         }
 
-        maskParts.drawLine.style.transition = "stroke-dashoffset " + duration + "ms cubic-bezier(0.22, 1, 0.36, 1)";
-        maskParts.drawLine.style.transitionDelay = reducedMotion.matches ? "0ms" : staged ? index * PHONE_MENU_SPOKE_STAGGER + "ms" : 520 + index * 38 + "ms";
+        maskParts.drawLine.style.transition = "stroke-dashoffset " + duration + "ms " + easing;
+        maskParts.drawLine.style.transitionDelay = reducedMotion.matches ? "0ms" : staged ? index * stagger + "ms" : 520 + index * 38 + "ms";
         maskParts.drawLine.style.strokeDashoffset = "0";
       });
     }
@@ -1607,6 +1642,8 @@
         return;
       }
 
+      const phoneOpening = isMobileViewport();
+
       clearPhoneMenuState();
       isPhoneNavOpening = true;
       nav.classList.add("is-phone-nav-preparing");
@@ -1627,7 +1664,7 @@
           nav.classList.remove("is-phone-nav-preparing");
           nav.classList.add("is-phone-nav-opening");
           setOpen(true, { staged: true });
-          playSpokeDraw({ staged: true });
+          playSpokeDraw({ staged: true, phone: phoneOpening });
 
           phoneMenuReadyTimer = window.setTimeout(function () {
             if (!isOpen) {
@@ -1642,7 +1679,7 @@
             if (DEBUG_PHONE_NAV_BALL) {
               console.debug("phone nav: open and interactive");
             }
-          }, reducedMotion.matches ? 1 : PHONE_MENU_READY_DELAY);
+          }, reducedMotion.matches ? 1 : (phoneOpening ? PHONE_MENU_READY_DELAY : TOUCH_TABLET_MENU_READY_DELAY));
         });
       });
     }
@@ -1980,8 +2017,8 @@
       const z = tripBounceHeight(isPhone);
       const prepHeights = [z / 4, z / 2, (3 * z) / 4];
       const landingHeights = [(3 * z) / 4, z / 2, z / 4];
-      const prepDurations = NAV_BALL_PREP_DURATIONS.map(scaleMotionDuration);
-      const landingDurations = NAV_BALL_LANDING_DURATIONS.map(scaleMotionDuration);
+      const prepDurations = isPhone ? NAV_BALL_PREP_DURATIONS.slice() : NAV_BALL_PREP_DURATIONS.map(scaleMotionDuration);
+      const landingDurations = isPhone ? NAV_BALL_LANDING_DURATIONS.slice() : NAV_BALL_LANDING_DURATIONS.map(scaleMotionDuration);
       const rollDuration = scaleMotionDuration(NAV_BALL_ROLL_DURATION);
       const rollDirection = rollDirectionFor(targetId);
       const rollCircumference = Math.max(1, Math.PI * radius * 2);
@@ -1990,7 +2027,7 @@
       const scrollStart = currentScrollY(); // captured once; frozen until the main path starts
       const debugInfo = {
         deviceType: isPhone ? "phone" : "desktop/tablet",
-        pathMode: isPhone ? "phone-vertical" : NAV_BALL_PATH_MODE,
+        pathMode: isPhone ? "phone-bounce" : NAV_BALL_PATH_MODE,
         A0: copyPoint(A0),
         z: z,
         prepBases: [],
@@ -2073,7 +2110,7 @@
         const safeTop = visiblePathTopMargin(bounds);
 
         path = isPhone ? buildPhonePath(A0, F, z, safeTop) : buildDesktopPath(A0, F, z, safeTop, NAV_BALL_PATH_MODE);
-        mainMs = Math.max(1, (path.totalLength / path.speed) * 1000);
+        mainMs = isPhone && path.timing ? path.timing.totalDuration : Math.max(1, (path.totalLength / path.speed) * 1000);
         rollStartX = F.x;
         rollEndX = rollDirection < 0 ? -radius - 18 : window.innerWidth + radius + 18;
 
@@ -2092,12 +2129,22 @@
 
         if (DEBUG_NAV_BALL_SEQUENCE || DEBUG_NAV_BALL_SPLINE || DEBUG_PHONE_NAV_BALL) {
           const geometry = path.geometry || {};
+          const timing = path.timing || {};
 
           console.table({
             device: debugInfo.deviceType,
             pathMode: path.mode,
             A0: JSON.stringify(A0),
+            BVisual: JSON.stringify(FVisual || null),
+            BPhone: isPhone ? JSON.stringify(F) : null,
+            apex: isPhone ? JSON.stringify(geometry.apex || null) : null,
             z: round(z),
+            phoneMainLift: round(geometry.phoneMainLift),
+            upDistance: round(timing.upDistance),
+            downDistance: round(timing.downDistance),
+            upDuration: round(timing.upDuration),
+            hangDuration: round(timing.hangDuration),
+            downDuration: round(timing.downDuration),
             prepBounceBase1: JSON.stringify(debugInfo.prepBases[0] || null),
             prepBounceBase2: JSON.stringify(debugInfo.prepBases[1] || null),
             prepBounceBase3: JSON.stringify(debugInfo.prepBases[2] || null),
@@ -2301,11 +2348,25 @@
           }
 
           case PHASE.MAIN: {
-            const distance = Math.min(path.totalLength, (elapsed / 1000) * path.speed);
-            const progress = path.totalLength > 0 ? distance / path.totalLength : 1;
-            const scrollProgress = SCROLL_PROGRESS_MODE === "linear" ? progress : smootherstep(progress);
+            let distance;
+            let progress;
+            let scrollProgress;
 
-            point = getPointAtDistance(path, distance);
+            if (isPhone && path.timing && path.geometry) {
+              const totalMainDuration = Math.max(1, path.timing.totalDuration);
+              const mainElapsed = clamp(elapsed, 0, totalMainDuration);
+
+              progress = mainElapsed / totalMainDuration;
+              distance = path.totalLength * progress;
+              point = phoneMainBouncePoint(path.geometry.A, path.geometry.apex, path.geometry.F, path.timing, mainElapsed);
+            } else {
+              distance = Math.min(path.totalLength, (elapsed / 1000) * path.speed);
+              progress = path.totalLength > 0 ? distance / path.totalLength : 1;
+              point = getPointAtDistance(path, distance);
+            }
+
+            scrollProgress = SCROLL_PROGRESS_MODE === "linear" ? progress : smootherstep(progress);
+
             debugInfo.lastPathProgress = progress;
             debugInfo.lastScrollProgress = scrollProgress;
             scrollInstantly(mix(scrollStart, scrollTarget, scrollProgress));
@@ -2333,6 +2394,14 @@
             previousSample = { x: point.x, y: point.y, elapsed: elapsed };
             debugInfo.lateral.min = Math.min(debugInfo.lateral.min, point.x);
             debugInfo.lateral.max = Math.max(debugInfo.lateral.max, point.x);
+
+            if (DEBUG_PHONE_NAV_BALL && isPhone) {
+              console.debug("phone nav ball main x", round(point.x));
+
+              if (Math.abs(point.x - A0.x) > 0.5) {
+                console.warn("BUG: phone ball has lateral motion");
+              }
+            }
 
             if (trajectoryDebug) {
               trajectoryDebug.updateFrame({

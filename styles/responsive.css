@@ -229,6 +229,11 @@
     padding-block: clamp(3.2rem, 8vh, 5.2rem);
   }
 
+  .landing-section {
+    padding-top: clamp(1rem, 4.5vw, 1.35rem);
+    padding-bottom: 5rem;
+  }
+
   .about-section,
   .work-section,
   .archive-section {

@@ -455,6 +455,36 @@ html .nav-object.is-open.is-phone-nav-opening.is-phone-nav-ready .radial-item {
   will-change: auto;
 }
 
+@media (max-width: 767px) {
+  .radial-item-about {
+    --phone-pop-delay: 260ms;
+  }
+
+  .radial-item-work {
+    --phone-pop-delay: 345ms;
+  }
+
+  .radial-item-archive {
+    --phone-pop-delay: 430ms;
+  }
+
+  .radial-item-contact {
+    --phone-pop-delay: 515ms;
+  }
+
+  html .nav-object.is-open.is-phone-nav-opening .nav-ring circle {
+    transition:
+      stroke-dashoffset 720ms cubic-bezier(0.16, 1, 0.3, 1) 0ms,
+      opacity 160ms linear;
+  }
+
+  html .nav-object.is-open.is-phone-nav-opening .radial-item {
+    transition:
+      opacity 480ms cubic-bezier(0.16, 1, 0.3, 1) var(--phone-pop-delay, 260ms),
+      transform 480ms cubic-bezier(0.16, 1, 0.3, 1) var(--phone-pop-delay, 260ms);
+  }
+}
+
 .nav-object.is-project-close {
   z-index: 980;
   pointer-events: none;
