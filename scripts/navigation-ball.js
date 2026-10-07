@@ -35,6 +35,7 @@
   const TRAJECTORY_MIN_LANDING_DROP = 14; // E stays at least this far above B, so the ball always comes down into B
   const TRAJECTORY_MIN_LAUNCH_RISE = 12; // D stays at least this far above A
   const TRAJECTORY_APEX_FACTOR = 1.5; // apex C is this many half-spans (|dx| / 2) above the guide level: a little higher than a half circle = a rounded peak, no flat top
+  const TRAJECTORY_FALL_BOOST = 0.5; // the fall is a little quicker than the rise, like a real bounce: speed gained per px of drop grows smoothly from 1x at the apex to 1.5x at the landing (0 = symmetric)
   const TRAJECTORY_ARC_EXPONENT = 0.8; // shape of the arc, y = G - rise * sin(phi)^q: below 1 the bend is gentlest where the arc meets the vertical lines
   const TRAJECTORY_MIN_DURATION = 0.9; // seconds
   const TRAJECTORY_MAX_DURATION = 9; // seconds - a safety net only: the average speed (not a time cap) decides how long a flight lasts, also on very large screens
@@ -228,6 +229,9 @@
    * fastest at launch and landing, slowest at the top C, smooth everywhere (no easing curve is applied to the ball). v_top is the sideways speed
    * of a free-flying ball over the same span and height (v_top^2 = g (|dx| / 2)^2 / (2 rise)). Gravity g is chosen so that the whole flight lasts
    * length / averageSpeed seconds (a bit slower than before, so the eye can follow it).
+   * The way DOWN is a little quicker than the way up (like a real bounce): from the apex on, the energy gained per px of drop grows smoothly
+   * (smoothstep of the drop) from 1x to 1 + TRAJECTORY_FALL_BOOST, so speed AND acceleration are exactly continuous at the top and nothing
+   * changes character there (the local pull peaks a little higher, about 1.8x, three quarters of the way down, and ends at 1.5x at B).
    * The arc is lowered (only if the full height would leave the screen) before the guide level is lowered; A and B never move. */
   function planTrajectory(A, F, z, safeTop, averageSpeed) {
     const topY = Math.min(A.y, F.y);
@@ -310,24 +314,38 @@
     }
 
     const topHead = rise > 0.5 ? (halfSpan * halfSpan) / (4 * rise) : 0; // v_top^2 / (2 g): a vertical lob (no sideways motion) stops dead at the top
+    const dropToB = Math.max(topHeight - (A.y - F.y), 1e-6); // height between the apex and B
+
+    // v^2 / 2 (g = 1) at a height: rising = head + height gained; falling = the same, with gravity growing smoothly from 1x to 1 + boost over the drop
+    function unitHead(height, falling) {
+      const depth = Math.max(topHeight - height, 0);
+
+      if (!falling) {
+        return topHead + depth;
+      }
+
+      const share = clamp(depth / dropToB, 0, 1);
+
+      return topHead + depth * (1 + TRAJECTORY_FALL_BOOST * share * share * (3 - 2 * share));
+    }
+
+    function unitSpeed(height, falling) {
+      return Math.sqrt(2 * Math.max(unitHead(height, falling), 1e-6));
+    }
+
     const arrival = [0];
     const distance = [0];
     let length = 0;
+    let previousSpeed = unitSpeed(A.y - points[0].y, false);
 
     for (let index = 1; index < points.length; index += 1) {
       const segment = Math.hypot(points[index].x - points[index - 1].x, points[index].y - points[index - 1].y);
-      const midHeight = A.y - (points[index].y + points[index - 1].y) / 2;
-      const speed = Math.sqrt(2 * Math.max(topHead + topHeight - midHeight, 1e-6));
-      let unitTime = segment / speed;
+      const speed = unitSpeed(A.y - points[index].y, index > apexIndex);
 
-      if (points[index].x === points[index - 1].x) {
-        // straight vertical piece (A-D, E-B or a whole lob): exact free-fall time = difference of the end speeds (also exact where the speed reaches 0)
-        const startSpeed = Math.sqrt(2 * Math.max(topHead + topHeight - (A.y - points[index - 1].y), 0));
-        const endSpeed = Math.sqrt(2 * Math.max(topHead + topHeight - (A.y - points[index].y), 0));
+      // constant acceleration inside a 2 px piece: time = distance / mean speed (exact, also when the speed starts from 0 at the top of a lob)
+      const unitTime = segment > 0 ? (2 * segment) / Math.max(previousSpeed + speed, 1e-6) : 0;
 
-        unitTime = Math.abs(endSpeed - startSpeed);
-      }
-
+      previousSpeed = speed;
       length += segment;
       distance.push(length);
       arrival.push(arrival[index - 1] + unitTime);
@@ -336,10 +354,6 @@
     const totalUnit = arrival[arrival.length - 1];
     const duration = clamp(length / averageSpeed, TRAJECTORY_MIN_DURATION, TRAJECTORY_MAX_DURATION); // seconds
     const scale = duration / totalUnit; // seconds per unit time (gravity = 1 / scale^2)
-
-    function unitSpeedAtHeight(height) {
-      return Math.sqrt(2 * Math.max(topHead + topHeight - height, 1e-6));
-    }
 
     function pointAt(seconds) {
       if (seconds >= duration) {
@@ -376,7 +390,7 @@
 
     // analytic speed (px/s) from the height - used by the debug output and the tests
     function speedAt(seconds) {
-      return unitSpeedAtHeight(A.y - pointAt(seconds).y) / scale;
+      return unitSpeed(A.y - pointAt(seconds).y, seconds > arrival[apexIndex] * scale) / scale;
     }
 
     return {
@@ -386,9 +400,10 @@
       speedAt: speedAt,
       length: length,
       averageSpeed: length / duration,
-      launchSpeed: unitSpeedAtHeight(0) / scale,
-      landingSpeed: unitSpeedAtHeight(A.y - F.y) / scale,
-      gravity: 1 / (scale * scale),
+      launchSpeed: unitSpeed(0, false) / scale,
+      landingSpeed: unitSpeed(A.y - F.y, true) / scale,
+      gravity: 1 / (scale * scale), // gravity on the way up; on the way down the pull grows smoothly (see TRAJECTORY_FALL_BOOST)
+      fallBoost: TRAJECTORY_FALL_BOOST,
       times: { D: arrival[enterIndex] * scale, apex: arrival[apexIndex] * scale, E: arrival[exitIndex] * scale },
       safeTop: safeTop,
       geometry: {
