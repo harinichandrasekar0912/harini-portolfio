@@ -6622,30 +6622,33 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
 
 
 /* ===== girl_a_hair.js ===== */
-/* girl_a_hair.js -- Girl rig (variant C2/F): voluminous messy ponytail + loose face / nape / crown strands.   (v3 "lush hair")
+/* girl_a_hair.js -- Girl rig (variant C2/F): ponytail ROOTED in the back of the head (gathered knot + hair tie) + loose face / crown / nape strands.   (v4, round 10 "attached pony")
 
-   PONYTAIL  (screen-plane simulation, fixed step 1/120 s, deterministic / seeded, no per-frame allocation)
-     * spine: 21 nodes.  The rest curve + half widths are TRACED from the reference silhouettes (A.pony: side = ref9, front = ref8, run = ref1) in head local
-       coordinates and blended with the yaw / run weight, so at the reference poses the solid core of the tail IS the reference tail.  The rest curve is then BENT per step:
-         - gravity hang: every segment is rotated against the head's screen tilt (lean / peek / bonk / roll) so the tail hangs by gravity instead of turning rigidly with the head;
-         - wind streaming: above walking speed (or with the wind field) the segments swing toward the relative wind -> the tail streams back and splays when she runs;
-         - tiny idle breeze and a shudder tremble.
-       Every node is a soft spring (natural frequency 44 -> 11 rad/s from the tie to the tip, damping ratio .65 -> .38) toward its moving target, with damping RELATIVE to the
-       target's own velocity (constant-speed walking adds no lag / drift: the traced shape is kept) plus length constraints.  Result: follow-through, swing through turns, bounce on
-       every step, whip-up on the bonk release, no jitter, no explosions (hard clamp to a maximum distance from the target, NaN guard).  While running the springs stiffen so the
-       tail follows the big head bob instead of folding up behind the head.
-     * volume (SPEC 8.5b): SOLID part = traced core (x HC.volume, chunky base, curvature-clamped) + 9 fat pointed LOCKS; around it a RING (HC.ringK x the visual width measured on
-       ref9 / ref8 incl. their flying strands) of ~100 hair-fine strands (medium / fine / long flyaways), each leaving the body edge, bowing outward to its own stratified slot of the ring
-       (so the strands stay separate instead of merging into a mass), S-curving, tapering to a hair-fine tip with an analytic curling hook; 6 wisps arc off the tie; a hair-tie band marks the
-       tie; the base is pushed away from the head so a white teardrop gap stays under the tie.  Every outline is a quadratic-B-spline ribbon (curvature continuous, crisp at 4x zoom).
-   LOOSE HAIR: fringe strands falling in front of the face (bowing out, tucking back at the chin), temple + cheek strands beside the face and neck, nape strands, two crown arcs.  Each is a
-       head-local rest polyline (following a SMOOTHED copy of the head profile, so they do not copy the nose / lip bumps, lifting off with a margin and falling past the chin) projected through
-       the head frame and simulated like the tail (2D springs, relative damping, gravity-hang compensation, streaming).
-   All strands go into ONE path / ONE fill (nonzero, identical winding).
+   ATTACHMENT (the tail can never float): the hair tie sits on the skull's back contour (head-local height HC.knotU, ~26 % below the crown as in ref9, HC.knotOut units outside
+     the skull).  Head-rigid ELLIPSOIDS are projected exactly (orthographic: an ellipsoid always projects to an ellipse) at every yaw / pitch / roll and unioned with the skull
+     (same ink, same winding): the gathered KNOT (centred inside the skull, reaching out to the tie), the tie BAND (a small bump across the root of the tail) and an optional
+     hair-volume CAP (HC.capK, off by default).  The tail's first node IS the tie, so skull -> knot -> band -> tail is one continuous silhouette in every pose.
+     Front view (body yaw HC.hideY): the tail RETRACTS behind the head (length x0.25, width x0.4) and the knot lies inside the head outline -> no tail, only a few strands.
+   PONYTAIL  (screen-plane simulation of a 3D rest curve, fixed step 1/120 s, deterministic / seeded, no per-frame allocation)
+     * spine: 21 nodes on a DESIGNED rest curve (direction keys DIRW / DIRR: a short fountain arc back + up out of the tie, then a soft S-curve fall; streams back when she runs),
+       built segment by segment in 3D: each direction = the design in the HEAD frame blended toward the same design in an UPRIGHT frame (gravity) by hang x weight (root 0.64 ->
+       1 at mid length; the whole tail hangs when the head tilts far from upright: look-down bow, peek).  Per step: wind / speed streaming, idle breeze, shudder.  The run weight
+       and the streaming amount are eased (0.2 / 0.18 s) so a reaction's instant speed-up swings the tail back instead of snapping it.
+       Every node is a soft spring (natural frequency tie -> tip HC.spineOm, damping HC.spineZ) toward its moving target with damping RELATIVE to the target's own velocity (constant
+       speed walking adds no lag) + length constraints + bending stiffness (the deviation from the target is smoothed along the strand: no zig-zag kinks after a fast head snap)
+       + a hard distance clamp + NaN guard: follow-through, swing through turns, bounce on steps, whip on the bonk / startle, no explosions.
+     * shape: a solid body ribbon (HWD: pinched at the tie, ~31 u wide at mid length) that hands over to HC.nLock long S-curved LOCKS of different lengths whose lateral slots open
+       beyond the body -> separate pointed wavy tips with white notches; bold peeling locks, medium / fine / long flyaways off the edge (tapered, hooked tips), wisps arcing out
+       of the tie (fade out early in the turn), a strand along the inner edge, a white teardrop under the tie (HC.gapShift).  Quadratic-B-spline ribbons.
+   LOOSE HAIR: fringe strands falling in front of the face, temple / ear / nape strands, 'gathered' strands lying along the back of the skull into the tie (profile only), short
+       flyaway arcs lifting off the crown (profile; fade out toward the front where they are edge-on), 'halo' flyaways seen only from the front / 3-4 (curved flicks).  Head-local
+       rest polylines (on a SMOOTHED head surface) projected through the head frame and simulated like the tail (screen-plane gravity hang).
+   All hair goes into ONE path / ONE fill (nonzero, identical winding: ribbons and ellipses alike).
 
-   GA.girlA.createHair(seed) -> { reset(seed), step(dt,S,sc), draw(ctx,S,sc), bounds(), spine(), spineN(), chains(), dbg() }     Head-surface helper: GA.girlA.headSurface(u, phi, shrink).
-   Pose fields consumed (via the rig state S): S.P.{yaw, wind{x,y}, shudder, shudderT, peek (0..1), gait.speed / gait.amount}, S.run, S.theta, S.ox, S.oy, S.Fhead (its tilt gives lean /
-   squash / hop / roll / peek; its motion gives the inertia).  Everything else (squash, air, flinch, turns, head shakes) acts through the motion of S.Fhead and the tie.
+   GA.girlA.createHair(seed) -> { reset(seed), step(dt,S,sc), draw(ctx,S,sc), bounds(), spine(), spineN(), chains(), dbg(), snapshot(out?), restore(s), settle(S) }
+   Head-surface helper: GA.girlA.headSurface(u, phi, shrink).  Test hook: GA.girlA.lastHair = the most recently created hair.
+   Pose fields consumed (via the rig state S): S.P.{yaw, wind{x,y}, shudder, shudderT, peek (0..1), speed / amount, flinch, dizzy}, S.run, S.theta, S.ox, S.oy, S.Fhead (its rotation gives
+   lean / squash / hop / roll / peek; its motion gives the inertia).  Everything else (squash, air, flinch, turns, head shakes) acts through the motion of S.Fhead.
    Tunables: GA.girlA.hairCfg (HC) -- see the DEF table below.                                                                                                                      */
 (function () {
   'use strict';
@@ -6690,47 +6693,56 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
   /** tunable hair design (defaults are filled in only where not already set, so girl_a_tuned.js / tools can override) */
   var HC = (A.hairCfg = A.hairCfg || {});
   var DEF = {
-    volume: 1.14,                 // half width of the solid part (core + locks) / traced half width (SPEC 8.5b: fuller than the reference)
-    frontVol: 1.02,               // solid-part width factor in the front view (the traced front table is already wide)
-    frontRing: 1.15,              // ring start radius (x solid half width) in the front view (1.3 in profile)
-    runDamp: 40,                  // run: extra coupling (1/s) of the hair to the head's motion (limits the up/down whip at the step frequency)
-    runCut: 0.85,                 // run: fraction of the wind streaming removed (the traced run table already is the streamed shape)
-    runStiff: 1.5,                // run: spring stiffness gain (omega^2)
-    runSolid: 0.5,                // run: solid-part width factor (the run table is measured incl. the flying strands)
-    ringK: 1.6,                   // outer radius of the strand ring (x visual width)
-    fan: 1.1,                     // scale of the 'visual width' ring where the fine strands live (ref9 / ref8 incl. strands)
-    lockRef: 15, lockFan: 12, coreEnd: [0.5, 0.84],  // solid locks: reference width (units), lateral fan radius at the tips, and where the traced core hands over to them
-    boldW: 0.8, boldRu: 0.7,            // bold ring locks: width and peel-off scale
-    baseHW: 12, baseOut: 3,                 // minimum half width right under the tie (chunky base, ~1/3 of the head width)
-    gap: 1.3,                     // fraction of the extra width pushed AWAY from the head at the base (keeps the white gap between nape and tail); fades to 0.4 lower down
+    knotU: 29,                    // head-local height of the hair tie (crown 59.5, chin -55: ~26 % down from the top, as in ref9)
+    knotOut: 2.4,                 // the tie sits this far (units) outside the skull's back contour
+    knotIn: 3.2,                  // centre of the gathered-knot ellipsoid this far INSIDE the skull (keeps it overlapping the skull in every pose)
+    knotR: [6.4, 4.6, 6.5],       // knot ellipsoid radii (units): along the tail root, across (in the head's f-u plane), lateral
+    bandR: [2.4, 6.0],            // hair-tie band radii (along, across)
+    capK: 0,                      // optional hair-volume cap over the back / top of the skull (0 = off: the traced head already carries the reference's hair volume; >0 swells the back of the head)
+    capC: [-2, 24],               // cap ellipsoid centre (head-local f, u) and radii (head-local f, c-fraction of the head width, u)
+    capR: [37.5, 0.9, 36.5],
+    gapShift: 3.8,                // the upper body of the tail is shifted this far away from the head: a white teardrop stays under the tie (ref9)
+    pLen: 128,                    // length of the tail's spine (units); the longest locks reach ~1.15 x
+    pWid: 1,                      // body width factor (HWD table)
+    runSlim: 0.8,                 // run: body width factor (the strands fan out instead)
+    ringK: 1,                     // strand ring radius factor (HRING table)
+    lockRef: 15, lockFan: 12, coreEnd: [0.36, 0.66],  // solid locks: reference width (units), lateral fan radius at the tips, and where the body ribbon hands over to them
+    boldW: 0.85, boldRu: 0.75,    // bold peeling locks: width and peel-off scale
     looseLen: 1,                  // length factor of the loose face strands
-    hang: 0.78,                   // gravity-hang compensation at the tip (0 = hair rotates rigidly with the head, 1 = hangs vertically whatever the head does)
+    hang: 0.86,                   // gravity-hang compensation (0 = hair rotates rigidly with the head, 1 = hangs vertically whatever the head does)
     stream: 1,                    // wind streaming strength when running
     streamV: [430, 960],          // speed range (units/s) over which the tail swings back
     windGain: 2.5,                // multiplier of pose.wind (units/s^2)
-    nLock: 7, nBold: 10, nMid: 0, nMed: 6, nFine: 10, nEdge: 10, nWisp: 5,
-    spineOm: [44, 8.5], spineZ: [0.78, 0.74],     // spine natural frequency (rad/s) and damping ratio tie -> tip
+    runDamp: 40,                  // run: extra coupling (1/s) of the hair to the head's motion (limits the up/down whip at the step frequency)
+    runCut: 0.85,                 // run: fraction of the wind streaming removed (the run rest curve already streams back)
+    runStiff: 1.5,                // run: spring stiffness gain (omega^2)
+    nLock: 5, nBold: 4, nMed: 3, nFine: 7, nEdge: 5, nWisp: 5,
+    spineOm: [46, 8.5], spineZ: [0.8, 0.72],     // spine natural frequency (rad/s) and damping ratio tie -> tip
     strandOm: [58, 26], strandZ: [0.92, 0.88],
-    headOm: [40, 10], headZ: [0.8, 0.75],
-    frontVis: 0.65,               // visual-width curve scale in the front view
-    haloY: [0.4, 0.88],           // body yaw range over which the 'halo' flyaways (extra strands standing off the head, only seen from the front / 3-4) fade in
-    hideY: [0.58, 0.94],          // body yaw range over which the ponytail fades out when she faces us (it hangs BEHIND her head and body: only strands show)
+    headOm: [40, 13], headZ: [0.85, 0.8],
+    haloY: [0.4, 0.88],           // body yaw range over which the 'halo' flyaways (strands standing off the head, only seen from the front / 3-4) fade in
+    hideY: [0.45, 0.92],          // body yaw range over which the tail retracts behind her head and slims when she faces us (front view: only strands show)
     bodyRamp: 0.4,                // how far down the tail (0..1) the low-passed bob is fully applied
-    bodyLP: 12,                   // rad/s: the body of the tail follows a low-passed copy of the head bob (the tie itself stays exact): lazy follow-through, kinks of the bob are not passed on
+    bodyLP: 12,                   // rad/s: the body of the tail follows a low-passed copy of the head bob (the tie itself stays exact): lazy follow-through
     tipW: 0.2,                    // width added along the whole strand (the tip never gets thinner than this)
-    minW: 0.55,                   // minimum width (units) of a fine strand over the first 70 % of its length (the last 30 % still taper to a point): thinner strands shimmer when they cross pixel boundaries
-    calmHold: 90,                 // steps of stillness (0.75 s) before the calm LOD (60 Hz hair update + cached strand path) kicks in; 1e9 disables it
+    minW: 0.55,                   // minimum width (units) of a fine strand over the first 70 % of its length (thinner strands shimmer when they cross pixel boundaries)
+    calmHold: 90,                 // steps of stillness (0.75 s) before the calm LOD (60 Hz hair update + cached path) kicks in; 1e9 disables it
     breeze: 1, tremble: 1,
   };
   for (var dk in DEF) if (HC[dk] === undefined) HC[dk] = DEF[dk];
 
-  var PN = 21;                    // spine nodes (matches A.pony)
-  // visual half width of the reference tail INCLUDING its fine strands (measured on ref9 / ref8), over the normalised spine position
-  var HVIS = [[0, 5.5], [0.06, 10.5], [0.12, 13.5], [0.2, 16], [0.3, 18.5], [0.45, 20], [0.6, 20], [0.72, 18], [0.82, 14.5], [0.9, 10], [0.96, 5.5], [1.0, 2.5]];
+  var PN = 21;                    // spine nodes
+  // designed rest curve: direction (deg) from the head's BACKWARD axis (+ = up) over the normalised spine position; walk / stand and run (ref1: streams back, gentle droop)
+  var DIRW = [[0, 22], [0.06, -2], [0.16, -46], [0.3, -80], [0.5, -96], [0.68, -100], [0.85, -93], [1, -84]];
+  var DIRR = [[0, 8], [0.14, -5], [0.34, -15], [0.6, -21], [0.85, -25], [1, -29]];
+  // solid body half width (units) over the spine position: pinched at the tie, ~34 u wide at mid length, tapering into the locks
+  var HWD = [[0, 3.8], [0.04, 5.2], [0.1, 8.6], [0.2, 12.4], [0.34, 15.2], [0.5, 15.6], [0.64, 14.0], [0.76, 11.0], [0.86, 7.0], [0.94, 3.4], [1, 1.4]];
+  // outer radius of the strand ring (units): where the flyaways live (incl. the body)
+  var HRING = [[0, 7], [0.06, 14], [0.15, 20], [0.3, 24], [0.5, 25], [0.66, 24], [0.8, 20], [0.92, 14], [1, 8]];
 
   A.createHair = function (seed0) {
     // ------------------------------------------------------------------ node pool (no allocation after build)
-    var MAXN = 1800;
+    var MAXN = 1400;
     var X = new Float64Array(MAXN), Y = new Float64Array(MAXN), PX = new Float64Array(MAXN), PY = new Float64Array(MAXN), TX = new Float64Array(MAXN), TY = new Float64Array(MAXN);
     var QX = new Float64Array(MAXN), QY = new Float64Array(MAXN), OM2 = new Float64Array(MAXN), CZ = new Float64Array(MAXN), DM = new Float64Array(MAXN), SL = new Float64Array(MAXN);
     var HWt = new Float64Array(MAXN), SWt = new Float64Array(MAXN), HS = new Float64Array(MAXN), TTa = new Float64Array(MAXN);
@@ -6785,68 +6797,82 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
       (crown ? crownRest : headRest)(ch.L, n, o);
       var hw = o.hang === undefined ? 1 : o.hang, sw = o.sw === undefined ? 0.7 : o.sw;
       for (var i = 0; i < n; i++) { var t = i / (n - 1), q = sstep(0.08, 0.9, t); HWt[ch.o + i] = hw * q; SWt[ch.o + i] = sw * q; }
-      setDyn(ch, HC.headOm, HC.headZ, o.jit || 1);
+      setDyn(ch, o.om || HC.headOm, o.z || HC.headZ, o.jit || 1);
       setTaper(ch);
-      ch.fy = !!o.fy;
+      ch.fy = !!o.fy; ch.fc = crown ? 1 : 0;          // crown arcs stand up like antennae from the front: they thin out as she turns to us
+      ch.fw = o.fw === undefined ? 1 : o.fw;            // 0 = a profile-only strand (fades out in the front view)
       heads.push(ch);
       return ch;
     }
     function buildHead(R) {
       var k, sg, ll = HC.looseLen, hkS = function (a, b) { return R.range(a, b) * (R.next() < 0.5 ? -1 : 1); };
-      // fringe: leaves the hairline in front of the forehead, bows out in front of the face and tucks back toward the chin (long "(" curves, hooked tips)
-      for (k = 0; k < 5; k++) {
-        var ph0 = (k - 2) * 0.2 + R.range(-0.04, 0.04);
-        addHead({ n: 12, u0: R.range(40, 49), ph0: ph0, dph: (ph0 >= 0 ? 1 : -1) * R.range(0.05, 0.4), drop: R.range(70, 112) * ll, dg: 0.9, m0: 2.0, mk: R.range(7, k === 1 || k === 3 ? 24 : 15), mq: R.range(0.65, 0.85), m1: R.range(1, 8),
-          wav: R.range(0.3, 0.9), wf: R.range(0.8, 1.4), wp: R.range(0, TAU), w0: R.range(1.4, 2.1), hk: hkS(0.8, 2.2), hr: R.range(2.5, 4.5), jit: R.range(0.9, 1.15), bf: R.range(1.2, 2.2), bp: R.range(0, TAU) });
-      }
-      for (k = 0; k < 3; k++) {                      // short wisps right in front of the forehead
-        var phs = (k - 1) * 0.3 + R.range(-0.08, 0.08);
-        addHead({ n: 9, u0: R.range(41, 50), ph0: phs, dph: phs * 0.3, drop: R.range(26, 44) * ll, dg: 1, m0: 2.0, mk: R.range(6, 12), mq: 0.8, m1: R.range(3, 9), wav: R.range(0.2, 0.6), wf: 1, wp: R.range(0, TAU), w0: R.range(1.2, 1.6),
-          hk: hkS(0.8, 1.8), hr: R.range(2, 3.5), jit: R.range(0.95, 1.2), bf: R.range(1.4, 2.4), bp: R.range(0, TAU) });
-      }
-      // temples: fall along the sides of the face, bow out, then hang beside the neck
-      for (k = 0; k < 5; k++) {
-        sg = k % 2 ? 1 : -1;
-        addHead({ n: 12, u0: R.range(30, 46), ph0: sg * R.range(1.05, 1.5), dph: -sg * R.range(0.0, 0.5), drop: R.range(78, 104) * ll, dg: 0.9, m0: 1.6, mk: R.range(4, 12), mq: R.range(0.7, 0.95), m1: R.range(2, 10),
-          wav: R.range(0.3, 0.9), wf: R.range(0.8, 1.3), wp: R.range(0, TAU), w0: R.range(1.4, 2.0), hk: hkS(0.8, 2.0), hr: R.range(2.5, 4.2), jit: R.range(0.9, 1.15), bf: R.range(1.2, 2.2), bp: R.range(0, TAU) });
-      }
-      // cheek / ear wisps (shorter)
+      // fringe: leaves the hairline above the forehead and falls in front of the face, close to it (ref9), tucking back toward the chin; hooked tips
       for (k = 0; k < 3; k++) {
+        var ph0 = (k - 1) * 0.3 + R.range(-0.04, 0.04);
+        addHead({ n: 12, u0: R.range(42, 50), ph0: ph0, dph: (ph0 >= 0 ? 1 : -1) * R.range(0.05, 0.3), drop: R.range(62, 98) * ll, dg: 0.9, m0: 1.6, mk: R.range(3.5, k === 1 ? 9 : 7), mq: R.range(0.6, 0.8), m1: R.range(0.5, 4),
+          wav: R.range(0.5, 1.2), wf: R.range(0.8, 1.3), wp: R.range(0, TAU), w0: R.range(1.6, 2.3), hk: hkS(0.9, 2.2), hr: R.range(2.5, 4.5), jit: R.range(0.9, 1.15), bf: R.range(1.2, 2.2), bp: R.range(0, TAU) });
+      }
+      // gathered hair: a few strands lying along the back of the skull, flowing from the crown into the tie (the hair is pulled into the tail)
+      for (k = 0; k < 3; k++) {
+        var gu = R.range(51, 57);
+        addHead({ n: 9, u0: gu, ph0: PI + (k - 1) * 0.32 + R.range(-0.06, 0.06), dph: -(k - 1) * 0.22, drop: gu - HC.knotU - 1.5, dg: 1, m0: 0.4, mk: R.range(1.4, 2.6), mq: 0.7, m1: 0.6, wav: 0, wf: 1, wp: 0,
+          w0: R.range(1.2, 1.6), wpw: 0.7, hk: 0, jit: 1, bf: 1.2, bp: R.range(0, TAU), br: 0.2, hang: 0, sw: 0, om: [40, 30], z: [0.95, 0.95], fw: 0 });
+      }
+      for (k = 0; k < 2; k++) {                      // short wisps right at the forehead hairline
+        var phs = (k - 0.5) * 0.4 + R.range(-0.08, 0.08);
+        addHead({ n: 9, u0: R.range(43, 51), ph0: phs, dph: phs * 0.3, drop: R.range(24, 38) * ll, dg: 1, m0: 1.6, mk: R.range(4, 8), mq: 0.8, m1: R.range(2, 6), wav: R.range(0.2, 0.6), wf: 1, wp: R.range(0, TAU), w0: R.range(1.3, 1.7),
+          hk: hkS(1.0, 2.0), hr: R.range(2, 3.5), jit: R.range(0.95, 1.2), bf: R.range(1.4, 2.4), bp: R.range(0, TAU) });
+      }
+      // temples: fall along the sides of the face and hang beside the jaw / neck (from the front only one per side stays: no 'bracket' cage around the face)
+      for (k = 0; k < 4; k++) {
         sg = k % 2 ? 1 : -1;
-        addHead({ n: 10, u0: R.range(14, 30), ph0: sg * R.range(0.95, 1.25), dph: sg * R.range(0.0, 0.3), drop: R.range(44, 62) * ll, dg: 0.95, m0: 1.4, mk: R.range(3, 8), mq: 0.85, m1: R.range(2, 7),
-          wav: R.range(0.2, 0.6), wf: R.range(0.8, 1.1), wp: R.range(0, TAU), w0: R.range(1.2, 1.6), hk: hkS(0.8, 1.8), hr: R.range(2, 3.5), jit: R.range(0.95, 1.2), bf: R.range(1.4, 2.4), bp: R.range(0, TAU) });
+        addHead({ n: 12, u0: R.range(30, 44), ph0: sg * R.range(1.1, 1.45), dph: -sg * R.range(0.0, 0.4), drop: R.range(74, 98) * ll, dg: 0.9, m0: 1.4, mk: R.range(3, 8), mq: R.range(0.7, 0.95), m1: R.range(2, 8),
+          wav: R.range(0.4, 1.0), wf: R.range(0.8, 1.3), wp: R.range(0, TAU), w0: R.range(1.4, 1.9), hk: hkS(0.9, 2.2), hr: R.range(2.5, 4.2), jit: R.range(0.9, 1.15), bf: R.range(1.2, 2.2), bp: R.range(0, TAU), fw: k < 2 ? 1 : 0 });
       }
-      // nape: short strands falling down the back of the neck
-      for (k = 0; k < 5; k++) {
-        addHead({ n: 10, u0: R.range(-34, -12), ph0: PI + R.range(-0.7, 0.7), dph: R.range(-0.2, 0.2), drop: R.range(30, 52) * ll, dg: 1, m0: 1.2, mk: R.range(2, 6), mq: 0.9, m1: R.range(2, 9),
-          wav: R.range(0.2, 0.7), wf: R.range(0.8, 1.2), wp: R.range(0, TAU), w0: R.range(1.2, 1.7), hk: hkS(0.8, 2.0), hr: R.range(2, 3.5), jit: R.range(0.95, 1.2), bf: R.range(1.4, 2.4), bp: R.range(0, TAU) });
+      // ear wisps (short)
+      for (k = 0; k < 2; k++) {
+        sg = k % 2 ? 1 : -1;
+        addHead({ n: 10, u0: R.range(16, 28), ph0: sg * R.range(1.3, 1.7), dph: sg * R.range(0.0, 0.3), drop: R.range(40, 56) * ll, dg: 0.95, m0: 1.2, mk: R.range(3, 6), mq: 0.85, m1: R.range(2, 6),
+          wav: R.range(0.2, 0.6), wf: R.range(0.8, 1.1), wp: R.range(0, TAU), w0: R.range(1.2, 1.5), hk: hkS(0.8, 1.8), hr: R.range(2, 3.5), jit: R.range(0.95, 1.2), bf: R.range(1.4, 2.4), bp: R.range(0, TAU) });
       }
-      // crown arcs: two thin strands floating just above the head contour
-      var cr = [{ psi0: 2.55, psi1: 1.35, m0: 2.6, m1: 6.0, drift: -1.0, c0: -6, cd: 5 }, { psi0: 1.55, psi1: 0.55, m0: 2.8, m1: 7.0, drift: 2.0, c0: 5, cd: -4 }];
-      for (k = 0; k < cr.length; k++) {
-        var o = cr[k]; o.n = 11; o.w0 = R.range(1.3, 1.8); o.wp = 0.8; o.hk = hkS(0.8, 1.6); o.hr = 3; o.jit = R.range(0.9, 1.1); o.bf = R.range(1, 1.8); o.bp = R.range(0, TAU); o.sw = 0.4; o.hang = 0.6;
+      // nape: a few short strands escaping under the tail, down the back of the neck
+      for (k = 0; k < 3; k++) {
+        addHead({ n: 10, u0: R.range(-30, -14), ph0: PI + R.range(-0.8, 0.8), dph: R.range(-0.2, 0.2), drop: R.range(28, 46) * ll, dg: 1, m0: 1.2, mk: R.range(2, 5), mq: 0.9, m1: R.range(2, 7),
+          wav: R.range(0.3, 0.8), wf: R.range(0.8, 1.2), wp: R.range(0, TAU), w0: R.range(1.2, 1.6), hk: hkS(0.9, 2.0), hr: R.range(2, 3.5), jit: R.range(0.95, 1.2), bf: R.range(1.4, 2.4), bp: R.range(0, TAU) });
+      }
+      // crown flyaways: thin arcs floating just above the head contour (psi = angle in the sagittal plane: PI/2 = top, > PI/2 toward the back)
+      var cr = [{ psi0: 2.25, psi1: 1.45, m0: 0.4, m1: 1.6, drift: 6.0, c0: -6, cd: 4 }, { psi0: 1.6, psi1: 0.85, m0: 0.4, m1: 2.0, drift: 5.0, c0: 5, cd: -3 },
+        { psi0: 2.8, psi1: 2.2, m0: 0.4, m1: 1.2, drift: 4.5, c0: -2, cd: 3 }, { psi0: 1.15, psi1: 1.85, m0: 0.4, m1: 1.4, drift: 5.5, c0: 3, cd: -5 }];
+      for (k = 0; k < cr.length; k++) {               // short, springy and smooth (no hang: they ride with the head; soft tips, no kinks)
+        var o = cr[k]; o.n = 9; o.w0 = R.range(1.2, 1.6); o.wpw = 0.8; o.hk = k < 2 ? hkS(0.6, 1.2) : 0; o.hr = 2.5; o.jit = R.range(0.95, 1.05); o.bf = R.range(1, 1.8); o.bp = R.range(0, TAU); o.sw = 0.3; o.hang = 0; o.br = 0.6;
+        o.om = [34, 22]; o.z = [0.95, 0.9];
         addHead(o, true);
       }
     }
 
-    /** halo flyaways: extra strands that stand off the head at the ears / temples / nape; they are only visible from the front and the 3/4 views (fade in with the yaw), so the profile is unchanged */
+    /** halo flyaways: strands standing off the head at the ears / temples / nape; only visible from the front and the 3/4 views (fade in with the yaw), the profile is unchanged */
     function buildHalo(R) {
       var k, sg, hkS = function (a, b) { return R.range(a, b) * (R.next() < 0.5 ? -1 : 1); };
-      for (k = 0; k < 6; k++) {                      // sides of the head (ears / temples)
+      for (k = 0; k < 2; k++) {                      // short flicks standing off the sides of the head at ear level (ref8), curling out
         sg = k % 2 ? 1 : -1;
-        addHead({ fy: true, n: 11, u0: R.range(20, 40), ph0: sg * R.range(1.3, 1.5), dph: sg * R.range(0.0, 0.3), drop: R.range(40, 78), dg: 0.95, m0: 1.2, mk: R.range(9, 19), mq: R.range(0.5, 0.8), m1: R.range(5, 16),
-          wav: R.range(0.4, 1.1), wf: R.range(0.8, 1.4), wp: R.range(0, TAU), w0: R.range(1.2, 1.8), hk: hkS(1.2, 2.6), hr: R.range(3, 5.5), jit: R.range(0.9, 1.15), bf: R.range(1.2, 2.2), bp: R.range(0, TAU) });
+        addHead({ fy: true, n: 10, u0: R.range(20, 30), ph0: sg * R.range(1.35, 1.5), dph: sg * R.range(0.05, 0.3), drop: R.range(26, 40), dg: 0.95, m0: 1.0, mk: R.range(6, 10), mq: R.range(0.5, 0.7), m1: R.range(6, 10),
+          wav: R.range(0.3, 0.8), wf: R.range(0.8, 1.2), wp: R.range(0, TAU), w0: R.range(1.4, 1.8), hk: sg * R.range(1.4, 2.4), hr: R.range(3, 4.5), jit: R.range(0.9, 1.15), bf: R.range(1.2, 2.2), bp: R.range(0, TAU) });
       }
-      for (k = 0; k < 4; k++) {                      // behind the ears / nape, hanging beside the neck
-        sg = k % 2 ? 1 : -1;
-        addHead({ fy: true, n: 10, u0: R.range(-8, -26), ph0: sg * R.range(1.9, 2.5), dph: sg * R.range(0.0, 0.4), drop: R.range(36, 60), dg: 1, m0: 1.2, mk: R.range(6, 13), mq: 0.8, m1: R.range(4, 11),
-          wav: R.range(0.3, 0.9), wf: R.range(0.8, 1.3), wp: R.range(0, TAU), w0: R.range(1.1, 1.6), hk: hkS(1.0, 2.2), hr: R.range(2.5, 4.5), jit: R.range(0.95, 1.2), bf: R.range(1.4, 2.4), bp: R.range(0, TAU) });
+      addHead({ fy: true, n: 11, u0: R.range(32, 38), ph0: -R.range(1.3, 1.45), dph: -R.range(0.0, 0.2), drop: R.range(48, 60), dg: 0.95, m0: 1.2, mk: R.range(7, 11), mq: 0.6, m1: R.range(5, 9),       // one longer loose wisp (asymmetry)
+        wav: R.range(0.5, 1.1), wf: R.range(0.9, 1.3), wp: R.range(0, TAU), w0: R.range(1.3, 1.7), hk: hkS(1.2, 2.2), hr: R.range(3, 5), jit: R.range(0.9, 1.15), bf: R.range(1.2, 2.2), bp: R.range(0, TAU) });
+      addHead({ fy: true, n: 10, u0: R.range(-12, -20), ph0: R.range(1.9, 2.3), dph: R.range(0.0, 0.3), drop: R.range(34, 46), dg: 1, m0: 1.2, mk: R.range(5, 8), mq: 0.8, m1: R.range(4, 8),       // behind the ear, beside the neck
+        wav: R.range(0.3, 0.9), wf: R.range(0.8, 1.3), wp: R.range(0, TAU), w0: R.range(1.2, 1.6), hk: hkS(1.0, 2.2), hr: R.range(2.5, 4.5), jit: R.range(0.95, 1.2), bf: R.range(1.4, 2.4), bp: R.range(0, TAU) });
+      for (k = 0; k < 2; k++) {                      // two little curved flyaways off the upper corners of the head (front view: the crown arcs are edge-on there)
+        sg = k ? 1 : -1;
+        addHead({ fy: true, n: 9, u0: R.range(52, 56), ph0: sg * R.range(1.0, 1.3), dph: sg * R.range(0.2, 0.4), drop: R.range(8, 12), dg: 1, m0: 0.6, mk: R.range(2.5, 4), mq: 0.7, m1: R.range(3, 5),
+          wav: 0.2, wf: 1, wp: R.range(0, TAU), w0: R.range(1.1, 1.4), hk: sg * R.range(1.2, 2.0), hr: R.range(2.5, 3.5), jit: 1, bf: R.range(1.2, 2), bp: R.range(0, TAU), om: [36, 22], z: [0.95, 0.9] });
       }
     }
 
     // ------------------------------------------------------------------ ponytail strands (parametrised on the lagged spine)
-    var nrX = new Float64Array(PN), nrY = new Float64Array(PN), Hb = new Float64Array(PN), Hs = new Float64Array(PN), Hv = new Float64Array(PN), Hc = new Float64Array(PN), shf = new Float64Array(PN), sOut = new Float64Array(PN), HV = new Float64Array(PN), spineLen = 100;
+    var nrX = new Float64Array(PN), nrY = new Float64Array(PN), Hb = new Float64Array(PN), Hs = new Float64Array(PN), Hv = new Float64Array(PN), Hc = new Float64Array(PN), shf = new Float64Array(PN), sOut = new Float64Array(PN), spineLen = 100;
     var BX = new Float64Array(PN), BY = new Float64Array(PN);
+    var ThW = new Float64Array(PN), ThR = new Float64Array(PN), tieF = -40, knotF = -34;          // segment directions (rad, from the backward axis, + = up): walk / run
     function addPony(o) {
       var m = o.m, ch = newChain(o.kind || 'pony', m, { w0: o.w0 || 1.4, wp: o.wp || 0.9, tq: o.tq || 1, wf: o.wf || 0, hk: o.hk || 0, hr: o.hr || 3, hn: o.hk ? 3 : 0, alpha: o.a || 0, amp: o.amp || 0, cf: o.cf || 1, cp: o.cp || 0, drift: o.drift || 0, dp: o.dp || 1.2,
         droop: o.droop || 0, s0: o.s0 || 0, s1: o.s1 || 1, maxD: o.wf ? 7 : (o.kind === 'wisp' ? 14 : 12), br: o.br === undefined ? 0.7 : o.br, bf: o.bf || 1.5, bp: o.bp || 0, tr: o.tr || 1.3, ri: o.ri === undefined ? 0.12 : o.ri,
@@ -6860,7 +6886,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
         ch.flS[j] = max(0, sj - 0.85) * q;
         ch.pwS[j] = pow(q, ch.dp);
         ch.drS[j] = sj > 0.7 ? (sj - 0.7) * (sj - 0.7) : 0;
-        ch.fanS[j] = sstep(0.4, 1.25, sj);
+        ch.fanS[j] = sstep(0.5, 1.12, sj);
       }
       setDyn(ch, HC.strandOm, HC.strandZ, o.jit || 1);
       setTaper(ch);
@@ -6870,85 +6896,104 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     function buildPony(R) {
       var i, a, sg, n, s0, k;
       n = HC.nLock;
-      for (i = 0; i < n; i++) {                       // solid locks: they fill the tail, scallop the outline and fan out into pointed tips
-        a = -0.62 + 1.24 * (n > 1 ? i / (n - 1) : 0.5) + R.range(-0.04, 0.04); var aa = abs(a) / 0.62; sg = a < 0 ? -1 : 1;
-        addPony({ m: 12, a: a * 1.3, s0: R.range(0.1, 0.17), ri: 0.3, s1: 1.1 - 0.26 * pow(aa, 1.2) + R.range(-0.1, 0.06), wf: R.range(0.2, 0.3), w0: 1, wp: 1.1, tq: 1.5, amp: R.range(2.0, 3.8), cf: R.range(0.65, 1.1), cp: R.range(0, TAU),
-          drift: 0, dp: 1.6, droop: R.range(0, 0.05), hk: R.next() < 0.75 ? (sg + R.range(-0.5, 0.5)) * R.range(1.2, 2.4) : 0, hr: R.range(4, 7), br: 0.5, jit: R.range(0.92, 1.1), bf: R.range(1, 1.8), bp: R.range(0, TAU) });
+      for (i = 0; i < n; i++) {                       // solid LOCKS: long S-curved ribbons in lateral slots; they fill the lower body and split into separate pointed wavy tips
+        a = -0.8 + 1.6 * (n > 1 ? i / (n - 1) : 0.5) + R.range(-0.05, 0.05); var aa = abs(a) / 0.8; sg = a < 0 ? -1 : 1;
+        addPony({ m: 13, a: a, s0: R.range(0.08, 0.16), ri: 0.26, s1: [1.2, 1.0, 1.14, 0.93, 1.08][i % 5] + R.range(-0.03, 0.03), wf: R.range(0.34, 0.39) * (1 - 0.15 * aa), w0: 1, wp: 1.0, tq: 2.0,
+          amp: R.range(3.2, 5.0), cf: R.range(0.75, 1.1), cp: R.range(0, TAU), dp: 1.6, droop: 0, hk: (sg * 0.8 + R.range(-0.5, 0.5)) * R.range(1.2, 2.2), hr: R.range(4, 6.5), br: 0.5, jit: R.range(0.92, 1.08), bf: R.range(1, 1.8), bp: R.range(0, TAU) });
       }
       var fr = function (x) { return x - Math.floor(x); }, phM = R.next(), phD = R.next(), phF = R.next(), phE = R.next();
-      // bold curling locks: 3.5-5 units wide, soft S-curves, varied lengths, peeling off both flanks of the tail, tips curl (these make the silhouette of the lower tail)
-      n = HC.nBold;
+      n = HC.nBold;                                   // bold peeling locks: S-curves leaving both flanks of the lower tail, curled tips
       for (i = 0; i < n; i++) {
         sg = i % 2 ? 1 : -1; k = i >> 1;
-        s0 = 0.14 + 0.34 * fr(k * 0.618034 + phM);
-        addPony({ m: 9, ss: sg, ru: (0.4 + 0.45 * fr(k * 0.381966 + phM * 0.5)) * HC.boldRu, s0: s0, s1: min(1.24, s0 + 0.45 + 0.4 * fr(k * 0.754877 + phM)), w0: R.range(3.4, 4.8) * HC.boldW, wp: 0.95, tq: 1.25, ri: 0.14, amp: R.range(3, 6), cf: R.range(0.55, 0.95), cp: R.range(0, TAU),
-          dp: R.range(0.7, 1.05), bw: R.range(0.2, 0.55), droop: R.range(0, 0.08), hk: -sg * R.range(1.3, 2.7), hr: R.range(4, 7), jit: R.range(0.92, 1.1), bf: R.range(0.9, 1.7), bp: R.range(0, TAU), br: 0.8 });
+        s0 = 0.3 + 0.28 * fr(k * 0.618034 + phM);
+        addPony({ m: 9, ss: sg, ru: (0.35 + 0.4 * fr(k * 0.381966 + phM * 0.5)) * HC.boldRu, s0: s0, s1: min(1.2, s0 + 0.5 + 0.3 * fr(k * 0.754877 + phM)), w0: R.range(3.2, 4.4) * HC.boldW, wp: 0.95, tq: 1.25, ri: 0.14, amp: R.range(2.5, 5), cf: R.range(0.55, 0.95), cp: R.range(0, TAU),
+          dp: R.range(0.7, 1.05), bw: R.range(0.2, 0.55), droop: R.range(0, 0.06), hk: -sg * R.range(1.3, 2.6), hr: R.range(4, 6.5), jit: R.range(0.92, 1.1), bf: R.range(0.9, 1.7), bp: R.range(0, TAU), br: 0.8 });
       }
       for (i = 0; i < HC.nMed; i++) {                 // medium strands: S-curves peeling off the edge
-        sg = i % 2 ? 1 : -1; s0 = R.range(0.2, 0.55);
-        addPony({ m: 8, ss: sg, ru: 0.35 + 0.75 * fr((i >> 1) * 0.618034 + phD), s0: s0, s1: min(1.28, s0 + R.range(0.45, 0.8)), w0: R.range(1.9, 2.8), wp: 0.9, tq: 1.3, amp: R.range(2.0, 5.0), cf: R.range(0.6, 1.2), cp: R.range(0, TAU),
-          dp: R.range(0.6, 1.0), bw: R.range(0.15, 0.7), droop: R.range(0, 0.1), hk: R.next() < 0.7 ? -sg * R.range(0.8, 2.0) * (R.next() < 0.75 ? 1 : -1) : 0, hr: R.range(2.5, 4.5), jit: R.range(0.92, 1.12), bf: R.range(1, 2), bp: R.range(0, TAU) });
+        sg = i % 2 ? 1 : -1; s0 = R.range(0.18, 0.5);
+        addPony({ m: 8, ss: sg, ru: 0.4 + 0.6 * fr((i >> 1) * 0.618034 + phD), s0: s0, s1: min(1.24, s0 + R.range(0.45, 0.75)), w0: R.range(1.8, 2.5), wp: 0.9, tq: 1.3, amp: R.range(2.0, 4.5), cf: R.range(0.6, 1.2), cp: R.range(0, TAU),
+          dp: R.range(0.6, 1.0), bw: R.range(0.15, 0.7), droop: R.range(0, 0.08), hk: R.next() < 0.7 ? -sg * R.range(0.9, 2.0) : 0, hr: R.range(2.5, 4.5), jit: R.range(0.92, 1.12), bf: R.range(1, 2), bp: R.range(0, TAU) });
       }
-      for (i = 0; i < HC.nFine; i++) {                // fine flyaways around the edge
-        sg = i % 2 ? 1 : -1; s0 = 0.22 + 0.62 * pow(R.next(), 0.85);
-        addPony({ m: 6, ss: sg, ru: 0.35 + 0.8 * fr((i >> 1) * 0.618034 + phF), s0: s0, s1: min(1.3, s0 + R.range(0.2, 0.5)), w0: R.range(1.2, 1.8), wp: 0.9, tq: 1.15, amp: R.range(1.2, 3.5), cf: R.range(0.8, 1.6), cp: R.range(0, TAU),
-          dp: R.range(0.6, 1.0), bw: R.range(0.15, 0.7), droop: R.range(0, 0.1), hk: R.next() < 0.3 ? -sg * R.range(0.8, 2.0) * (R.next() < 0.7 ? 1 : -1) : 0, hr: R.range(2, 3.5), jit: R.range(0.9, 1.15), bf: R.range(1, 2.2), bp: R.range(0, TAU) });
+      for (i = 0; i < HC.nFine; i++) {                // fine flyaways around the edge (mostly the outer, back edge of the upper tail)
+        sg = i % 3 === 2 ? -1 : 1; s0 = 0.1 + 0.45 * pow(R.next(), 0.9);
+        addPony({ m: 7, ss: sg, ru: 0.45 + 0.6 * fr((i >> 1) * 0.618034 + phF), s0: s0, s1: min(1.2, s0 + R.range(0.2, 0.45)), w0: R.range(1.1, 1.6), wp: 0.9, tq: 1.15, amp: R.range(1.2, 3.2), cf: R.range(0.8, 1.6), cp: R.range(0, TAU),
+          dp: R.range(0.6, 1.0), bw: R.range(0.15, 0.7), droop: R.range(0, 0.08), hk: R.next() < 0.55 ? -sg * R.range(1.0, 2.4) : 0, hr: R.range(2.5, 4), jit: R.range(0.9, 1.15), bf: R.range(1, 2.2), bp: R.range(0, TAU) });
       }
       for (i = 0; i < HC.nEdge; i++) {                // long thin flyaways on the outline: big S, curled tips
-        sg = i % 2 ? 1 : -1; s0 = R.range(0.2, 0.55);
-        addPony({ m: 8, ss: sg, ru: 1.0 + 0.45 * fr((i >> 1) * 0.618034 + phE), s0: s0, s1: min(1.3, s0 + R.range(0.4, 0.75)), w0: R.range(1.0, 1.5), wp: 0.85, tq: 1.1, amp: R.range(3.0, 6.0), cf: R.range(0.6, 1.1), cp: R.range(0, TAU),
-          dp: R.range(0.6, 0.9), bw: R.range(0.3, 0.8), droop: R.range(0, 0.06), hk: R.next() < 0.6 ? -sg * R.range(1.2, 2.6) * (R.next() < 0.8 ? 1 : -1) : 0, hr: R.range(3, 5.5), jit: R.range(0.9, 1.2), bf: R.range(0.8, 1.6), bp: R.range(0, TAU), br: 1.0 });
+        sg = i % 2 ? 1 : -1; s0 = R.range(0.16, 0.5);
+        addPony({ m: 9, ss: sg, ru: 0.95 + 0.4 * fr((i >> 1) * 0.618034 + phE), s0: s0, s1: min(1.28, s0 + R.range(0.45, 0.75)), w0: R.range(1.0, 1.4), wp: 0.85, tq: 1.1, amp: R.range(3.0, 5.5), cf: R.range(0.6, 1.1), cp: R.range(0, TAU),
+          dp: R.range(0.6, 0.9), bw: R.range(0.3, 0.8), droop: R.range(0, 0.05), hk: R.next() < 0.65 ? -sg * R.range(1.3, 2.6) : 0, hr: R.range(3, 5.5), jit: R.range(0.9, 1.2), bf: R.range(0.8, 1.6), bp: R.range(0, TAU), br: 1.0 });
       }
-      for (i = 0; i < HC.nWisp; i++) {                // stray hairs at the tie: arc up and out, then fall back
-        sg = i % 2 ? 1 : -1; var wl = R.range(28, 50);
-        addPony({ kind: 'wisp', m: 11, sg: sg, phi0: R.range(0.3, 1.15), len: wl, kap: R.range(1.8, 3.0) / wl, w0: R.range(1.0, 1.5), wp: 0.85, tq: 1.0, ri: 0.12, hk: sg * R.range(1.0, 2.4), hr: R.range(3, 5), jit: R.range(0.9, 1.2), bf: R.range(1, 2), bp: R.range(0, TAU), br: 1.0 });
+      for (i = 0; i < HC.nWisp; i++) {                // stray hairs at the tie: arc up and back over the tail (fountain), then fall; the last one drops into the gap under the tie
+        var lo = i === HC.nWisp - 1, wl = lo ? R.range(30, 40) : R.range(24, 46);
+        addPony({ kind: 'wisp', m: 11, sg: lo ? -1 : 1, phi0: lo ? 0.55 : R.range(0.15, 0.85), len: wl, kap: (lo ? -0.5 : R.range(1.7, 2.6)) / wl, w0: R.range(1.0, 1.35), wp: 0.85, tq: 1.0, ri: 0.12, hk: (lo ? -1 : 1) * R.range(1.0, 2.2), hr: R.range(3, 5), jit: R.range(0.9, 1.2), bf: R.range(1, 2), bp: R.range(0, TAU), br: 1.0 });
       }
-      for (i = 0; i < 2; i++)                         // long strands hugging the inner edge (the head side)
-        addPony({ m: 12, a: -1.08 - 0.1 * i, s0: 0.1, s1: 0.95 - 0.12 * i, w0: 1.5, wp: 0.9, tq: 1.2, amp: 0.8, cf: 1.2, cp: R.range(0, TAU), drift: 0, jit: 1, bf: 1, bp: R.range(0, TAU), br: 0.5 });
+      for (i = 0; i < 1; i++)                         // a long strand hugging the inner edge (the head side)
+        addPony({ m: 12, a: -1.04 - 0.08 * i, s0: 0.08, s1: 0.96 - 0.1 * i, w0: 1.5, wp: 0.9, tq: 1.2, amp: 1.0, cf: 1.2, cp: R.range(0, TAU), drift: 0, jit: 1, bf: 1, bp: R.range(0, TAU), br: 0.5 });
     }
+    /** samples the direction keys at the segment midpoints (rad) */
+    function designDirs(dk, Th) { Th[0] = dk[0][1] * PI / 180; for (var i = 1; i < PN; i++) Th[i] = K.curve(dk, (i - 0.5) / (PN - 1)) * PI / 180; }
 
     // ------------------------------------------------------------------ build
     function build(seed) {
       refreshKeys(); refreshSmooth();
       nAlloc = 0; chains.length = 0; pony.length = 0; heads.length = 0; lastD = -1;
       var sd = seed === undefined ? 1 : seed, R = GA.util.rng(sd * 7919 + 13);
+      // the tie on the skull's back contour (head-local f at the tie height), the knot centre just inside it
+      var fS = K.curve(keys.fm, HC.knotU) - K.curve(keys.db, HC.knotU);
+      tieF = fS - HC.knotOut; knotF = fS + HC.knotIn;
+      designDirs(DIRW, ThW); designDirs(DIRR, ThR);
       spine = newChain('spine', PN, { maxD: 48, br: 0.5, bf: 1, bp: 0.7, tr: 1.0 });
-      for (var i = 0; i < PN; i++) { var t = i / (PN - 1); HWt[spine.o + i] = sstep(0.04, 0.85, t); SWt[spine.o + i] = pow(sstep(0.0, 0.5, t), 0.8) * 0.9; HV[i] = K.curve(HVIS, t); }
+      for (var i = 0; i < PN; i++) { var t = i / (PN - 1); HWt[spine.o + i] = sstep(-0.9, 0.45, t); SWt[spine.o + i] = pow(sstep(0.0, 0.5, t), 0.8) * 0.9; }   // gravity weight: the tail bends right below the tie (no plume when she bows her head)
       setDyn(spine, HC.spineOm, HC.spineZ, 1);
       buildHead(R);
       buildPony(GA.util.rng(sd * 104729 + 7));
       buildHalo(GA.util.rng(sd * 15485863 + 11));
-      inited = false; simT = 0; bnd = null; curSeed = sd; calmN = 0; parity = 0; cacheAge = 99;
+      inited = false; simT = 0; bnd = null; curSeed = sd; calmN = 0; parity = 0; cacheAge = 99; envReady = false;
       for (var q = 0; q < chains.length; q++) chains[q].ready = false;
     }
 
     // ------------------------------------------------------------------ per-step frame data
-    var tlx = 0, tly = 0, tlInit = false, fhide = 0, gHide = 1, gRing = 1, fhalo = 0, calmN = 0, parity = 0, curSeed = 1, stiffK = 1, runDampF = 1, cth = 1, sth = 0, ox = 0, oy = 0, roll = 0, hcx = 0, hcy = 0, shud = 0, shT = 0, hangW = 0.78, amt = 0, wdx = 1, wdy = 0, vLPx = 0, vLPy = 0, lastTx = 0, lastTy = 0, haveLast = false, ponyRunW = 0, tFront = 0;
+    var tlx = 0, tly = 0, tlInit = false, fhide = 0, gHide = 1, gRing = 1, fhalo = 0, fcrn = 0, fwsp = 1, calmN = 0, parity = 0, curSeed = 1, stiffK = 1, runDampF = 1, cth = 1, sth = 0, ox = 0, oy = 0, roll = 0, hcx = 0, hcy = 0, shud = 0, shT = 0, hangW = 0.78, amt = 0, wdx = 1, wdy = 0, vLPx = 0, vLPy = 0, lastTx = 0, lastTy = 0, haveLast = false, ponyRunW = 0, tFront = 0;
     function frame(S) {
       cth = cos(S.theta); sth = sin(S.theta); ox = S.ox; oy = S.oy;
       var R = S.Fhead.R, O = S.Fhead.o;
       var ux = -(R[2] * cth + R[5] * sth), uh = R[8];
-      roll = atan2(ux, uh); if (roll > 1.3) roll = 1.3; else if (roll < -1.3) roll = -1.3;
+      roll = atan2(ux, uh); if (roll > 2.3) roll = 2.3; else if (roll < -2.3) roll = -2.3;          // deep bows (look down at the console) reach ~1.6 rad
       hcx = ox - (O[0] * cth + O[1] * sth); hcy = oy - O[2];
       var P = S.P; shud = P.shudder || 0; shT = P.shudderT || 0;
       hangW = HC.hang + 0.1 * (P.peek || 0);
-      tFront = 0;                                      // the tail is the profile tail at every yaw (it is placed behind the head in 3D and rotates with it)
+      tFront = 0;
       var yy = P.yaw > 1 ? 1 : P.yaw < 0 ? 0 : P.yaw;
-      fhide = sstep(HC.hideY[0], HC.hideY[1], yy); gHide = 1 - fhide; gRing = max(0, 1 - 2 * fhide); fhalo = sstep(HC.haloY[0], HC.haloY[1], yy);
+      fhide = sstep(HC.hideY[0], HC.hideY[1], yy); gHide = 1 - 0.6 * fhide; gRing = max(0, 1 - 1.6 * fhide); fhalo = sstep(HC.haloY[0], HC.haloY[1], yy); fcrn = sstep(0.2, 0.6, yy); fwsp = 1 - sstep(0.12, 0.45, yy);
     }
-    /** ponytail rest nodes (screen) from the traced tables, blended with yaw / run; Hb = traced half width */
-    var havePony = false;
-    function ponyBase(S) {
-      var Pn = A.pony; if (!Pn) { havePony = false; return; }
+    /** ponytail rest nodes (screen): the designed curve hung from the tie, built segment by segment in 3D.  Each segment direction is the designed direction in the
+        HEAD frame blended toward the same direction in an UPRIGHT frame (same heading, world up) by hang x HWt: gravity hang that is right in every view (a bow seen in 3/4
+        view, the peek, the run lean), the root stays with the head, the body hangs. */
+    var envReady = false, rwS = 0, havePony = false, rdF = -1, rdC = 0, rdH = 0;
+    function ponyBase(S, d) {
       havePony = true;
-      var rw = S.run || 0, R = S.Fhead.R, O = S.Fhead.o, hasRun = !!(Pn.run && rw > 0);
-      for (var i = 0; i < PN; i++) {
-        var f = Pn.side.f[i], u = Pn.side.u[i], c = 0, h = Pn.side.H[i];     // profile trace: f = behind the head, c = 0 (centre of the back of the head), u = height
-        if (hasRun) { f = lerp(f, Pn.run.f[i], rw); u = lerp(u, Pn.run.u[i], rw); h = lerp(h, Pn.run.H[i], rw); }
-        var pf = R[0] * f + R[1] * c + R[2] * u + O[0], pc = R[3] * f + R[4] * c + R[5] * u + O[1], ph = R[6] * f + R[7] * c + R[8] * u + O[2];
-        BX[i] = ox - (pf * cth + pc * sth); BY[i] = oy - ph; Hb[i] = h;
+      var rT = S.run || 0; rwS = envReady && d > 0 ? rwS + (rT - rwS) * (1 - exp(-d / 0.2)) : rT;          // the rig blends walk -> run in ~0.1 s: the tail swings back over ~0.3 s instead of snapping
+      var rw = rwS, R = S.Fhead.R, O = S.Fhead.o, so = spine.o;
+      var fx = R[0], fy = R[3], fz = R[6], ux = R[2], uy = R[5], uz = R[8], ul = sqrt(ux * ux + uy * uy + uz * uz) || 1;
+      ux /= ul; uy /= ul; uz /= ul;
+      var hx = R[4], hy = -R[1], hl = sqrt(hx * hx + hy * hy);          // heading = c x up (horizontal; unaffected by head pitch / roll)
+      if (hl > 1e-6) { hx /= hl; hy /= hl; } else { hx = fx; hy = fy; hl = sqrt(hx * hx + hy * hy) || 1; hx /= hl; hy /= hl; }
+      var tu = HC.knotU, pf = R[0] * tieF + R[2] * tu + O[0], pc = R[3] * tieF + R[5] * tu + O[1], ph = R[6] * tieF + R[8] * tu + O[2];
+      var ds = HC.pLen / (PN - 1) * (1 + 0.05 * rw) * (1 - 0.75 * fhide);          // facing us: the tail retracts behind her head (no tail in the front view)
+      var bowK = sstep(0.35, 1.1, Math.acos(uz > 1 ? 1 : uz < -1 ? -1 : uz)) * (1 - 0.85 * rw);   // head tilted far from upright (look-down bow, peek): the root hangs too (no bun / plume on top); not in the run (it streams)
+      BX[0] = ox - (pf * cth + pc * sth); BY[0] = oy - ph; Hb[0] = HWD[0][1];
+      for (var i = 1; i < PN; i++) {
+        var th = ThW[i] + (ThR[i] - ThW[i]) * rw; th += (-1.31 - th) * 0.7 * bowK;            // bowed: no fountain arc, the tail drops from the tie and hangs (a little behind her)
+        var ct = cos(th), st = sin(th), hw0 = HWt[so + i], w = hangW * (hw0 + (1 - hw0) * max(bowK, 0.6 * rw));          // (run lean: the root must not rise above the head)
+        var dx = -fx * ct + ux * st, dy = -fy * ct + uy * st, dz = -fz * ct + uz * st;          // designed direction in the head frame
+        dx += (-hx * ct - dx) * w; dy += (-hy * ct - dy) * w; dz += (st - dz) * w;             // ... toward the upright frame
+        var dl = sqrt(dx * dx + dy * dy + dz * dz) || 1; dx /= dl; dy /= dl; dz /= dl;
+        if (i === 1) { rdF = dx; rdC = dy; rdH = dz; }
+        pf += dx * ds; pc += dy * ds; ph += dz * ds;
+        BX[i] = ox - (pf * cth + pc * sth); BY[i] = oy - ph; Hb[i] = K.curve(HWD, i / (PN - 1));
       }
-      ponyRunW = hasRun ? rw : 0;
+      ponyRunW = rw;
     }
     /** bends the target polyline of a chain: gravity hang (against the head tilt), wind streaming */
     function shape(o, n, hang, rollA, amtA, dx_, dy_) {
@@ -7001,6 +7046,18 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
           if (i === 1) { X[b] -= ex * df; Y[b] -= ey * df; } else { X[b] -= ex * df * 0.5; Y[b] -= ey * df * 0.5; X[a] += ex * df * 0.5; Y[a] += ey * df * 0.5; }
         }
       }
+      // bending stiffness: smooth the DEVIATION from the target along the strand (keeps the designed curls, removes the zig-zag kinks a fast head snap would buckle into the chain)
+      for (var bp = 0, bpN = ch.kind === 'head' ? 2 : 1; bp < bpN; bp++) {
+        var pdx = 0, pdy = 0;                         // node 0 is pinned: deviation 0
+        for (i = 1; i < n; i++) {
+          idx = o + i;
+          var cdx = X[idx] - TX[idx], cdy = Y[idx] - TY[idx], ndx, ndy;
+          if (i < n - 1) { ndx = X[idx + 1] - TX[idx + 1]; ndy = Y[idx + 1] - TY[idx + 1]; } else { ndx = cdx; ndy = cdy; }
+          var ex2 = 0.35 * (0.5 * (pdx + ndx) - cdx), ey2 = 0.35 * (0.5 * (pdy + ndy) - cdy);
+          X[idx] += ex2; Y[idx] += ey2;               // (a position correction like the length constraints: it also damps the kink modes)
+          pdx = cdx; pdy = cdy;
+        }
+      }
       var md = ch.maxD, md2 = md * md;
       for (i = 1; i < n; i++) {                       // never let a node wander far from its target (no explosions, ever)
         idx = o + i;
@@ -7023,7 +7080,6 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
       }
       spineLen = len || 1;
     }
-    /** outer envelope Hs, core half width Hc, centre shift shf (away from the head) */
     var tmpA = new Float64Array(PN);
     function smooth3(a, n, passes) {                 // [1 2 1]/4, ends fixed
       for (var p = 0; p < passes; p++) {
@@ -7032,29 +7088,29 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
         for (i = 1; i < n - 1; i++) a[i] = tmpA[i];
       }
     }
-    function envelope() {
-      var o = spine.o, hk = lerp(1.3, HC.frontRing, tFront), rw = ponyRunW, vol = lerp(HC.volume, HC.frontVol, tFront) * (1 + 0.15 * amt) * lerp(1, HC.runSolid, rw), vk = HC.fan * lerp(1, HC.frontVis, tFront) * (1 + 0.25 * amt) * (1 - 0.7 * rw), i;
+    /** body half width Hs, strand ring radius Hv, body-ribbon half width Hc, side facing away from the head sOut */
+    var sRaw = new Float64Array(PN);
+    function envelope(kLP) {
+      var o = spine.o, rw = ponyRunW, vol = HC.pWid * (1 + 0.12 * amt) * lerp(1, HC.runSlim, rw), rk = HC.ringK * (1 + 0.2 * amt + 0.25 * rw), i;
       for (i = 0; i < PN; i++) {
-        var t = i / (PN - 1), hb = Hb[i], h = hb * vol;
-        var fl = HC.baseHW * sstep(0.0, 0.12, t) * (1 - 0.55 * sstep(0.26, 0.6, t));
-        if (fl > h) h = fl;
-        // curvature clamp: the offset outline must not fold where the tail bends sharply (not at the tie: the knot is shaped separately)
+        var h = Hb[i] * vol;
+        // curvature clamp: the offset outline must not fold where the tail bends sharply
         var a = i > 0 ? i - 1 : 0, b = i < PN - 1 ? i + 1 : PN - 1;
-        if (b - a === 2 && i >= 3) {
+        if (b - a === 2 && i >= 2) {
           var t1x = X[o + i] - X[o + a], t1y = Y[o + i] - Y[o + a], t2x = X[o + b] - X[o + i], t2y = Y[o + b] - Y[o + i], l1 = sqrt(t1x * t1x + t1y * t1y) || 1, l2 = sqrt(t2x * t2x + t2y * t2y) || 1;
           var cr = (t1x * t2y - t1y * t2x) / (l1 * l2), kap = abs(cr) / (0.5 * (l1 + l2));
-          if (kap > 1e-4) h = K.smin(h, 0.85 / kap, 6);
+          if (kap > 1e-4) h = K.smin(h, 0.9 / kap, 6);
         }
         Hs[i] = h;
-        var s = (nrX[i] * (X[o + i] - hcx) + nrY[i] * (Y[o + i] - hcy)) / 14; sOut[i] = s > 1 ? 1 : s < -1 ? -1 : s;      // + = the +normal side faces away from the head
+        var s = (nrX[i] * (X[o + i] - hcx) + nrY[i] * (Y[o + i] - hcy)) / 18; sRaw[i] = s > 1 ? 1 : s < -1 ? -1 : s;      // + = the +normal side faces away from the head
       }
-      smooth3(Hs, PN, 1); smooth3(sOut, PN, 3);        // smooth profiles: no lumps along the outline
+      smooth3(Hs, PN, 1); smooth3(sRaw, PN, 3);
+      for (i = 0; i < PN; i++) sOut[i] += (sRaw[i] - sOut[i]) * kLP;          // low-passed in time: no side flips when the tail swings past the head centre (bows)
       for (i = 0; i < PN; i++) {
-        var t2 = i / (PN - 1), h2 = Hs[i], hb2 = Hb[i];
-        Hv[i] = max(h2 * hk + max(0, HV[i] * vk * HC.ringK - h2 * hk) * sstep(0.1, 0.55, t2), hb2 * 1.12 * rw);   // run: the traced H already contains the fan of strands -> it is the RING, the solid part is slimmer
-        Hc[i] = h2 * 0.9 * (1 - sstep(HC.coreEnd[0], HC.coreEnd[1], t2) * 0.97);
-        var gk = HC.gap * (1 - 0.55 * sstep(0.15, 0.5, t2));
-        shf[i] = (max(0, h2 - hb2) * gk + HC.baseOut * (1 - sstep(0.12, 0.4, t2))) * sOut[i] * (1 - sstep(0.55, 1, t2));
+        var t2 = i / (PN - 1), h2 = Hs[i];
+        Hv[i] = max(h2 * 1.2, K.curve(HRING, t2) * rk);
+        Hc[i] = h2 * (1 - sstep(HC.coreEnd[0], HC.coreEnd[1], t2) * 0.97);
+        shf[i] = HC.gapShift * sstep(0.02, 0.16, t2) * (1 - sstep(0.4, 0.85, t2)) * sOut[i];
       }
     }
     var sp = { x: 0, y: 0, nx: 0, ny: 1, h: 0, hv: 0, so: 0 };
@@ -7071,8 +7127,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
       sp.x = c0 * X[o + a] + c1 * X[o + i0] + c2 * X[o + b] + cc3 * X[o + c3]; sp.y = c0 * Y[o + a] + c1 * Y[o + i0] + c2 * Y[o + b] + cc3 * Y[o + c3];
       nx = nrX[i0] * (1 - f) + nrX[b] * f; ny = nrY[i0] * (1 - f) + nrY[b] * f; var nl = sqrt(nx * nx + ny * ny) || 1; sp.nx = nx / nl; sp.ny = ny / nl;
       sp.h = Hs[i0] * (1 - f) + Hs[b] * f; sp.hv = Hv[i0] * (1 - f) + Hv[b] * f; sp.so = sOut[i0] * (1 - f) + sOut[b] * f;
-      // the centre line of the body is pushed away from the head (gap)
-      var sh = shf[i0] * (1 - f) + shf[b] * f; sp.x += sp.nx * sh; sp.y += sp.ny * sh;
+      var sh = shf[i0] * (1 - f) + shf[b] * f; sp.x += sp.nx * sh; sp.y += sp.ny * sh;          // the upper body is shifted away from the head (teardrop gap under the tie)
       return sp;
     }
     function strandTargets(ch) {
@@ -7085,20 +7140,20 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
           var inn = 0.12 + 0.88 * (0.5 + 0.5 * ss * P.so);
           off = ss * (h + max(0, P.hv - h) * ch.ru * ES[j] * inn + fk * FL[j] * inn) + WV[j];
         } else if (ch.wf > 0) {                       // solid lock: lateral slot across the tail, opening into a fan toward the tips
-          off = ch.alpha * max(h, HC.lockFan * fan[j] * (1 + 0.25 * amt)) * (1 - 0.15 * min(1, max(0, 0.5 - 0.5 * sgn * P.so))) + WV[j];
+          off = ch.alpha * (0.9 * h + HC.lockFan * fan[j] * (1 + 0.25 * amt)) * (1 - 0.15 * min(1, max(0, 0.5 - 0.5 * sgn * P.so))) + WV[j];          // the slots open beyond the body: separate lock tips
         } else off = ch.alpha * h * (1 - 0.25 * min(1, max(0, 0.5 - 0.5 * sgn * P.so))) + sgn * drA * PW[j] * (0.45 + 0.55 * (0.5 + 0.5 * sgn * P.so)) + WV[j];
         TX[o + j] = P.x + P.nx * off;
         TY[o + j] = P.y + P.ny * off + dk * DR[j];
       }
     }
-    /** wisps: constant-curvature arcs in the frame of the tie (leave the tie upward / outward, turn over and fall back along the tail) */
+    /** wisps: constant-curvature arcs in the frame of the tie: leave it along the normal (sg side), turn toward the tail direction and over (fountain) */
     function wispTargets(ch) {
       var o = ch.o, n = ch.n, so = spine.o, tx = X[so + 2] - X[so], ty = Y[so + 2] - Y[so], tl = sqrt(tx * tx + ty * ty) || 1, tax = tx / tl, tay = ty / tl, nbx = nrX[0] * ch.sg, nby = nrY[0] * ch.sg;
       var px = X[so] + tax * 1.5, py = Y[so] + tay * 1.5, phi = ch.phi0, dl = ch.len / (n - 1);
       for (var i = 0; i < n; i++) {
         TX[o + i] = px; TY[o + i] = py;
         var cp = cos(phi), sp_ = sin(phi);
-        px += (-tax * cp + nbx * sp_) * dl; py += (-tay * cp + nby * sp_) * dl; phi += ch.kap * dl;
+        px += (nbx * cp + tax * sp_) * dl; py += (nby * cp + tay * sp_) * dl; phi += ch.kap * dl;
       }
     }
     function headTargets(ch, R, O) {
@@ -7119,8 +7174,8 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
       var R = S.Fhead.R, O = S.Fhead.o;
       // wind field + streaming (relative wind from the measured tie velocity and the commanded speed)
       var wx = ((P.wind && P.wind.x) || 0) * HC.windGain, wy = ((P.wind && P.wind.y) || 0) * HC.windGain;
-      ponyBase(S);
-      var t0x = havePony ? BX[0] : hcx, t0y = havePony ? BY[0] : hcy;
+      ponyBase(S, d);
+      var t0x = BX[0], t0y = BY[0];
       if (haveLast) {
         var jx = t0x - lastTx, jy = t0y - lastTy;
         if (jx * jx + jy * jy > 140 * 140) { shiftAll(jx, jy); calmN = 0; }                // teleport (pose.x jumped): carry the hair along
@@ -7134,26 +7189,24 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
       if (vm > 1) { wdx = -vLPx / vm; wdy = -vLPy / vm; } else { wdx = cth; wdy = 0; }
       if (spParam > vm) { var qq = vm / (spParam + 1e-6); wdx = wdx * qq + cth * (1 - qq); wdy *= qq; }
       wdy += 0.1; var wl = sqrt(wdx * wdx + wdy * wdy) || 1; wdx /= wl; wdy /= wl;
-      amt = HC.stream * sstep(HC.streamV[0], HC.streamV[1], sps) * (1 - HC.runCut * ponyRunW);
+      var amtT = HC.stream * sstep(HC.streamV[0], HC.streamV[1], sps) * (1 - HC.runCut * ponyRunW); amt = spine.ready ? amt + (amtT - amt) * (1 - exp(-d / 0.18)) : amtT;          // eased: the commanded speed jumps when a reaction starts
       stiffK = 1 + HC.runStiff * ponyRunW; runDampF = exp(-HC.runDamp * ponyRunW * d);       // run: stiffer springs, the tail follows the big head bob instead of folding up behind the head
       // ---- spine + ponytail strands
-      if (havePony) {
-        savePrev(spine);
-        var so = spine.o;
-        var trx = BX[0] - ox, try_ = BY[0] - oy;                        // tie relative to the body root (no walking translation in it: only the bob / sway / lean of the head)
-        if (!tlInit || !haveLast) { tlx = trx; tly = try_; tlInit = true; } else { var kl = 1 - exp(-d * HC.bodyLP); tlx += (trx - tlx) * kl; tly += (try_ - tly) * kl; }
-        var ddx = tlx - trx, ddy = tly - try_;
-        for (var i = 0; i < PN; i++) { var wl = sstep(0, HC.bodyRamp, i / (PN - 1)); TX[so + i] = BX[i] + wl * ddx; TY[so + i] = BY[i] + wl * ddy; }
-        shape(so, PN, hangW, roll, amt, wdx, wdy);
-        perturb(spine);
-        if (!spine.ready) initChain(spine); else integrate(spine, d, wx, wy);
-        spineNormals(); envelope();
-        for (j = 0; j < pony.length; j++) {
-          ch = pony[j]; savePrev(ch);
-          if (ch.kind === 'wisp') wispTargets(ch); else strandTargets(ch);
-          perturb(ch);
-          if (!ch.ready) initChain(ch); else integrate(ch, d, wx, wy);
-        }
+      savePrev(spine);
+      var so = spine.o;
+      var trx = BX[0] - ox, try_ = BY[0] - oy;                        // tie relative to the body root (no walking translation in it: only the bob / sway / lean of the head)
+      if (!tlInit || !haveLast) { tlx = trx; tly = try_; tlInit = true; } else { var kl = 1 - exp(-d * HC.bodyLP); tlx += (trx - tlx) * kl; tly += (try_ - tly) * kl; }
+      var ddx = tlx - trx, ddy = tly - try_;
+      for (var i = 0; i < PN; i++) { var wl2 = sstep(0, HC.bodyRamp, i / (PN - 1)); TX[so + i] = BX[i] + wl2 * ddx; TY[so + i] = BY[i] + wl2 * ddy; }
+      shape(so, PN, 0, roll, amt, wdx, wdy);                           // (gravity is already in the 3D rest curve: only the streaming here)
+      perturb(spine);
+      if (!spine.ready) initChain(spine); else integrate(spine, d, wx, wy);
+      spineNormals(); envelope(envReady ? 1 - exp(-d / 0.1) : 1); envReady = true;
+      for (j = 0; j < pony.length; j++) {
+        ch = pony[j]; savePrev(ch);
+        if (ch.kind === 'wisp') wispTargets(ch); else strandTargets(ch);
+        perturb(ch);
+        if (!ch.ready) initChain(ch); else integrate(ch, d, wx, wy);
       }
       // ---- loose head strands
       for (j = 0; j < heads.length; j++) {
@@ -7173,7 +7226,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     };
 
     // ------------------------------------------------------------------ snapshot / restore / settle
-    var SC_N = 34;
+    var SC_N = 36;
     /** typed-array copy of the complete simulation state (reuse a previous snapshot as 'out' to avoid any allocation) */
     H.snapshot = function (out) {
       var n = nAlloc, nc = chains.length, need = 6 * n + 10 * PN + SC_N + nc, v, p = 0, i, a;
@@ -7182,7 +7235,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
       var big = [X, Y, PX, PY, TX, TY], small = [nrX, nrY, Hb, Hs, Hv, Hc, shf, sOut, BX, BY];
       for (a = 0; a < 6; a++) { var A_ = big[a]; for (i = 0; i < n; i++) v[p++] = A_[i]; }
       for (a = 0; a < 10; a++) { var B_ = small[a]; for (i = 0; i < PN; i++) v[p++] = B_[i]; }
-      var sc = [simT, lastTx, lastTy, haveLast ? 1 : 0, vLPx, vLPy, wdx, wdy, amt, stiffK, runDampF, cth, sth, ox, oy, roll, hcx, hcy, shud, shT, hangW, tFront, ponyRunW, havePony ? 1 : 0, inited ? 1 : 0, spineLen, calmN, parity, fhide, fhalo, tlx, tly, tlInit ? 1 : 0, 0];
+      var sc = [simT, lastTx, lastTy, haveLast ? 1 : 0, vLPx, vLPy, wdx, wdy, amt, stiffK, runDampF, cth, sth, ox, oy, roll, hcx, hcy, shud, shT, hangW, tFront, ponyRunW, havePony ? 1 : 0, inited ? 1 : 0, spineLen, calmN, parity, fhide, fhalo, tlx, tly, tlInit ? 1 : 0, fcrn, fwsp, rwS];
       for (i = 0; i < SC_N; i++) v[p++] = sc[i];
       for (i = 0; i < nc; i++) v[p++] = chains[i].ready ? 1 : 0;
       return out;
@@ -7197,17 +7250,17 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
       for (a = 0; a < 10; a++) { var B_ = small[a]; for (i = 0; i < PN; i++) B_[i] = v[p++]; }
       simT = v[p++]; lastTx = v[p++]; lastTy = v[p++]; haveLast = v[p++] === 1; vLPx = v[p++]; vLPy = v[p++]; wdx = v[p++]; wdy = v[p++]; amt = v[p++]; stiffK = v[p++]; runDampF = v[p++]; cth = v[p++]; sth = v[p++];
       ox = v[p++]; oy = v[p++]; roll = v[p++]; hcx = v[p++]; hcy = v[p++]; shud = v[p++]; shT = v[p++]; hangW = v[p++]; tFront = v[p++]; ponyRunW = v[p++]; havePony = v[p++] === 1; inited = v[p++] === 1;
-      spineLen = v[p++]; calmN = v[p++]; parity = v[p++]; fhide = v[p++]; gHide = 1 - fhide; gRing = max(0, 1 - 2 * fhide); fhalo = v[p++]; tlx = v[p++]; tly = v[p++]; tlInit = v[p++] === 1; p += 1;
+      spineLen = v[p++]; calmN = v[p++]; parity = v[p++]; fhide = v[p++]; gHide = 1 - 0.6 * fhide; gRing = max(0, 1 - 1.6 * fhide); fhalo = v[p++]; tlx = v[p++]; tly = v[p++]; tlInit = v[p++] === 1; fcrn = v[p++]; fwsp = v[p++]; rwS = v[p++];
       for (i = 0; i < nc; i++) chains[i].ready = v[p++] === 1;
       for (i = 0; i < n; i++) { QX[i] = TX[i]; QY[i] = TY[i]; }
-      lastD = -1; cacheAge = 99;
+      lastD = -1; cacheAge = 99; envReady = true;
       return true;
     };
     /** re-initialises every chain to its current rest targets in ONE step (teleport / loop wrap / restart without a 100-step pre-roll) */
     H.settle = function (S) {
       if (!S || !S.Fhead) return;
       for (var i = 0; i < chains.length; i++) chains[i].ready = false;
-      haveLast = false; vLPx = 0; vLPy = 0; calmN = 0; parity = 0; cacheAge = 99;
+      haveLast = false; vLPx = 0; vLPy = 0; calmN = 0; parity = 0; cacheAge = 99; envReady = false;
       update(1 / 120, S);
     };
 
@@ -7239,38 +7292,61 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
       for (i = 0; i < n; i++) { var xx = X[o + i]; XS[i] = xx; YS[i] = Y[o + i]; growB(xx, YS[i]); if (xx < mnx) mnx = xx; if (xx > mxx) mxx = xx; }
       if (mxx < vx0 - 24 || mnx > vx1 + 24) return;                      // completely outside the visible x range (girl partly off-screen)
       if (ch.hn > 0) {
-        var ax = XS[n - 1] - XS[n - 3], ay = YS[n - 1] - YS[n - 3], ang = atan2(ay, ax), hk = ch.hk, hr = ch.hr, hn = ch.hn, ds = hr * abs(hk) / hn, px = XS[n - 1], py = YS[n - 1];
+        var ax = XS[n - 1] - XS[n - 3], ay = YS[n - 1] - YS[n - 3], ang = atan2(ay, ax), hk = ch.hk, hr = ch.kind === 'head' ? ch.hr : ch.hr * (1 - 0.8 * fhide), hn = ch.hn, ds = hr * abs(hk) / hn, px = XS[n - 1], py = YS[n - 1];
         for (var q = 1; q <= hn; q++) { var an = ang + hk * pow(q / hn, 1.15); px += cos(an) * ds; py += sin(an) * ds; XS[n - 1 + q] = px; YS[n - 1 + q] = py; }
         N = n + hn; growB(px, py);
       }
-      var tp = ch.tp, gw = ch.kind === 'head' ? (ch.fy ? fhalo : 1) : (lockW ? gHide : gRing);
+      var tp = ch.tp, gw = ch.kind === 'head' ? (ch.fy ? fhalo : (1 - ch.fc * fcrn) * (1 - (1 - ch.fw) * fhalo)) : (lockW ? gHide : ch.kind === 'wisp' ? gRing * fwsp : gRing);          // tie wisps would poke up over the crown in 3/4 views
       if (gw < 0.03) return;
       if (lockW) { var lwR = 2 * ch.wf * HC.lockRef * gw; for (i = 0; i < N; i++) WS[i] = lwR * tp[i] + 0.05; }
       else { var w0g = ch.w0 * gw, fl = HC.minW * gw, tf = ch.tf; for (i = 0; i < N; i++) { var wv = w0g * tp[i], wf = fl * tf[i]; WS[i] = (wv > wf ? wv : wf) + HC.tipW; } }
       emit(ctx, XS, YS, WS, N);
     }
+    /** the tail's body ribbon: starts AT the tie (node 0) with the pinched root width and follows the spine (the locks take over below coreEnd) */
     function drawCore(ctx) {
-      var o = spine.o, i, K0 = 2, h3 = max(Hc[3], Hc[4] * 0.9);
-      // clean knot: the core starts at node 1 (the traced tie stub is a few units long and points another way than the body) with a rounded dome aligned with the body axis,
-      // then a monotone cone growing linearly into the body: one smooth convex top, no neck / shoulder lumps
-      var cx = X[o + 1] - X[o + 2], cy = Y[o + 1] - Y[o + 2], cl = sqrt(cx * cx + cy * cy) || 1, hn = 0.64 * h3;
-      cx /= cl; cy /= cl;
-      var bx = nrX[1] * shf[1], by = nrY[1] * shf[1];
-      XS[0] = X[o + 1] + cx * hn * 0.8 + bx; YS[0] = Y[o + 1] + cy * hn * 0.8 + by; WS[0] = 2 * hn * 0.45;
-      XS[1] = X[o + 1] + cx * hn * 0.3 + bx; YS[1] = Y[o + 1] + cy * hn * 0.3 + by; WS[1] = 2 * hn * 0.92;
-      growB(XS[0], YS[0]);
-      for (i = 1; i < PN; i++) {
-        var hw = i < 4 ? h3 * (0.64 + 0.36 * (i - 1) / 2) : Hc[i];
-        XS[i - 1 + K0] = X[o + i] + nrX[i] * shf[i]; YS[i - 1 + K0] = Y[o + i] + nrY[i] * shf[i];
-        WS[i - 1 + K0] = 2 * hw + 0.1; growB(XS[i - 1 + K0], YS[i - 1 + K0]);
+      var o = spine.o, i;
+      for (i = 0; i < PN; i++) { XS[i] = X[o + i] + nrX[i] * shf[i]; YS[i] = Y[o + i] + nrY[i] * shf[i]; WS[i] = (2 * Hc[i] + 0.1) * gHide; growB(XS[i], YS[i]); }
+      emit(ctx, XS, YS, WS, PN);
+    }
+    // ---- head-rigid ellipsoids (knot, band, cap): exact projected ellipses, appended with the ribbons' winding (anticlockwise on screen)
+    function ellip(ctx, cf, cc, ch, a1f, a1c, a1h, a2f, a2c, a2h, a3f, a3c, a3h) {
+      var p1x = -(a1f * cth + a1c * sth), p1y = -a1h, p2x = -(a2f * cth + a2c * sth), p2y = -a2h, p3x = -(a3f * cth + a3c * sth), p3y = -a3h;
+      var sxx = p1x * p1x + p2x * p2x + p3x * p3x, sxy = p1x * p1y + p2x * p2y + p3x * p3y, syy = p1y * p1y + p2y * p2y + p3y * p3y;
+      var tr = 0.5 * (sxx + syy), df = sqrt(max(0, tr * tr - (sxx * syy - sxy * sxy))), r1 = sqrt(tr + df), r2 = sqrt(max(0, tr - df)), ang = 0.5 * atan2(2 * sxy, sxx - syy);
+      if (r1 < 0.05) return;
+      var cx = ox - (cf * cth + cc * sth), cy = oy - ch;
+      ctx.moveTo(cx + r1 * cos(ang), cy + r1 * sin(ang));
+      ctx.ellipse(cx, cy, r1, max(r2, 0.01), ang, 0, TAU, true);
+      growB(cx - r1, cy - r1); growB(cx + r1, cy + r1);
+    }
+    function drawKnot(ctx, S) {
+      var R = S.Fhead.R, O = S.Fhead.o;
+      var ux = R[2], uy = R[5], uz = R[8], ul = sqrt(ux * ux + uy * uy + uz * uz) || 1, cx = R[1], cy = R[4], cz = R[7], cl = sqrt(cx * cx + cy * cy + cz * cz) || 1;
+      ux /= ul; uy /= ul; uz /= ul; cx /= cl; cy /= cl; cz /= cl;
+      var dF = rdF, dC = rdC, dH = rdH;                                                        // tail root direction (world, from the last rest curve)
+      var ud = ux * dF + uy * dC + uz * dH, nF = ux - ud * dF, nC = uy - ud * dC, nH = uz - ud * dH, nl = sqrt(nF * nF + nC * nC + nH * nH) || 1;
+      nF /= nl; nC /= nl; nH /= nl;                                                            // perpendicular (head up, orthogonalised)
+      var tu = HC.knotU, kr = HC.knotR, br = HC.bandR, g = gHide;
+      // gathered knot: centred inside the skull, reaching out to the tie
+      var kf = R[0] * knotF + R[2] * tu + O[0], kc = R[3] * knotF + R[5] * tu + O[1], kh = R[6] * knotF + R[8] * tu + O[2];
+      ellip(ctx, kf, kc, kh, dF * kr[0], dC * kr[0], dH * kr[0], nF * kr[1], nC * kr[1], nH * kr[1], cx * kr[2], cy * kr[2], cz * kr[2]);
+      // hair-volume cap over the back / top of the skull (head-local ellipsoid: scales with the head)
+      if (HC.capK > 0) {
+        var c0 = HC.capC, cr = HC.capR, k = HC.capK, wq = K.curve(keys.w, c0[1]) * cr[1] * k;
+        var qf = R[0] * c0[0] + R[2] * c0[1] + O[0], qc = R[3] * c0[0] + R[5] * c0[1] + O[1], qh = R[6] * c0[0] + R[8] * c0[1] + O[2];
+        ellip(ctx, qf, qc, qh, R[0] * cr[0] * k, R[3] * cr[0] * k, R[6] * cr[0] * k, R[1] * wq, R[4] * wq, R[7] * wq, R[2] * cr[2] * k, R[5] * cr[2] * k, R[8] * cr[2] * k);
       }
-      if (gHide < 1) for (i = 0; i < PN - 1 + K0; i++) WS[i] *= gHide;          // fading out while she turns to face us
-      emit(ctx, XS, YS, WS, PN - 1 + K0);
+      // hair-tie band: a small bump across the root of the tail (fades with the tail when she faces us; it is behind her head then anyway)
+      if (g > 0.03) {
+        var tf_ = R[0] * tieF + R[2] * tu + O[0], tc_ = R[3] * tieF + R[5] * tu + O[1], th_ = R[6] * tieF + R[8] * tu + O[2], b0 = br[0] * g, b1 = br[1] * g;
+        ellip(ctx, tf_, tc_, th_, dF * b0, dC * b0, dH * b0, nF * b1, nC * b1, nH * b1, cx * b1, cy * b1, cz * b1);
+      }
     }
     var bndObj = { x0: 0, y0: 0, x1: 0, y1: 0 }, cachePath = null, cacheAge = 99, cK = [0, 0, 0, 0, 0, 0, 0, 0];
     var hasP2D = typeof Path2D !== 'undefined';
-    function buildInto(c) {
+    function buildInto(c, S) {
       var j;
+      drawKnot(c, S);
       if (havePony && spine.ready && fhide < 0.985) {
         drawCore(c);
         for (j = 0; j < pony.length; j++) drawChain(c, pony[j]);
@@ -7291,14 +7367,14 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
           cacheAge++; ctx.fill(cachePath); return;
         }
         bnd = bndObj; bnd.x0 = 1e9; bnd.y0 = 1e9; bnd.x1 = -1e9; bnd.y1 = -1e9;
-        cachePath = new Path2D(); buildInto(cachePath); ctx.fill(cachePath);
+        cachePath = new Path2D(); buildInto(cachePath, S); ctx.fill(cachePath);
         cacheAge = 0; cK[0] = S.ox; cK[1] = S.oy; cK[2] = S.theta; cK[3] = Fo[0]; cK[4] = Fo[1]; cK[5] = Fo[2]; cK[6] = vx0; cK[7] = vx1;
         return;
       }
       cacheAge = 99;
       bnd = bndObj; bnd.x0 = 1e9; bnd.y0 = 1e9; bnd.x1 = -1e9; bnd.y1 = -1e9;
       ctx.beginPath();
-      buildInto(ctx);
+      buildInto(ctx, S);
       ctx.fill();
     };
     H.bounds = function () { return bnd; };
@@ -7306,13 +7382,12 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     H.spine = function () { var o = []; for (var i = 0; i < PN; i++) o.push(X[spine.o + i], Y[spine.o + i]); return o; };
     H.spineN = function () { var o = []; for (var i = 0; i < PN; i++) o.push(nrX[i], nrY[i]); return o; };
     H.build = build;
-    H.dbg = function () { return { calmN: calmN, parity: parity, X: X, Y: Y, TX: TX, TY: TY, spine: spine, pony: pony, heads: heads, roll: roll, amt: amt, vx: vLPx, vy: vLPy, Hs: Hs, Hv: Hv, Hb: Hb, Hc: Hc, nrX: nrX, nrY: nrY, shf: shf, nAlloc: nAlloc }; };
+    H.dbg = function () { return { calmN: calmN, parity: parity, X: X, Y: Y, TX: TX, TY: TY, spine: spine, pony: pony, heads: heads, roll: roll, amt: amt, vx: vLPx, vy: vLPy, Hs: Hs, Hv: Hv, Hb: Hb, Hc: Hc, nrX: nrX, nrY: nrY, shf: shf, nAlloc: nAlloc, tieF: tieF, knotF: knotF, BX: BX, BY: BY, tlx: tlx, tly: tly }; };
     build(seed0);
+    A.lastHair = H;                                     // (test hook: the most recently created hair)
     return H;
   };
 })();
-
-
 
 
 /* ===== girl_a.js ===== */
@@ -7358,6 +7433,16 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
      BARE FEET (no shoes): procedural foot loft (heel, arch, ball, tapered toes) + five tiny toe tips; toes turned out ~26 deg when standing.  CHEERFUL WALK: see the walkStyle block of girl_a_tuned.js (STRIDE 372).
      headPitch   -1 = chin down 38 deg (look down at the console; in profile with headYaw +0.95 the face turns toward the viewer and down).
      air 0..1    hop: legs tucked, arms flung up/out, dress flared, head up.   gait.run 0..1: fitted comedic scurry (tables traced from ref1, see trace/).
+   ROUND 10 performance fields (all default 0, additive; set by timeline.js):
+     startle 0..1  five short ink strokes radiating from the crown (a comic startled mark, no lettering) + a touch of shoulder lift; they shoot out as the envelope rises, collapse as it falls.
+     spread 0..1   open hands: a fan of four still fingers on both hands (the startled jump, the shrug).
+     poke 0..1     the LEFT hand rises to poke at a floating thought beside her head (cfg.pokeAt, head frame), index finger out, small hesitant wobble.
+     clutch 0..1   BOTH hands grab the sides of the head above the temples ('so many ideas!'; cfg.clutchAt, mirrored per side), elbows out, shoulders a little up.
+     shrug 0..1    sheepish shrug: shoulders hiked, elbows in, forearms swung out and up with open palms; the feminine skirt hand lets go.
+     reach 0..1    the RIGHT hand reaches down-forward toward the nav console below her (cfg.reachAt, pelvis frame), index finger out ('what is THAT?').
+     chestHand > 1 (up to 1.6) lifts the chest hand on to the MOUTH (cfg.mouthHand, head frame) = a gasp.
+     thinkT        clock of the think-idle script (seconds after she turned to the front; -1 = off): cfg.ideaT = [E1 weight shift + tilt, E2 toe tap, E3 'aha' perk-up, E4 glance away] are RELATIVE to it.
+     (the dress frame follows the small flinch recoil pitch so no sliver opens at the waist in profile)
    Extras: girl.solve(pose) (rig state), girl.version = 'C2', GA.girlA.cfg (tunables), GA.girlA.int (internals for the offline bake tools).
    Load order: util.js style.js stage.js girl_a_core.js girl_a_data.js girl_a_hair.js girl_a.js girl_c2_trace.js girl_a_tuned.js                       */
 (function () {
@@ -7390,14 +7475,23 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     rho: 0.60, q1: 0.12, q2: 0.42, bhs: 16, bto: 35,   // gait: stance fraction, heel-strike->flat, heel-off, foot angles (deg)
     heelS: -15, ballS: 35, // foot-local contact points (s along foot)
     lift: 10,             // swing foot clearance
+    // GAIT R10 graceful walk: heel-strike contact point ahead of the pelvis axis; stance knee flexion keys (q, deg) and soft-min radii of the knee-target pelvis solve;
+    // swing keys: swE world-travel fraction (u, e) + residual landing velocity swR, swZ height keys (u, x lift) + touch-down slope swZ1, swB pitch fraction keys (u, 0..1)
+    hsF: 82, kneeK: [[0, 5], [0.1, 17], [0.2, 14], [0.32, 4], [0.44, 5], [0.52, 12], [0.6, 20]], kneeSmin: 6, pelvisSmoothW: 1.0,
+    swE: [[0, 0], [0.25, 0.2], [0.5, 0.56], [0.75, 0.86], [0.9, 0.96], [1, 1]], swR: 0.15, swZ: [[0.25, 1.0], [0.45, 0.9], [0.65, 0.57], [0.85, 0.2]], swZ1: -14,
+    swB: [[0, 0], [0.2, 0.06], [0.45, 0.25], [0.65, 0.44], [0.82, 0.75], [0.93, 1], [1, 1]],
+    // GAIT R10 run: heel-strike-equivalent contact point (the ball lands 50 further ahead), ball-landing pitch (deg, toes down), flight keys: world-travel fraction (u, e) + residual
+    // landing velocity, ankle height keys (u, z) + touch-down slope, foot pitch keys (u, deg)
+    runHsF: 75, runBhs: -12, runE: [[0, 0], [0.14, 0.05], [0.32, 0.2], [0.52, 0.5], [0.72, 0.75], [0.88, 0.924], [1, 1]], runR: 0.1, runZ: [[0.14, 60], [0.32, 150], [0.52, 125], [0.72, 80], [0.88, 48]], runZ1: -25,
+    runB: [[0.14, -70], [0.32, -110], [0.52, -75], [0.72, -40], [0.88, -28]], runHeadLevel: 1,          // runHeadLevel 1 = the head stays level in the world while the torso leans          // (u 0.14: the trailing leg still stretched back = the flight 'stretch'; 0.32: heel kicked to the hip; 0.52: tucked; 0.72: knee high; 0.88: reaching, toes pointed)
     idleStance: 22.5, walkStance: 18.5, toeIdle: 26, toeWalk: 5, stanceL: 0, stanceR: 0, toeL: 0, toeR: 0,
     pelvisIdle: 244.5, bob: 2.5, walkAlpha0: -2, walkXoff: 0, walkLean: 2.5, walkYaw: 6,
     armBetaL: 19, armBetaR: 19, armAlphaL: 4, armAlphaR: 4, armGammaL: 10, armGammaR: 10, swingFwd: 17, swingBack: 17, gammaWalk0: 9, gammaWalk1: 14,
     // run (scurry)
     runRho: 0.36, runQ1: 0.05, runQ2: 0.2, runLift: 52, runLean: 17, runPelvis: 233, runBob: 15,
     runArmFwd: 52, runArmBack: -40, runGammaFwd: 95, runGammaBack: 72,
-    runKick: [-222, 105, -55], runKickU: 0.375, runFwd: [60, 70, 6], runXoff: 0, runPelvisF: 0, runHead: 11, runBendH: 30, runLeanDeg: 18, runLean0: 0.4, idleChest: 5.2, idleSway: 10, idleSwayF: 8, idleRoll: 0.22, idleNod: 0.08, shrugAmp: 4.5, idleBeat: 1, idleScript: 1, ideaT: [10.4, 12.2, 13.2, 13.8], dizzyC: 12, dizzyF: 9, hopAbsorb: 14,
-    thinkHand: [8, -52, 4], thinkPole: [0.1, -1, -0.35], scratchHz: 6.5, scratchAmp: [8, 11], scratchAt: [0, -18, 51], paw: [18, 135, 16], pelvisSmooth: 20, liftPow: 1.6, swingTan: 1, swingTan1: 1, liftSkew: 0.35, walkDrop: 0, bobH2: 0, bobH2ph: 0, bobPh: 0.27, hipSway: 2.2, shoulderCounter: 1.9, handLag: 0, headNod: 2, headTilt: 0, hemBounce: 0, headMorph: 0, headMorph0: 1, headW: 0.88, freezeBack: 6, bowDeg: 35, twistDeg: 52, chestHand: [18, -9, -20], chestPole: [-0.25, -1, -0.45], stepLift: 11, turnLift: 8, armIdleM: 0.25, armIdleGP: 0.5, sleeveR: [11.4, 10], sleeveRS: [13.5, 12], sleeveL: 26, neckShort: 0.88, shDrop: -3, armOut: 6, kneeSoft: 0.008, walkChest: 2.4, headBob: 2.6, pelvTilt: 3, hemFlutter: 1.8, shLag: 0.07, armLag: 0.035, foreLag: 0.11, headLag: 0.15, spineAmp: 3.4, spineLag: 0.1, asym: 1,
+    runKick: [-222, 105, -55], runKickU: 0.375, runFwd: [60, 70, 6], runXoff: 0, runPelvisF: 0, runHead: 11, runBendH: 30, runLeanDeg: 18, runLean0: 0.4, idleChest: 5.2, idleSway: 10, idleSwayF: 8, idleRoll: 0.22, idleNod: 0.08, shrugAmp: 4.5, idleBeat: 1, idleScript: 1, ideaT: [5.8, 7.3, 2.4, 10.9], dizzyC: 12, dizzyF: 9, hopAbsorb: 14,
+    thinkHand: [8, -52, 4], thinkPole: [0.1, -1, -0.35], mouthHand: [74, -8, -52], pokeAt: [50, -132, -24], pokePole: [0.25, -1, -0.15], clutchAt: [6, 46, 24], reachAt: [70, 14, -110], reachPole: [0.9, 0.3, -0.2], scratchHz: 6.5, scratchAmp: [8, 11], scratchAt: [0, -18, 51], paw: [18, 135, 16], pelvisSmooth: 20, liftPow: 1.6, swingTan: 1, swingTan1: 1, liftSkew: 0.35, walkDrop: 0, bobH2: 0, bobH2ph: 0, bobPh: 0.27, hipSway: 2.2, shoulderCounter: 1.9, handLag: 0, headNod: 2, headTilt: 0, hemBounce: 0, headMorph: 0, headMorph0: 1, headW: 0.88, freezeBack: 6, bowDeg: 35, twistDeg: 52, chestHand: [18, -9, -20], chestPole: [-0.25, -1, -0.45], stepLift: 11, turnLift: 8, armIdleM: 0.25, armIdleGP: 0.5, sleeveR: [11.4, 10], sleeveRS: [13.5, 12], sleeveL: 26, neckShort: 0.88, shDrop: -3, armOut: 6, kneeSoft: 0.008, hemTiltA: 7.5, walkChest: 2.4, headBob: 2.6, pelvTilt: 3, hemFlutter: 1.8, shLag: 0.07, armLag: 0.035, foreLag: 0.11, headLag: 0.15, spineAmp: 3.4, spineLag: 0.1, asym: 1,
     femWeight: 1, femPeriod: 14, femShift: 10, femRoll: 8, femCounter: 11, femHead: 0.5, femChest: 4, femFoot: [13, 9, 14], femHand: [3, 60, -25], femHandPole: [-0.1, 1, -0.1], peekSpread: 0.75, peekNeck: 12, peekLean: 58, peekHead: 72, peekYaw: 0.2, peekHand: [20, -22, -60], peekPelvisF: 52, peekLegBack: 140, peekHemF: 140, peekHemTilt: 18, peekPole: [0.8, -0.3, -0.5], runBobK: [[0, 0.3], [0.2, -0.536], [0.35, -0.7], [0.5, 0.1], [0.62, 0.85], [0.78, 1.1], [0.9, 0.75]], runLeanK: 0.06, runHemF: 16, runHemTilt: 5, runHemLift: 0.6, runSpread: 0.06, runTilt: [0, 0, 0, 0], runShift: [0, 0, 0],   // run swing foot keys: [f, z, beta deg] at the kick-back extreme (u = runKickU of the swing) and at u = 0.75
     runKeyed: false, runLegK: 0, runArmK: 0, runShoulderBack: 0, runShoulderFwd: 0, runPelvisPitch: -6, runCrownK: 0, runWaistK: 0, runNeckK: 0,                                           // limbs are a bit longer in the traced run drawing
     runArmA: [52, 95], runArmB: [-40, 72],                                  // run arm roles [alpha, gamma] deg: forward (A) / back (B)
@@ -7489,7 +7583,11 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
   function stanceFoot(q, Xhs, g) {
     var S = g.S, rho = g.rho, q1 = g.q1, q2 = g.q2, aF = -C.heelS, az = C.ankleZ, bs = C.ballS - C.heelS, bhs = rad(C.bhs) * g.bk, bto = rad(C.bto) * g.bk;
     var beta, f, z;
-    if (q < q1) {
+    if (q < q1 && g.ball) {                              // RUN: ball-of-foot landing (the ball is the planted pivot, the heel comes down from the toes-down pitch g.bhsBall)
+      beta = g.bhsBall * (1 - sstep5(0, 1, q / q1));
+      var ballF0 = Xhs - S * q + bs, sS0 = -C.ballS;
+      f = ballF0 + sS0 * cos(beta) - az * sin(beta); z = sS0 * sin(beta) + az * cos(beta);
+    } else if (q < q1) {
       beta = bhs * (1 - sstep5(0, 1, q / q1));
       var hf = Xhs - S * q;
       f = hf + aF * cos(beta) - az * sin(beta); z = aF * sin(beta) + az * cos(beta);
@@ -7512,34 +7610,39 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     var d1 = i + 1 === n - 1 ? m1 : (ks[i + 2][1] - ks[i][1]) / (ks[i + 2][0] - ks[i][0]);
     return (2 * t3 - 3 * t2 + 1) * ks[i][1] + (t3 - 2 * t2 + t) * h * d0 + (-2 * t3 + 3 * t2) * ks[i + 1][1] + (t3 - t2) * h * d1;
   }
-  var GW = { S: 0, rho: 0, q1: 0, q2: 0, bk: 1 }, GR = { S: 0, rho: 0, q1: 0, q2: 0, bk: 1.25 };
-  function gaitSets() { GW.S = C.stride; GW.rho = C.rho; GW.q1 = C.q1; GW.q2 = C.q2; GR.S = C.strideRun; GR.rho = C.runRho; GR.q1 = C.runQ1; GR.q2 = C.runQ2; }
+  var GW = { S: 0, rho: 0, q1: 0, q2: 0, bk: 1, ball: false, bhsBall: 0 }, GR = { S: 0, rho: 0, q1: 0, q2: 0, bk: 1.25, ball: true, bhsBall: 0 };
+  /** k = stride scale: when the scene integrates the phase with a shorter stride than the rig's (pose.gait.stride, e.g. the quick small first steps of a dash), the foot travel
+      and the contact points shrink by the same factor, so the planted foot still does not slide */
+  function gaitSets(k) { GW.k = GR.k = k; GW.S = C.stride * k; GW.rho = C.rho; GW.q1 = C.q1; GW.q2 = C.q2; GR.S = C.strideRun * k; GR.rho = C.runRho; GR.q1 = C.runQ1; GR.q2 = C.runQ2; GR.bhsBall = rad(C.runBhs); }
   function legFoot(q, g, lift, xoff) {
     var S = g.S, rho = g.rho;
-    var Xhs = (0.3 * (g === GR ? rho / 0.6 : 1)) * S - 17 + xoff;
+    var Xhs = (g === GR ? C.runHsF : C.hsF) * g.k + xoff;          // heel-strike contact point ahead of the pelvis axis (walk: the trailing ball is then hsF + 50 - S/2 behind; run: the ball lands at runHsF + 50)
     if (q < rho) return stanceFoot(q, Xhs, g);
     var to = stanceFoot(rho - 1e-6, Xhs, g), hs = stanceFoot(0, Xhs, g);
     var u = (q - rho) / (1 - rho);
-    if (g === GR && !C.runKeyed) {                       // run (scurry) swing: Hermite with the stance velocity at both ends, high lift
-      var mr0 = -S * (1 - rho) * 0.55, tr2 = u * u, tr3 = tr2 * u;
-      var xr = (2 * tr3 - 3 * tr2 + 1) * to[0] + (tr3 - 2 * tr2 + u) * mr0 + (-2 * tr3 + 3 * tr2) * hs[0] + (tr3 - tr2) * mr0;
-      var zr = lerp(to[1], hs[1], sstep(0, 1, u)) + lift * sin(PI * Math.pow(u, 0.85));
-      return [xr, zr, rad(K.curve([[0, -45], [0.3, -50], [0.55, -25], [0.8, 8], [1, 20]], u))];
+    if (g === GR) {                                      // RUN flight (GAIT R10, elegant cartoon run): world-keyed like the walk swing (zero world velocity at toe-off, nearly zero at the ball strike):
+                                                         // the heel kicks up high behind (runZ/runB keys at u ~0.3: shin about horizontal, toes pointed back), the knee drives through high, the shin reaches forward
+      var dWr = S * (1 - rho), er = hermKeys(C.runE, u, 0, C.runR * dWr / (dWr + hs[0] - to[0]));
+      var xr = to[0] + (hs[0] - to[0]) * er + dWr * (er - u);
+      RZ[0][1] = to[1]; RZ[6][1] = hs[1]; RB[0][1] = to[2]; RB[6][1] = hs[2];
+      for (var ri = 1; ri < 6; ri++) { RZ[ri][0] = C.runZ[ri - 1][0]; RZ[ri][1] = C.runZ[ri - 1][1]; RB[ri][0] = C.runB[ri - 1][0]; RB[ri][1] = rad(C.runB[ri - 1][1]); }
+      return [xr, hermKeys(RZ, u, 0, C.runZ1), hermKeys(RB, u, 0, 0)];
     }
-    if (g === GR) {                                      // keyed run: the swing foot passes through the traced kick-back pose (C.runKick) and a forward key
-      var ku = C.runKickU, kk = C.runKick, kf = C.runFwd, sl = -S * (1 - rho);
-      var xs = [[0, to[0]], [ku, kk[0]], [0.75, kf[0]], [1, hs[0]]], zs = [[0, to[1]], [ku, kk[1]], [0.75, kf[1]], [1, hs[1]]], bs = [[0, to[2]], [ku, rad(kk[2])], [0.75, rad(kf[2])], [1, hs[2]]];
-      return [hermKeys(xs, u, sl, sl), max(C.ankleZ, hermKeys(zs, u, 0, 0)), hermKeys(bs, u, 0, 0)];
-    }
-    var m0 = -S * (1 - rho) * C.swingTan, m1 = -S * (1 - rho) * C.swingTan1, t2 = u * u, t3 = t2 * u;          // end tangents = the stance velocity (C1 at toe-off and heel strike)
-    var x = (2 * t3 - 3 * t2 + 1) * to[0] + (t3 - 2 * t2 + u) * m0 + (-2 * t3 + 3 * t2) * hs[0] + (t3 - t2) * m1;
-    var wu = u + C.liftSkew * u * (1 - u);                                       // skewed hump with FINITE slope at both ends (u^0.72 had an infinite slope at toe-off = a pop)
-    var z = lerp(to[1], hs[1], sstep5(0, 1, u)) + lift * Math.pow(sin(PI * wu), C.liftPow);          // pow > 1: zero slope at both ends (no velocity jump at toe-off / heel strike)
-    WB[0][1] = to[2] * 57.2958; WB[1][1] = WB[0][1]; WB[WB.length - 1][1] = hs[2] * 57.2958; WB[WB.length - 2][1] = WB[WB.length - 1][1];          // the swing pitch starts at the toe-off pitch and ends at the heel-strike pitch (no steps), flat at both ends
-    var bsw = K.curve(WB, u), bs0 = WB[0][1], bs1 = WB[WB.length - 1][1];
-    bsw = lerp(bs0, bsw, sstep5(0, 0.3, u)); bsw = lerp(bsw, bs1, sstep5(0.78, 1, u));          // ease in / out of the swing pitch (zero 1st and 2nd derivative at both ends)
-    return [x, z, rad(bsw)];
+    // ---- WALK swing (GAIT R10, graceful walk): keyed in the WORLD frame. e(u) = fraction of the foot's world travel (toe-off spot -> heel-strike spot): zero world velocity at
+    //      toe-off (the ball was planted), a quick reach through mid-swing and a long deceleration, landing with a residual forward velocity of swR x the body speed (a real heel
+    //      strike is not a dead stop; it also keeps the maximum reach AT the contact instead of before it).  Body frame: f = to + (hs - to) e + S (1 - rho) (e - u).
+    //      Height: keys in units of `lift` above the heel-strike ankle height (the knee lifts the heel first, the ankle sinks while the leg reaches), touching down with the small
+    //      vertical velocity swZ1 (no floor skimming).  Pitch: the toe stays POINTED (plantar-flexed) through mid-swing, ballet-like, and flips to heel-first late (swB = fraction
+    //      of the way from the toe-off pitch to the heel-strike pitch).  All curves are C1 Hermite splines through the keys (no pops).
+    var dW = S * (1 - rho), e = hermKeys(C.swE, u, 0, C.swR * dW / (dW + hs[0] - to[0]));
+    var x = to[0] + (hs[0] - to[0]) * e + dW * (e - u);
+    SZ[0][1] = to[1]; SZ[5][1] = hs[1];
+    for (var zi = 1; zi < 5; zi++) { var zk = C.swZ[zi - 1]; SZ[zi][0] = zk[0]; SZ[zi][1] = hs[1] + lift * zk[1]; }
+    var z = hermKeys(SZ, u, 0, C.swZ1);
+    return [x, z, to[2] + (hs[2] - to[2]) * hermKeys(C.swB, u, 0, 0)];
   }
+  var SZ = [[0, 0], [0.25, 0], [0.45, 0], [0.65, 0], [0.85, 0], [1, 0]];          // walk swing height keys (filled per call from C.swZ)
+  var RZ = [[0, 0], [0.14, 0], [0.32, 0], [0.52, 0], [0.72, 0], [0.88, 0], [1, 0]], RB = [[0, 0], [0.14, 0], [0.32, 0], [0.52, 0], [0.72, 0], [0.88, 0], [1, 0]];          // run flight height / pitch keys (5 interior keys from C.runZ / C.runB)
 
   // ------------------------------------------------------------------------------------------------ pose prep
   function prep(p) {
@@ -7548,12 +7651,16 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     return {
       x: num(p.x, 0), y: num(p.y, 880), yaw: num(p.yaw, 0),
       amount: clamp(num(g.amount, 0), 0, 1), phase: num(g.phase, 0), speed: num(g.speed, 0), run: clamp(num(g.run, 0), 0, 1),
+      strideK: g.stride > 0 ? clamp(g.stride / lerp(C.stride, C.strideRun, clamp(num(g.run, 0), 0, 1)), 0.2, 1.5) : 1,          // optional: the stride the scene integrates the phase with (see gaitSets)
       hy: clamp(num(p.headYaw, 0), -1.6, 1.6), hp: clamp(num(p.headPitch, 0), -1.6, 1.6), hr: clamp(num(p.headRoll, 0), -1.6, 1.6),
       lean: clamp(num(p.lean, 0), -1.5, 1.5), squash: clamp(num(p.squash, 0), -0.4, 1.3),
       scratch: clamp(num(p.scratch, 0), 0, 1.1), scratchT: num(p.scratchT, 0), think: clamp(num(p.think, 0), 0, 1),
       shudder: clamp(num(p.shudder, 0), 0, 1), shudderT: num(p.shudderT, 0), air: clamp(num(p.air, 0), 0, 1),
       peek: clamp(num(p.peek, 0), 0, 1), flinch: clamp(num(p.flinch, 0), 0, 1), dizzy: clamp(num(p.dizzy, 0), 0, 1),
-      bow: clamp(num(p.bow, 0), 0, 1.2), twist: clamp(num(p.twist, 0), -1.2, 1.2), chestHand: clamp(num(p.chestHand, 0), 0, 1),
+      bow: clamp(num(p.bow, 0), 0, 1.2), twist: clamp(num(p.twist, 0), -1.2, 1.2), chestHand: clamp(num(p.chestHand, 0), 0, 1.6),
+      // round-10 performance fields (all default 0, additive): startle ticks, open spread hands, poke at the air, both hands clutching the head, sheepish shrug, thinking-script clock
+      startle: clamp(num(p.startle, 0), 0, 1), spread: clamp(num(p.spread, 0), 0, 1), poke: clamp(num(p.poke, 0), 0, 1), clutch: clamp(num(p.clutch, 0), 0, 1), shrug: clamp(num(p.shrug, 0), 0, 1), thinkT: num(p.thinkT, -1),
+      reach: clamp(num(p.reach, 0), 0, 1),          // the right hand reaches down-forward (toward the nav console below her), index finger out
       wind: { x: num(w.x, 0), y: num(w.y, 0) }, t: num(p.t, 0),
     };
   }
@@ -7595,7 +7702,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
   // ------------------------------------------------------------------------------------------------ rig solve
   function solve(pose, sc) {
     var P = prep(pose), S = { P: P };
-    gaitSets();
+    gaitSets(P.strideK);
     var pk = sstep(0, 1, P.peek);
     P.yaw = P.yaw + C.peekYaw * pk * (1 - clamp(P.yaw, 0, 1));          // peek: a three-quarter view (both shoulders / the chest turn toward the viewer)
     S.theta = P.yaw * PI / 2; S.ox = P.x / sc; S.oy = P.y / sc;
@@ -7606,7 +7713,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     var tr1 = sin(TAU * 5.3 * shT), tr2 = sin(TAU * 4.1 * shT + 1.7), tr3 = sin(TAU * 6.3 * shT + 0.6);          // the faint slow tremble (sub-unit)
     var bow = P.bow, twistU = P.twist, chestH = sstep(0, 1, P.chestHand);
     var dzy = P.dizzy, ld = clamp(-P.hp, 0, 1), dTT = TAU * 1.6 * t, dS1 = sin(dTT), dS2 = sin(dTT + 1.4), dS3 = sin(2 * dTT + 0.5);       // dizzy stagger phases (1.6 Hz), look-down amount
-    var hunch = max(0.95 * fz, 0.95 * fl, 0.55 * bow), hunchS = max(0.4 * fz + 0.25 * rcA, 0.95 * fl, 0.8 * dzy, 0.5 * ld, 0.35 * bow);          // arms tucked (hands toward the chest) / shoulders up + neck shortened
+    var hunch = max(0.95 * fz, 0.95 * fl, 0.55 * bow), hunchS = max(0.4 * fz + 0.25 * rcA, 0.95 * fl, 0.8 * dzy, 0.5 * ld, 0.15 * bow, 0.35 * P.clutch, 0.6 * P.shrug);          // arms tucked (hands toward the chest) / shoulders up + neck shortened (the bow keeps the neck visible: the head sits forward of the shoulders)
     S.dzy = dzy; S.dS1 = dS1; S.hunchS = hunchS; S.ld = ld;
     S.recoil = rcA; S.freeze = fz; S.bow = bow;
     var sq = P.squash + 0.32 * fl, sqp = max(sq, 0), sqn = max(-sq, 0);          // squash (bonk / landing / flinch / shudder onset jolt) and its stretch half
@@ -7619,11 +7726,13 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     var wsh = (sin(TAU * t / 6.8) * 0.65 + sin(TAU * t / 4.3) * 0.35) * idleA;          // weight shift -1..1 (+ = toward her right)
     var wsf = (sin(TAU * t / 5.9) * 0.6 + sin(TAU * t / 3.7) * 0.4) * idleA;            // weight shift forward / back (the profile view's sway)
     // occasional beats on incommensurate 5-9 s cycles (all start at least 2 s after t = 0 and are zero at t = 0): stretch + exhale, hip shift + head tilt, one-sided shrug, glance-and-settle
-    // THINK-IDLE script (deterministic, keyed on pose.t = loop time; only while she stands calmly): E1 10.4 weight shift + head tilt + shoulder lift, E2 12.2 toe tap, E3 13.2 'aha' perk-up on her toes, E4 13.8-15.4 slow glance away
-    var calm = idleA * (1 - min(1, 2 * ld)) * (1 - min(1, 2 * max(sh, dzy, fl, P.scratch, P.think, bow))) * C.idleScript;
-    var e1 = pulseT(t, C.ideaT[0], 0.6, 0.5, 1.0) * calm, e2 = pulseT(t, C.ideaT[1], 0.25, 0.85, 0.3) * calm, e3 = pulseT(t, C.ideaT[2], 0.2, 0.15, 0.75) * calm, e4 = pulseT(t, C.ideaT[3], 0.7, 0.8, 0.75) * calm;
-    var emax = max(e1, e2, e3, e4), tap = pow(max(0, sin(TAU * 3.3 * (t - C.ideaT[1]))), 2) * e2;
+    // THINK-IDLE script (deterministic, keyed on pose.thinkT = seconds since she turned to the front (round 10; off while thinkT < 0); only while she stands calmly):
+    // E1 weight shift + head tilt + shoulder lift, E2 toe tap, E3 'aha' perk-up on her toes, E4 slow glance away (times: cfg.ideaT, relative to thinkT = 0)
+    var tS = P.thinkT, calm = tS >= 0 ? idleA * (1 - min(1, 2 * ld)) * (1 - min(1, 2 * max(sh, dzy, fl, P.scratch, P.think, bow, P.clutch, P.poke, P.shrug))) * C.idleScript : 0;
+    var e1 = pulseT(tS, C.ideaT[0], 0.6, 0.5, 1.0) * calm, e2 = pulseT(tS, C.ideaT[1], 0.25, 0.85, 0.3) * calm, e3 = pulseT(tS, C.ideaT[2], 0.2, 0.15, 0.75) * calm, e4 = pulseT(tS, C.ideaT[3], 0.7, 0.8, 0.75) * calm;
+    var emax = max(e1, e2, e3, e4), tap = pow(max(0, sin(TAU * 3.3 * (tS - C.ideaT[1]))), 2) * e2;
     S.e1 = e1; S.e3 = e3;
+    S.startle = P.startle; S.spread = P.spread; S.poke = P.poke; S.clutch = P.clutch; S.shrugX = P.shrug; S.reach = P.reach;          // round-10 performance fields (used by the arms / shoulders / the drawing)
     var ib = C.idleBeat * idleA * (1 - 0.85 * emax), b1 = beat(t, 5.3, 1.9, 0.55, 1.15)[0] * ib, bs2 = beat(t, 7.7, 3.3, 0.35, 0.95), b2 = bs2[0] * ib, s2 = bs2[1], bs3 = beat(t, 9.1, 5.7, 0.22, 0.7), b3 = bs3[0] * ib, s3 = bs3[1], b4 = beat(t, 6.3, 2.6, 0.2, 0.55)[0] * ib, s4 = (floor(t / 6.3) & 1) ? -1 : 1;
     var shrug = b3;
     S.shrug = shrug; S.b1 = b1; S.b2 = b2; S.s2 = s2; S.b3 = b3; S.s3 = s3;
@@ -7665,7 +7774,9 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
         var tk = sstep(0.1, 0.9, air), tp2 = sstep(0, 0.55, air);          // push-off: toes point first, then the knees come up; the feet end up behind the knees (not a chair)
         f = lerp(f, li ? -46 : -22, tk); z = lerp(z, li ? 84 : 102, tk); beta = lerp(beta, rad(li ? -58 : -48), tp2); c = lerp(c, side * 15, tk);
       }
-      legs.push({ side: side, f: f, c: c, z: z, beta: beta, toe: toe });
+      // toe bend weight (shoeFrame): the forefoot flexes against the ground while the heel rises in stance; it springs straight in the first 12 % of the swing (pointed foot in the air)
+      var rhoG = lerp(GW.rho, GR.rho, run), usw = (q - rhoG) / (1 - rhoG), tbG = q < rhoG ? 1 : 1 - sstep(0.05, 0.3, usw) + sstep(0.85, 1, usw);          // (and the toes lift again for the ball landing)
+      legs.push({ side: side, f: f, c: c, z: z, beta: beta, toe: toe, tb: lerp(1, tbG, aw) * (1 - air) });
     }
 
     // ---- pelvis: bob limited by leg reach (so legs never over-extend), twist, sway, shiver
@@ -7675,19 +7786,29 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     var fP = -14 * max(lean, 0) * (1 - 0.9 * run) + C.runPelvisF * run - C.peekPelvisF * pk + C.idleSwayF * wsf - 3 * b1 + C.dizzyF * dzy * dS2 + trm * 0.35 * tr1;
     var cP = -C.hipSway * a * sPh + C.idleSway * wsh + 7 * b2 * s2 + 16 * e1 + trm * 0.3 * tr2 + C.dizzyC * dzy * dS1 + C.femShift * fw;
     var absorb = air * (1 - air) * 4;                       // knee absorb / anticipation while the hop blend passes through 0.5
-    var ideal0 = 0; var ideal = lerp(C.pelvisIdle - a * C.walkDrop + a * C.bob * (1 + 0.09 * C.asym * sin(TAU * 0.29 * ph + 0.7)) * walkBobShape(2 * (ph - C.bobPh)), C.runPelvis + C.runBob * runBobShape(2 * ph), run) + 9 * e3 - 44 * sqp + 14 * sqn - 14 * pk * (1 + 0.12 * sin(TAU * t / 2.3 + 2.2)) - C.hopAbsorb * absorb - 3 * dzy * (0.5 - 0.5 * cos(2 * dTT)) - 2 * scrN * (0.5 + 0.5 * sin(TAU * C.scratchHz * P.scratchT)) + 5 * rcA - 2.5 * blk - 7 * bow;
     var lk = 1 + C.runLegK * run, L1 = C.L1 * lk, L2 = C.L2 * lk, ak = 1 + C.runArmK * run;
     S.lk = lk; S.ak = ak;
-    var Lmax = (L1 + L2) * (C.legReach - C.kneeSoft * aw * (1 - run)), lim = 1e9;          // walking: the knees never lock (soft at contact, extending through the push-off)
+    // WALK pelvis (GAIT R10): knee-target solve. Each stance leg asks for the pelvis height at which its knee has the biomechanical flexion C.kneeK(q) (deg: ~5 at contact, ~17 in
+    // loading, straight over mid-stance, ~36 into the push-off); the lowest request wins (soft min), so the pelvis is lowest in the double support and highest over the straight
+    // mid-stance leg: the bob emerges from the geometry (no cosine).  The landing leg's reach limit takes over just before its heel strike (continuous: kneeK(0) ~ legReach).
+    var pelvRoll = rad(C.femRoll) * fw, Rp = K.mEuler(yawP, pitchP, pelvRoll), rhoG = lerp(GW.rho, GR.rho, run);
+    var kneeH = 1e9, Lmax = (L1 + L2) * (C.legReach - C.kneeSoft * aw * (1 - run)), lim = 1e9;
     for (var i2 = 0; i2 < 2; i2++) {
-      var lg = legs[i2], dx = lg.f - fP, dy = lg.c - (cP + lg.side * C.hipW), l2 = Lmax * Lmax - dx * dx - dy * dy;
-      var limi = lg.z + sqrt(l2 > 25 ? l2 : 25) + 3;
-      lim = i2 === 0 ? limi : K.smin(lim, limi, 10);
+      var lg = legs[i2], hc = lg.side * C.hipW, hv0 = Rp[1] * hc - Rp[2] * 3, hv1 = Rp[4] * hc - Rp[5] * 3, hv2 = Rp[7] * hc - Rp[8] * 3;          // the hip joint's offset from the pelvis origin (exact, incl. the pelvis rotation)
+      var dx = lg.f - (fP + hv0), dy = lg.c - (cP + hv1), l2 = Lmax * Lmax - dx * dx - dy * dy;
+      var usw2 = (S.legQ[i2] - rhoG) / (1 - rhoG), relax = usw2 > 0 ? 30 * aw * sstep(0, 0.12, usw2) * (1 - sstep(0.75, 0.95, usw2)) : 0;          // a swing foot does not hold the pelvis down (its IK clamp keeps the leg straight instead: the flight 'stretch'); the limit returns before the landing
+      var limi = lg.z + sqrt(l2 > 25 ? l2 : 25) - hv2 + relax;
+      lim = i2 === 0 ? limi : K.smin(lim, limi, lerp(10, 4, aw));          // (idle: the R9 smoothing, so the approved standing / peek poses keep their height)
+      if (a > 0 && S.legQ[i2] < GW.rho) {          // (the trailing leg's request fades out over the last 10 % of its stance: the landing leg has taken the weight)
+        var kd = rad(K.curve(C.kneeK, S.legQ[i2])), Dk2 = L1 * L1 + L2 * L2 + 2 * L1 * L2 * cos(kd) - dx * dx - dy * dy, hk = lg.z + sqrt(Dk2 > 25 ? Dk2 : 25) - hv2 + 60 * sstep(GW.rho - 0.1, GW.rho, S.legQ[i2]);
+        kneeH = kneeH > 1e8 ? hk : K.smin(kneeH, hk, C.kneeSmin);
+      }
     }
-    var hP = K.smin(ideal, lim, lerp(C.pelvisSmooth, 10, run));
+    var idealW = kneeH > 1e8 ? C.pelvisIdle : lerp(C.pelvisIdle, kneeH, a);
+    var ideal = lerp(idealW, C.runPelvis + C.runBob * runBobShape(2 * ph), run) + 9 * e3 - 44 * sqp + 14 * sqn - 14 * pk * (1 + 0.12 * sin(TAU * t / 2.3 + 2.2)) - C.hopAbsorb * absorb - 3 * dzy * (0.5 - 0.5 * cos(2 * dTT)) - 2 * scrN * (0.5 + 0.5 * sin(TAU * C.scratchHz * P.scratchT)) + 5 * rcA - 2.5 * blk - 7 * bow;
+    var hP = K.smin(ideal, lim, lerp(lerp(C.pelvisSmooth, C.pelvisSmoothW, a), 10, run));
     if (air > 0) hP = lerp(hP, C.pelvisIdle - 4, air);
-    var pelvRoll = rad(C.femRoll) * fw, Rp = K.mEuler(yawP, pitchP, pelvRoll);
-    var Fp = K.frame(Rp, [fP, cP, hP]), Fps = pk > 0 || fl > 0 || femK > 0 ? K.frame(K.mEuler(yawP, pitchP0, 0), [fP, cP, hP]) : (femK > 0 ? K.frame(K.mEuler(yawP, pitchP0, pelvRoll * 0.4), [fP, cP, hP]) : Fp);      // the dress hangs down (not along the leaning pelvis)
+    var Fp = K.frame(Rp, [fP, cP, hP]), Fps = pk > 0 || fl > 0 || femK > 0 ? K.frame(K.mEuler(yawP, pitchP0 + fl * rad(8), 0), [fP, cP, hP]) : (femK > 0 ? K.frame(K.mEuler(yawP, pitchP0, pelvRoll * 0.4), [fP, cP, hP]) : Fp);      // the dress hangs down (not along the leaning pelvis); it does follow the small flinch recoil (else a sliver opens at the waist in profile)
     S.Fp = Fp; S.hipsMid = [fP, cP, hP];
 
     // ---- legs (IK) + feet
@@ -7703,7 +7824,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
       var knee = ik2(hip, ank, [cos(poleA), sin(poleA), 0], L1, L2);
       var Rf = K.mMul(K.mRz(L.side * L.toe), K.mRy(L.beta));
       var ofoot = v3sub(ank, K.mVec(Rf, 0, 0, C.ankleZ));
-      S.leg.push({ side: L.side, hip: hip, knee: knee, ank: ank, Ff: K.frame(Rf, ofoot), beta: L.beta });
+      S.leg.push({ side: L.side, hip: hip, knee: knee, ank: ank, Ff: K.frame(Rf, ofoot), beta: L.beta, tb: L.tb });
     }
 
     // ---- head angles (relative to the neck)
@@ -7714,7 +7835,8 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     var hp = P.hp + 0.6 * e3 - 0.1 * e4 + 0.08 * e1 + (C.idleNod * sin(TAU * t / 3.9) + 0.05 * sin(TAU * t / 7.7)) * idleA + 0.16 * b1 - 0.08 * b4 - 0.10 * scr - 0.32 * sq - 0.12 * hunchS + 0.3 * air - 0.22 * fl - 0.1 * dzy - 0.1 * scW * max(0, sin(TAU * 1.7 * scT)) + 0.1 * fz + 0.1 * rcA - 0.3 * blk - 0.05 * femK;
     var hr = P.hr + 0.62 * e1 - 0.12 * e4 + (C.idleRoll * sin(TAU * t / 6.7) + 0.08 * sin(TAU * t / 3.1)) * idleA + 0.45 * b2 * s2 + 0.2 * b4 * s4 + 0.62 * scr + 0.1 * scW * sin(TAU * C.scratchHz * 0.5 * scT) + 0.12 * fz + 0.3 * bow + 0.3 * pk + a * (1 - run) * C.headTilt * sin(TAU * (ph - C.headLag)) - C.femHead * fw - 0.06 * femK + 0.1 * fl + 0.45 * dzy * dS3;
     var psiH = -hy * rad(55) - headLead * rad(14);
-    var phiH = (hp >= 0 ? hp * rad(35) : hp * rad(38)) + pk * rad(C.peekHead) - a * rad(C.headNod) * cos(TAU * 2 * (ph - C.headLag)) + run * rad(C.runHead) * (1 + 0.15 * sin(TAU * 2 * ph));
+    var runLeanTot = run * (rad(C.runLean + C.runLeanDeg * (lean - C.runLean0)) - rad(C.runPelvisPitch));          // the torso's total forward tip in the run (spine lean + pelvis pitch), rad
+    var phiH = (hp >= 0 ? hp * rad(35) : hp * rad(38)) + pk * rad(C.peekHead) - a * rad(C.headNod) * cos(TAU * 2 * (ph - C.headLag)) + C.runHeadLevel * runLeanTot + run * rad(C.runHead) * (1 + 0.15 * sin(TAU * 2 * ph));          // run (GAIT R10): the head counter-rotates the lean = LEVEL in the world, eyes on the horizon (+ runHead deg chin-up)
     var rhoH = hr * rad(20);
     S.headAng = [psiH, phiH, rhoH];
 
@@ -7735,7 +7857,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     S.torsoF = new Array(nRows);
     var vbCs = trm * 0.25 * tr2, vbF = trm * 0.35 * tr1, vbC = vbCs - C.femChest * fw, vbH = trm * 0.3 * tr3 + 2.5 * rcA;          // upper-body shiver (the skirt top follows it: no seam at the waist)
     var oPrev = K.fApply(Fp, vbF, vbC, C.waistH - C.hipRest + C.runWaistK * run + vbH);
-    var chestUp = C.idleChest * (breath + 0.5 * b1 + 1.5 * e3 + 0.15 * sin(TAU * t / 1.7) * idleA) * idleA + C.walkChest * a * (1 - run) * cos(TAU * 2 * (ph - C.bobPh - 0.1)), shUp = C.shrugAmp * (0.35 * b3 + 0.3 * b1 + 0.7 * e1 + 0.9 * e3) + 1.5 * ld + 5.0 * fz + 2.5 * rcA + 3 * bow, exPrev = 0, fNPrev = 0;          // breathing chest rise, shrug beats, look-down shoulder drop (accumulated along the spine)
+    var chestUp = C.idleChest * (breath + 0.5 * b1 + 1.5 * e3 + 0.15 * sin(TAU * t / 1.7) * idleA) * idleA + C.walkChest * a * (1 - run) * cos(TAU * 2 * (ph - C.bobPh - 0.1)), shUp = C.shrugAmp * (0.35 * b3 + 0.3 * b1 + 0.7 * e1 + 0.9 * e3) + 1.5 * ld + 5.0 * fz + 2.5 * rcA + 1.5 * bow + 8 * P.shrug + 2.5 * P.startle + 2 * P.clutch, exPrev = 0, fNPrev = 0;          // breathing chest rise, shrug beats, look-down shoulder drop (accumulated along the spine)
     for (var i = 0; i < nRows; i++) {
       var h = TORSO_H[i];
       var gb = lerp(sstep(C.waistH, C.neckBaseH, h), sstep(C.waistH, C.waistH + C.runBendH, h), run);
@@ -7768,7 +7890,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     // ---- skirt rows: hangs from the waist, trails behind the walk, opens when the legs spread (and flares in a hop / run)
     var hemLift = aw * 0.5 * (1 + cos(TAU * 2 * ph)) + 0.8 * air + C.runHemLift * run + 1.2 * sqp;
     var hemF = a * (-9 * min(1, P.speed / 360)) + aw * 2.2 * sin(TAU * (2 * ph + 0.15)) - C.runHemF * run;
-    var hemTilt = aw * (rad(7.5) * sin(TAU * (ph - 0.07)) + rad(C.hemFlutter) * sin(TAU * (2 * ph - 0.22)) + rad(1.5)) + run * rad(C.runHemTilt);
+    var hemTilt = aw * (rad(C.hemTiltA) * sin(TAU * (ph - 0.07)) + rad(C.hemFlutter) * sin(TAU * (2 * ph - 0.22)) + rad(1.5)) + run * rad(C.runHemTilt);
     var spreadF = 1 + 0.05 * aw * hemLift + C.runSpread * run + 0.03 * rcA, spreadC = 1 + 0.03 * rcA;
     var wd0 = 1 + 0.07 * sqp - 0.02 * sqn, xF = 0.16 * sqp - 0.05 * sqn + 0.22 * air - C.peekSpread * pk, xC = 0.16 * sqp - 0.05 * sqn + 0.2 * air;       // extra skirt spread: starts at the torso's own widening at the waist, full at the hem
     S.skirtF = new Array(SKIRT_H.length);
@@ -7841,10 +7963,13 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
       if (air > 0) {
         alpha = lerp(alpha, rad(112), air); gamma = lerp(gamma, rad(52), air); beta = lerp(beta, rad(46), air);
       }
+      if (S.shrugX > 0) {                              // sheepish shrug: elbows in, forearms swung out and up to the sides (palms up), the shoulders hiked (shUp)
+        var sg = sstep(0, 1, S.shrugX); alpha = lerp(alpha, rad(6), sg); beta = lerp(beta, rad(30), sg); gamma = lerp(gamma, rad(108), sg);
+      }
       var Ssh = K.fApply(Fsh, -1.0, side * C.shoulderC, 0);
       if (run > 0) { var wFs = sstep(-C.keyFw, C.keyFw, fw); Ssh[0] += run * (C.runShoulderFwd * wFs - C.runShoulderBack * (1 - wFs)); }   // run: the arm that swings back also has its shoulder twisted back (far shoulder)
       if (side === -1) Ssh[2] += 21 * sstep(0, 1, min(1, P.scratch));          // the scratching shoulder is hiked up
-      Ssh[2] += C.shDrop * S.yawS + 7 * S.hunchS + 5 * max(sq, 0) + 4 * P.scratch + C.shrugAmp * S.b3 * (side === S.s3 ? 1 : 0.15) + 2 * S.b1 + 2.5 * S.e1 * (side === 1 ? 1 : 0.3) + 3 * S.e3;
+      Ssh[2] += C.shDrop * S.yawS + 7 * S.hunchS + 5 * max(sq, 0) + 4 * P.scratch + C.shrugAmp * S.b3 * (side === S.s3 ? 1 : 0.15) + 2 * S.b1 + 2.5 * S.e1 * (side === 1 ? 1 : 0.3) + 3 * S.e3 + 3 * S.shrugX + 2 * S.startle;
       var ca = cos(alpha), sa = sin(alpha), cb = cos(beta), sb = sin(beta);
       var d1 = K.mVec(Rarm, sa * cb, side * sb, -ca * cb);
       var a2 = alpha + gamma, b2 = beta * C.foreBeta;
@@ -7852,8 +7977,11 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
       var E = v3mad(Ssh, d1, C.armU * S.ak), W = v3mad(E, d2, C.armF * S.ak);
       var arm = { side: side, S: Ssh, E: E, W: W, fw: fw, hd: v3norm(v3add(d2, K.mVec(Rarm, 0.16 + C.handLag * a * (1 - run) * side * sin(TAU * ph), side * C.handOut, 0))), curl: K.mVec(Rarm, 0, -side, 0), thumbDir: K.mVec(Rarm, 1, 0, 0) };
       arm.fist = max(hunch * 0.7, 0.5 * air); arm.scrW = 0; arm.scrPh = 0;
-      if (side === -1 && (scr > 1e-3 || P.think > 1e-3 || S.pk > 1e-3 || P.chestHand > 1e-3)) applyArmTargets(S, arm, P, scr);
+      arm.openW = max(S.spread, 0.85 * sstep(0, 1, S.shrugX)) * (1 - 0.8 * run);          // open hand with spread fingers (startled jump / shrug)
+      if (side === -1 && (scr > 1e-3 || P.think > 1e-3 || S.pk > 1e-3 || P.chestHand > 1e-3 || P.poke > 1e-3 || P.clutch > 1e-3)) applyArmTargets(S, arm, P, scr);
       if (side === 1 && S.femK * S.yawS > 1e-3) applyFemArm(S, arm, S.femK * S.yawS);
+      if (side === 1 && S.clutch > 1e-3) applyClutchR(S, arm, S.clutch);
+      if (side === 1 && S.reach > 1e-3) applyReachR(S, arm, S.reach);
       arm.runW = run;
       var ud = v3sub(arm.E, arm.S), ul = v3len(ud) || 1;
       arm.raise = sstep(0.12, 0.45, 1 + ud[2] / ul);        // how far the upper arm is away from hanging (the sleeve then leaves the torso silhouette)
@@ -7863,7 +7991,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
   }
   /** FEMININE STANDING POSE: the right hand lightly holds the side of the skirt (elbow out, soft); weight w = fem * front-ness */
   function applyFemArm(S, arm, w) {
-    var Ssh = arm.S, ws = sstep(0, 1, w), Fp = S.Fp, hw = ws * (1 - sstep(0.4, 0.9, S.hunchS)) * (1 - S.pk);
+    var Ssh = arm.S, ws = sstep(0, 1, w), Fp = S.Fp, hw = ws * (1 - sstep(0.4, 0.9, S.hunchS)) * (1 - S.pk) * (1 - sstep(0, 1, S.shrugX));          // (the shrug lets go of the skirt)
     if (hw < 1e-3) return;
     var tgt = K.fApply(Fp, C.femHand[0], C.femHand[1], C.femHand[2]);
     var Wt = v3lerp(arm.W, tgt, hw);
@@ -7872,6 +8000,28 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     var pole = v3lerp(v3sub(arm.E, v3lerp(Ssh, arm.W, C.armU / (C.armU + C.armF))), K.mVec(Fp.R, C.femHandPole[0], C.femHandPole[1], C.femHandPole[2]), hw);
     arm.E = ik2(Ssh, Wt, pole, C.armU * S.ak, C.armF * S.ak); arm.W = Wt;
     arm.hd = v3norm(v3lerp(arm.hd, K.mVec(Fp.R, 0.12, 0.3, -1), hw)); arm.fist = max(arm.fist || 0, 0.45 * hw);
+  }
+  /** REACH, right hand: reaches down-forward toward the nav console below her ('what is THAT?'), index finger out; target in the pelvis frame (cfg.reachAt) */
+  function applyReachR(S, arm, w) {
+    var Ssh = arm.S, wr = sstep(0, 1, w), Fp = S.Fp;
+    var Wt = v3lerp(arm.W, K.fApply(Fp, C.reachAt[0], C.reachAt[1], C.reachAt[2]), wr);
+    var d = v3sub(Wt, Ssh), dl = v3len(d), reach = (C.armU + C.armF) * S.ak * 0.998;
+    if (dl > reach) Wt = v3mad(Ssh, d, reach / dl);
+    var bend = v3sub(arm.E, v3lerp(Ssh, arm.W, C.armU / (C.armU + C.armF))), pole = v3lerp(v3len(bend) > 1.5 ? bend : [0.5, 0.5, -0.5], K.mVec(Fp.R, C.reachPole[0], C.reachPole[1], C.reachPole[2]), wr);
+    arm.E = ik2(Ssh, Wt, pole, C.armU * S.ak, C.armF * S.ak); arm.W = Wt;
+    arm.hd = v3norm(v3lerp(arm.hd, v3norm(v3sub(Wt, Ssh)), wr)); arm.fist = max(arm.fist || 0, 0.6 * wr); arm.pointW = max(arm.pointW || 0, wr);
+  }
+  /** CLUTCH, right hand: mirror of the left clutch target (both hands hold the head) */
+  function applyClutchR(S, arm, w) {
+    var Fh = S.Fhead, Ssh = arm.S, wcl = sstep(0, 1, w), arcC = sin(PI * wcl);
+    var bend = v3sub(arm.E, v3lerp(Ssh, arm.W, C.armU / (C.armU + C.armF))), pole = v3len(bend) > 1.5 ? bend : [-0.3, 1, -0.5];
+    var Wt = v3lerp(arm.W, K.fApply(Fh, C.clutchAt[0], C.clutchAt[1], C.clutchAt[2]), wcl);
+    Wt = v3add(Wt, [6 * arcC, 36 * arcC, 2 * arcC]);
+    pole = v3lerp(pole, [0.1, 1, -0.3], wcl);
+    var d = v3sub(Wt, Ssh), dl = v3len(d), reach = (C.armU + C.armF) * S.ak * 0.998;
+    if (dl > reach) Wt = v3mad(Ssh, d, reach / dl);
+    arm.E = ik2(Ssh, Wt, pole, C.armU * S.ak, C.armF * S.ak); arm.W = Wt;
+    arm.hd = v3norm(v3lerp(arm.hd, K.mVec(Fh.R, 0.15, -0.5, 0.85), wcl)); arm.fist = max(arm.fist || 0, wcl);
   }
   function applyArmTargets(S, arm, P, scr) {
     var Fh = S.Fhead, Ssh = arm.S, Wfk = arm.W;
@@ -7886,12 +8036,27 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
       hd = v3norm(v3lerp(hd, K.mVec(Fh.R, 0.25, 0.55, 0.8), wsm));
       fist = max(fist, wsm);
     }
-    if (P.chestHand > 1e-3) {                            // CHEST HAND: the left hand comes up to the chest (worry / surprise), elbow out and down
-      var wch = sstep(0, 1, P.chestHand), Fsh2 = S.torsoF[SH_IDX];
-      Wt = v3lerp(Wt, K.fApply(Fsh2, C.chestHand[0], C.chestHand[1], C.chestHand[2]), wch);
+    if (P.chestHand > 1e-3) {                            // CHEST HAND: the left hand comes up to the chest (worry / surprise), elbow out and down; above 1 it rises on to the MOUTH (a gasp)
+      var wch = sstep(0, 1, P.chestHand), wm = sstep(1, 1.6, P.chestHand), Fsh2 = S.torsoF[SH_IDX];
+      var tgC = K.fApply(Fsh2, C.chestHand[0], C.chestHand[1], C.chestHand[2]), tgM = K.fApply(Fh, C.mouthHand[0], C.mouthHand[1], C.mouthHand[2]);
+      Wt = v3lerp(Wt, v3lerp(tgC, tgM, wm), wch);
       pole = v3lerp(pole, C.chestPole, wch);
-      hd = v3norm(v3lerp(hd, K.mVec(Fsh2.R, 0.3, 0.55, 0.6), wch));
+      hd = v3norm(v3lerp(hd, v3lerp(K.mVec(Fsh2.R, 0.3, 0.55, 0.6), K.mVec(Fh.R, -0.15, 0.7, 0.65), wm), wch));
       fist = max(fist, wch);
+    }
+    if (P.poke > 1e-3) {                                 // POKE: the hand rises up and forward to poke at a floating thought (index finger out), with a small hesitant wobble
+      var wp = sstep(0, 1, P.poke), tp = P.t, arcP = sin(PI * wp);
+      var Tg = K.fApply(Fh, C.pokeAt[0] + 6 * sin(TAU * 1.3 * tp), C.pokeAt[1], C.pokeAt[2] + 5 * sin(TAU * 0.9 * tp + 1));
+      Wt = v3lerp(Wt, Tg, wp); Wt = v3add(Wt, [0, -14 * arcP, -10 * arcP]);
+      pole = v3lerp(pole, C.pokePole, wp);
+      hd = v3norm(v3lerp(hd, v3norm(v3sub(Tg, Ssh)), wp)); fist = max(fist, 0.6 * wp); arm.pointW = wp;
+    }
+    if (P.clutch > 1e-3) {                               // CLUTCH ('so many ideas!'): this (left) hand grabs the side of the head above the temple, elbow out; the right hand mirrors it (applyClutchR)
+      var wcl = sstep(0, 1, P.clutch), arcC = sin(PI * wcl);
+      Wt = v3lerp(Wt, K.fApply(Fh, C.clutchAt[0], -C.clutchAt[1], C.clutchAt[2]), wcl);
+      Wt = v3add(Wt, [6 * arcC, -36 * arcC, 2 * arcC]);
+      pole = v3lerp(pole, [0.1, -1, -0.3], wcl);
+      hd = v3norm(v3lerp(hd, K.mVec(Fh.R, 0.15, 0.5, 0.85), wcl)); fist = max(fist, wcl);
     }
     if (scr > 1e-3) {                                    // SCRATCH: the hand rests on the CROWN, the fingers stick up above the head outline and rub / wiggle in small circles (6.5 Hz), the elbow pumps out
       var T = P.scratchT, w2 = sstep(0, 1, min(1, scr)), rw = sstep(0.25, 0.7, scr), pr = TAU * C.scratchHz * T, pe = pr * 0.5;
@@ -8011,6 +8176,39 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
       }
     });
   }
+  /** open hand (startled jump / shrug): the same fan of fingers, held still and a little wider; a pointing hand (poke) shows one longer index finger */
+  function drawOpenHand(ctx, am, Fhd) {
+    var ws = am.openW || 0, wp = am.pointW || 0;
+    if (ws < 0.04 && wp < 0.04) return;
+    K.batch(ctx, function () {
+      for (var k = 0; k < 4; k++) {
+        var w = k === 1 ? max(ws, wp) : ws * (1 - wp);
+        if (w < 0.04) continue;
+        var g = FNG[k], ang = rad(g[1] * 1.2), L = g[2] * w * (k === 1 ? 1 + 0.35 * wp : 1), ca = cos(ang), sa = sin(ang);
+        var p0 = K.fApply(Fhd, 0, g[0], 12), p1 = K.fApply(Fhd, 0, g[0] + L * 0.55 * sa, 12 + L * 0.55 * ca), p2 = K.fApply(Fhd, 0, g[0] + L * sa, 12 + L * ca);
+        var q0 = K.proj(p0[0], p0[1], p0[2]), q1 = K.proj(p1[0], p1[1], p1[2]), q2 = K.proj(p2[0], p2[1], p2[2]);
+        K.addCapsule(ctx, q0[0], q0[1], 2.9 * w, q1[0], q1[1], 2.5 * w);
+        K.addCapsule(ctx, q1[0], q1[1], 2.5 * w, q2[0], q2[1], 2.0 * w);
+      }
+    });
+  }
+  /** STARTLE TICKS (pose.startle 0..1): five short ink strokes radiating from the crown (a comic 'startled' mark, no lettering); they shoot out as the envelope rises and
+      collapse from the base as it falls.  Drawn by the rig so they belong to her (they move with the head). */
+  var STK = [[-152, 30, 0], [-118, 40, 1], [-88, 44, 2], [-58, 40, 3], [-24, 30, 4]];          // [angle deg (screen, -90 = straight up), length, index]
+  function drawStartle(ctx, S) {
+    var w = S.startle; if (w < 0.02) return;
+    K.setProj(S.theta, S.ox, S.oy);
+    var top = K.fApply(S.Fhead, 0, 0, 58), q = K.proj(top[0], top[1], top[2]), cx = q[0], cy = q[1] - 4;
+    var grow = sstep(0, 1, w), base = 1 - sstep(0.25, 1, w), lw = 2.4 * (0.5 + 0.5 * w);
+    ctx.save(); ctx.strokeStyle = ctx.fillStyle; ctx.lineCap = 'round'; ctx.lineWidth = lw; ctx.beginPath();
+    for (var k = 0; k < STK.length; k++) {
+      var tk = STK[k], a = rad(tk[0]), L = tk[1], ri = 18 + L * 0.6 * base, ro = 18 + L * grow;
+      if (ro - ri < 2) continue;
+      var c = cos(a), s = sin(a);
+      ctx.moveTo(cx + c * ri, cy + s * ri); ctx.lineTo(cx + c * ro, cy + s * ro);
+    }
+    ctx.stroke(); ctx.restore();
+  }
   var SLV = new Float64Array(2 * 3 * 12);
   /** the sleeve of a raised arm: a short truncated cone along the upper arm with softly rounded cuff corners (hull of the shoulder disc and two small corner discs) */
   function drawSleeve(ctx, am) {
@@ -8036,14 +8234,14 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
   }
   /** frame of the shoe row at foot-local position s: the forefoot (beyond the ball) flexes so the toes stay flat on the ground while the heel lifts */
   function shoeFrame(lg, s) {
-    var beta = lg.beta, Rf = lg.Ff.R, of = lg.Ff.o, bend = beta < 0 ? -beta * 0.9 : 0, Bs = C.ballS, w = bend > 0 ? sstep(Bs - 2, Bs + 11, s) : 0;
+    var beta = lg.beta, Rf = lg.Ff.R, of = lg.Ff.o, bend = beta < 0 ? -beta * (lg.tb === undefined ? 0.9 : lg.tb) : 0, Bs = C.ballS, w = bend > 0 ? sstep(Bs - 1, Bs + 5, s) : 0;          // (lg.tb: only against the ground; a pointed foot in the air keeps its toes in line)
     if (w <= 0) return lg.Ff;
     var d = bend * w, Rr = K.mMul(Rf, K.mRy(d)), Ry = K.mRy(d), Bv = [Bs - (Ry[0] * Bs), -(Ry[3] * Bs), -(Ry[6] * Bs)];
     var sh = K.mVec(Rf, Bv[0], Bv[1], Bv[2]);
     return K.frame(Rr, [of[0] + sh[0], of[1] + sh[1], of[2] + sh[2]]);
   }
   /** five tiny toe tips (bare foot): a hint of toe separation at the end of the foot; big toe on the inner side (toward the other foot). Positions in the foot frame (s, y, z, radius). */
-  var TOE = [[57.4, 5.0, 3.0, 2.3], [56.0, 1.8, 2.7, 2.0], [54.0, -1.2, 2.4, 1.8], [51.8, -3.9, 2.2, 1.6], [49.6, -6.3, 2.0, 1.5]];
+  var TOE = [[58.6, 5.0, 2.6, 2.4], [57.4, 1.8, 2.4, 2.1], [55.6, -1.2, 2.2, 1.9], [53.4, -3.9, 2.0, 1.7], [51.2, -6.3, 1.9, 1.5]];          // (GAIT R10: on the slimmer toe wedge of the bare-foot loft, tips just proud of it so they read as toes)
   function drawToes(ctx, lg, i) {
     var inner = lg.side < 0 ? 1 : -1;               // left foot: the inner side is +y (toward her right)
     K.batch(ctx, function () {
@@ -8114,6 +8312,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
         SWL.begin(YR[0], YR[1], dyHand); SWL.addLoft(HAND_S[i], 0, HAND_S[i].R - 1);
         ctx.beginPath(); SWL.emit(ctx, C.fair.hand); ctx.fill();
         if (am.scrW > 0.04) drawFingers(ctx, am, Fhd);
+        if (am.openW > 0.04 || am.pointW > 0.04) drawOpenHand(ctx, am, Fhd);
       }
     }
   }
@@ -8125,13 +8324,16 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     var seed = opts.seed === undefined ? 1 : opts.seed;
     var hair = A.createHair ? A.createHair(seed) : null;
     var girl = { version: 'C2', STRIDE: C.stride * sc, STRIDE_RUN: C.strideRun * sc, height: height };
+    girl.setWalkPreset = function (n) { return A.setWalkPreset ? A.setWalkPreset(n) : false; };          // runtime switch between the walk style presets (see girl_a_tuned.js)
+    girl.walkPresetName = function () { return A.walkPreset; };
 
     // ---- per-tick memo: step() (x2 per frame), draw() and anchors() are called with the same pose, so the rig is solved once per distinct pose
-    var memoVer = -1, KEYN = 27, kLast = new Float64Array(KEYN), kNow = new Float64Array(KEYN), sLast = null, anchLast = null;
+    var memoVer = -1, KEYN = 34, kLast = new Float64Array(KEYN), kNow = new Float64Array(KEYN), sLast = null, anchLast = null;
     function poseKey(p, o) {
       var g = p.gait || {}, w = p.wind || {};
       o[0] = p.x; o[1] = p.y; o[2] = p.yaw; o[3] = g.amount; o[4] = g.phase; o[5] = g.speed; o[6] = g.run; o[7] = p.headYaw; o[8] = p.headPitch; o[9] = p.headRoll; o[10] = p.lean; o[11] = p.squash;
       o[12] = p.scratch; o[13] = p.scratchT; o[14] = p.think; o[15] = p.shudder; o[16] = p.shudderT; o[17] = p.air; o[18] = p.peek; o[19] = p.flinch; o[20] = p.dizzy; o[24] = p.bow; o[25] = p.twist; o[26] = p.chestHand; o[21] = w.x; o[22] = w.y; o[23] = p.t;
+      o[27] = p.startle; o[28] = p.spread; o[29] = p.poke; o[30] = p.clutch; o[31] = p.shrug; o[32] = p.thinkT; o[33] = p.reach;
     }
     function solveMemo(pose) {
       poseKey(pose, kNow);
@@ -8154,6 +8356,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
       ctx.fillStyle = GA.style ? GA.style.INK : '#0b0b0c';
       if (!dbg.noBody) buildPath(ctx, S);
       if (hair && !dbg.noHair) hair.draw(ctx, S, sc);
+      if (S.startle > 0.02 && !dbg.noBody) drawStartle(ctx, S);
       ctx.restore();
     };
     function P2(p) { return K.proj(p[0], p[1], p[2]); }
@@ -8217,11 +8420,11 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
   D.head = [[59.5,-2.56,0.4,0.4,0.4,2,0],[59.164,-2.532,0.497,0.497,0,2,0],[58.728,-1.423,1.388,1.388,0,2,0],[58.292,1.637,4.759,4.759,7.477,2,0],[57.856,-0.685,6.67,6.67,8.541,2,0],[57.42,-1.395,8.29,8.29,10.016,2,0],[56.984,-1.399,10.259,10.259,11.947,2,0],[56.548,-1.217,12.176,12.176,14.29,2,0],[56.112,-1.022,13.929,13.929,16.916,2,0],[55.189,-0.562,16.602,16.602,19.661,2,0],[54.099,0.045,19.4,19.4,22.381,2,0],[53.009,0.496,21.781,21.781,24.951,2,0],[51.919,0.804,23.579,23.579,27.308,2,0],[50.829,0.61,25.243,25.243,29.435,2,0],[49.739,-0.028,27.552,27.552,31.364,2,0],[48.649,0.024,28.515,28.515,33.16,2,0],[47.559,0.138,29.561,29.561,34.904,2,0],[46.468,0.147,30.439,30.439,36.662,2,0],[45.378,0.192,31.111,31.111,38.467,2,0],[44.288,0.228,31.684,31.684,40.302,2,0],[43.198,0.032,32.433,32.433,42.097,2,0],[42.108,-0.002,32.972,32.972,43.748,2,0],[41.018,-0.079,33.58,33.58,45.153,2,0],[39.928,1.092,33.866,33.866,46.258,2,0],[38.838,2.867,37.202,37.202,47.076,2,0],[37.748,2.16,37.027,37.027,47.67,2,0],[36.658,3.086,38.179,38.179,48.116,2,0],[35.568,3.141,38.555,38.555,48.473,2,0],[34.477,2.874,38.784,38.784,48.774,2,0],[33.387,3.17,39.827,39.827,49.036,2,0],[32.297,3.247,40.244,40.244,49.267,2,0],[31.207,3.163,40.217,40.217,49.469,2,0],[30.117,2.893,40.403,40.403,49.642,2,0],[29.027,3.162,40.751,40.751,49.787,2,0],[27.937,2.908,40.841,40.841,49.904,2,0],[26.847,2.888,41.011,41.011,49.99,2,0],[25.757,2.864,41.133,41.133,50.044,2,0],[24.667,2.657,41.33,41.33,50.06,2,0],[23.577,2.65,41.33,41.33,50.029,2,0],[22.486,2.547,41.428,41.428,49.937,2,0],[21.396,2.402,41.562,41.562,49.771,2,0],[20.306,2.363,41.59,41.59,49.519,2,0],[19.216,2.117,41.762,41.762,49.187,2,0],[18.126,1.849,41.618,41.618,48.793,2,0],[17.036,1.81,41.59,41.59,48.374,2,0],[15.946,1.776,41.566,41.566,47.97,2,0],[14.856,1.648,41.439,41.439,47.616,2,0],[13.766,1.278,41.08,41.08,47.329,2,0],[12.676,1.267,41.08,41.08,47.111,2,0],[11.586,1.252,41.072,41.072,46.949,2,0],[10.495,1.179,41.216,41.216,46.828,2,0],[9.405,1.227,41.542,41.542,46.73,2,0],[8.315,1.396,41.763,41.763,46.642,2,0],[7.225,1.417,41.795,41.795,46.553,2,0],[6.135,1.298,41.695,41.695,46.457,2,0],[5.045,1.013,41.413,41.413,46.354,2,0],[3.955,0.746,41.156,41.156,46.249,2,0],[2.865,0.642,41.062,41.062,46.153,2,0],[1.775,0.492,40.916,40.916,46.073,2,0],[0.685,0.325,40.765,40.765,46.016,2,0],[-0.405,0.193,40.637,40.637,45.985,2,0],[-1.495,0.036,40.491,40.491,45.982,2,0],[-2.586,-0.14,40.326,40.326,46.006,2,0],[-3.676,-0.169,39.983,39.983,46.057,2,0],[-4.766,-0.265,39.705,39.705,46.131,2,0],[-5.856,-0.42,39.54,39.54,46.224,2,0],[-6.946,-0.525,39.454,39.454,46.327,2,0],[-8.036,-0.56,39.42,39.42,46.428,2,0],[-9.126,-0.567,39.424,39.424,46.519,2,0],[-10.216,-0.479,39.411,39.411,46.593,2,0],[-11.306,-0.183,39.31,39.31,46.65,2,0],[-12.396,0.066,39.36,39.36,46.689,2,0],[-13.486,0.408,39.388,39.388,46.711,2,0],[-14.577,0.777,39.463,39.463,46.713,2,0],[-15.667,1.147,39.623,39.623,46.693,2,0],[-16.757,1.639,39.733,39.733,46.645,2,0],[-17.847,2.041,40.011,40.011,46.559,2,0],[-18.937,2.643,40.135,40.135,46.419,2,0],[-20.027,3.279,40.259,40.259,46.21,2,0],[-21.117,3.682,40.577,40.577,45.919,2,0],[-22.207,4.212,40.655,40.655,45.543,2,0],[-23.297,4.521,40.711,40.711,45.081,2,0],[-24.387,4.671,40.546,40.546,44.539,2,0],[-25.477,4.583,40.196,40.196,43.919,2,0],[-26.568,4.27,39.594,39.594,43.227,2,0],[-27.658,3.804,38.685,38.685,42.469,2,0],[-28.748,3.451,37.602,37.602,41.652,2,0],[-29.838,3.405,36.738,36.738,40.782,2,0],[-30.928,3.698,36.137,36.137,39.865,2,0],[-32.018,4.25,35.613,35.613,38.9,2,0],[-33.108,4.895,35.166,35.166,37.879,2,0],[-34.198,5.643,34.699,34.699,36.785,2,0],[-35.288,6.004,34.423,34.423,35.581,2,0],[-36.378,5.57,34.534,34.534,34.217,2,0],[-37.468,5.856,33.538,33.538,32.629,2,0],[-38.559,7.247,31.533,31.533,30.761,2,0],[-39.649,8.314,30.369,30.369,28.594,2,0],[-40.739,8.462,30.421,30.421,26.177,2,0],[-41.829,8.582,30.309,30.309,23.639,2,0],[-42.919,8.545,29.842,29.842,21.166,2,0],[-44.009,9.424,27.895,27.895,18.956,2,0],[-45.099,9.102,27.007,27.007,17.149,2,0],[-46.189,9.237,26.084,26.084,15.798,2,0],[-47.279,9.701,25.232,25.232,14.872,2,0],[-48.369,10.501,24.163,24.163,14.277,2,0],[-49.459,10.865,23.506,23.506,13.913,2,0],[-50.55,11.245,22.731,22.731,13.693,2,0],[-51.64,11.642,21.762,21.762,13.559,2,0],[-52.73,10.036,19.239,19.239,13.474,2,0],[-53.82,4.463,14.302,14.302,12.47,2,0],[-54.91,-0.438,10.192,10.192,11.964,2,0],[-56,-1.873,8.014,8.014,11.262,2,0]];
   D.torso = [[292,11.12,30.48,30.48,33.683,2,-2.63],[293.5,11.27,30.16,30.16,33.312,2,-2.57],[295,11.14,29.8,29.8,32.975,2,-2.52],[296.5,11.2,29.66,29.66,32.62,2,-2.5],[298,11.13,29.65,29.65,32.271,2,-2.47],[299.5,10.69,29.48,29.48,31.958,2,-2.42],[301,10.51,29.57,29.57,31.712,2,-2.33],[302.5,10.35,29.65,29.65,31.56,2,-2.25],[304,10.08,29.75,29.75,31.486,2,-2.2],[305.5,9.02,29.17,29.17,31.477,2,-2.17],[307,8.72,29.21,29.21,31.529,2,-2.13],[308.5,8.54,29.4,29.4,31.638,2,-2.09],[310,8.25,29.62,29.62,31.8,2,-2],[311.5,7.94,29.83,29.83,32.026,2,-1.87],[313,7.83,29.77,29.77,32.321,2,-1.74],[314.5,7.68,29.69,29.69,32.668,2,-1.69],[316,7.84,29.36,29.36,33.053,2,-1.65],[317.5,7.99,29.07,29.07,33.461,2,-1.62],[319,7.9,28.94,28.94,33.885,2,-1.38],[320.5,8.02,28.57,28.57,34.336,2,-1.36],[322,7.94,28.51,28.51,34.81,2,-1.28],[323.5,8.13,28.21,28.21,35.299,2,-1.26],[325,8.23,28.03,28.03,35.799,2,-1.26],[326.5,8.28,27.88,27.88,36.301,2,-1.21],[328,8.51,27.61,27.61,36.8,2,-1.11],[329.5,8.49,27.61,27.61,37.292,2,-1.06],[331,8.74,27.36,27.36,37.782,2,-1.12],[332.5,8.77,27.29,27.29,38.274,2,-1.12],[334,8.92,27.06,27.06,38.776,2,-0.94],[335.5,9.13,26.76,26.76,39.292,2,-0.2],[337,9.08,26.72,26.72,39.829,2,0.78],[338.5,9.25,26.38,26.38,40.391,2,1.1],[340,9.1,26.21,26.21,40.987,2,0.63],[341.5,9.2,25.82,25.82,41.614,2,-0.34],[343,9.35,25.46,25.46,42.263,2,-0.87],[344.5,9.13,25.24,25.24,42.927,2,-1.01],[346,9.15,24.73,24.73,43.6,2,-1.02],[347.5,8.93,24.51,24.51,44.417,2,-1.01],[349,8.91,23.96,23.96,45.245,2,-0.91],[350.5,8.91,23.43,23.43,45.691,2,-0.9],[352,8.52,23.03,23.03,45.737,2,-0.84],[353.5,8.5,22.46,22.46,45.517,2,-0.84],[355,8.11,22.05,22.05,45.1,2,-0.79],[356.5,8,21.39,21.39,44.462,2,-0.82],[358,7.85,20.69,20.69,43.6,2,-0.78],[359.5,7.41,20.22,20.22,42.486,2,-0.81],[361,7.23,19.48,19.48,41.158,2,-0.75],[362.5,6.82,19.03,19.03,39.703,2,-0.76],[364,6.31,17.96,17.96,38.113,2,-0.71],[365.5,5.84,16.94,16.94,36.395,2,-0.74],[367,5.31,16.37,16.37,34.566,2,-0.76],[368.5,5.08,15.57,15.57,32.614,2,-0.69],[370,4.57,15.01,15.01,30.6,2,-0.62],[371.5,4.28,14.17,14.17,28.441,2,-0.61],[373,3.95,13.28,13.28,26.269,2,-0.71],[374.5,3.08,12.71,12.71,24.437,2,-0.86],[376,2.3,12.23,12.23,22.914,2,-0.98],[377.5,1.81,12.03,12.03,21.713,2,-1.12],[379,1.48,12.01,12.01,20.899,2,-1.43],[380.5,1.48,12.31,12.31,20.376,2,-1.66],[382,1.48,12.61,12.61,20.015,2,-1.8],[383.5,1.48,12.91,12.91,19.697,2,-1.52],[385,1.48,13.21,13.21,19.465,2,-1.24],[386.5,1.48,13.51,13.51,19.314,2,-0.98],[388,1.48,13.81,13.81,19.2,2,-0.73],[389.5,1.48,14.11,14.11,19.112,2,-0.34],[391,1.48,14.41,14.41,19.058,2,-0.43],[392.5,1.48,14.41,14.41,19.025,2,-0.43],[394,1.48,14.41,14.41,19,2,-0.43],[395.5,1.48,14.41,14.41,18.976,2,-0.43],[397,1.48,14.41,14.41,18.955,2,-0.43],[398.5,1.48,14.41,14.41,18.936,2,-0.43],[400,1.48,14.41,14.41,18.919,2,-0.43],[401.5,1.48,14.41,14.41,18.902,2,-0.43]];
   D.skirt = [[0,10.77,29.52,29.52,34.25,2,-2.63],[0.0105,10.509,29.83,29.83,34.254,2,-2.704],[0.0211,10.297,30.101,30.101,34.336,2,-2.758],[0.0316,10.033,30.42,30.42,34.449,2,-2.805],[0.0421,10.003,30.959,30.959,34.544,2,-2.903],[0.0526,9.724,31.347,31.347,34.708,2,-2.898],[0.0632,9.442,31.682,31.682,34.866,2,-2.843],[0.0737,9.173,32.02,32.02,35.089,2,-2.889],[0.0842,9.023,32.418,32.418,35.576,2,-2.993],[0.0947,8.928,32.903,32.903,36.312,2,-3.078],[0.1053,8.663,33.227,33.227,37.145,2,-3.115],[0.1158,8.411,33.55,33.55,37.961,2,-3.06],[0.1263,8.197,33.837,33.837,38.662,2,-3.053],[0.1368,8.229,34.362,34.362,39.446,2,-3.019],[0.1474,8.006,34.675,34.675,40.282,2,-2.922],[0.1579,7.272,34.407,34.407,41.033,2,-2.847],[0.1684,7.136,34.695,34.695,41.917,2,-2.832],[0.1789,7.021,35.062,35.062,42.685,2,-2.85],[0.1895,6.998,35.396,35.396,43.377,2,-2.845],[0.2,6.87,35.71,35.71,44.03,2,-2.82],[0.2105,6.777,35.989,35.989,44.575,2,-2.801],[0.2211,6.74,36.252,36.252,45.121,2,-2.752],[0.2316,6.635,36.588,36.588,45.635,2,-2.677],[0.2421,6.582,36.844,36.844,46.115,2,-2.687],[0.2526,6.558,37.124,37.124,46.578,2,-2.627],[0.2632,6.531,37.486,37.486,46.991,2,-2.511],[0.2737,6.507,37.714,37.714,47.348,2,-2.476],[0.2842,6.488,37.941,37.941,47.761,2,-2.474],[0.2947,6.443,38.262,38.262,48.099,2,-2.412],[0.3053,6.428,38.513,38.513,48.379,2,-2.308],[0.3158,6.422,38.73,38.73,48.801,2,-2.169],[0.3263,6.417,39.01,39.01,49.194,2,-2.109],[0.3368,6.415,39.332,39.332,49.547,2,-2.031],[0.3474,6.434,39.57,39.57,49.933,2,-1.905],[0.3579,6.526,39.884,39.884,50.224,2,-1.863],[0.3684,6.496,40.177,40.177,50.604,2,-1.731],[0.3789,6.514,40.461,40.461,51.033,2,-1.617],[0.3895,6.585,40.771,40.771,51.402,2,-1.538],[0.4,6.67,41.15,41.15,51.8,2,-1.41],[0.4105,6.719,41.495,41.495,52.154,2,-1.346],[0.4211,6.825,41.837,41.837,52.478,2,-1.244],[0.4316,6.842,42.208,42.208,52.784,2,-1.151],[0.4421,6.909,42.621,42.621,53.097,2,-1.074],[0.4526,7.06,43.002,43.002,53.486,2,-0.948],[0.4632,7.085,43.413,43.413,53.877,2,-0.918],[0.4737,7.179,43.801,43.801,54.288,2,-0.868],[0.4842,7.267,44.265,44.265,54.677,2,-0.745],[0.4947,7.305,44.696,44.696,55.011,2,-0.679],[0.5053,7.335,45.124,45.124,55.386,2,-0.561],[0.5158,7.418,45.602,45.602,55.765,2,-0.504],[0.5263,7.457,46.082,46.082,56.168,2,-0.412],[0.5368,7.446,46.581,46.581,56.561,2,-0.315],[0.5474,7.537,47.052,47.052,56.944,2,-0.252],[0.5579,7.551,47.586,47.586,57.333,2,-0.111],[0.5684,7.548,48.081,48.081,57.646,2,-0.007],[0.5789,7.55,48.657,48.657,57.986,2,0.054],[0.5895,7.561,49.175,49.175,58.423,2,0.167],[0.6,7.52,49.7,49.7,58.83,2,0.32],[0.6105,7.512,50.279,50.279,59.214,2,0.473],[0.621,7.527,50.897,50.897,59.567,2,0.557],[0.6316,7.452,51.473,51.473,59.959,2,0.633],[0.6421,7.404,52.041,52.041,60.334,2,0.677],[0.6526,7.396,52.68,52.68,60.764,2,0.798],[0.6632,7.339,53.257,53.257,61.171,2,0.981],[0.6737,7.307,53.843,53.843,61.525,2,1.148],[0.6842,7.288,54.477,54.477,61.939,2,1.242],[0.6947,7.244,55.068,55.068,62.326,2,1.349],[0.7053,7.148,55.687,55.687,62.687,2,1.518],[0.7158,7.127,56.368,56.368,63.011,2,1.625],[0.7263,7.059,56.968,56.968,63.385,2,1.742],[0.7368,6.997,57.547,57.547,63.746,2,1.871],[0.7474,6.948,58.251,58.251,64.092,2,1.981],[0.7579,6.866,58.922,58.922,64.465,2,2.117],[0.7684,6.784,59.529,59.529,64.825,2,2.197],[0.779,6.734,60.215,60.215,65.226,2,2.204],[0.7895,6.67,61.152,61.152,65.848,2,2.371],[0.8,6.774,61.699,61.699,66.252,2,2.479],[0.8105,6.979,61.864,61.864,66.471,2,2.507],[0.8211,7.353,61.958,61.958,66.753,2,2.533],[0.8316,8.035,61.821,61.821,67.092,2,2.565],[0.8421,9.037,61.396,61.396,67.46,2,2.61],[0.8526,10.385,60.633,60.633,67.843,2,2.677],[0.8632,11.942,59.661,59.661,68.219,2,2.764],[0.8737,13.573,58.615,58.615,68.54,2,2.835],[0.8842,15.127,57.647,57.647,68.73,2,2.805],[0.8947,16.473,56.875,56.875,68.646,2,2.525],[0.9053,17.592,56.273,56.273,68.134,2,1.913],[0.9158,18.576,55.602,55.602,67.038,2,1.012],[0.9263,19.582,54.407,54.407,65.3,2,-0.01],[0.9368,20.811,52.188,52.188,63.133,2,-0.985],[0.9474,22.393,48.785,48.785,60.881,2,-1.856],[0.9579,24.097,45.108,45.108,58.796,2,-2.628],[0.9684,25.447,42.091,42.091,56.386,2,-3.247],[0.9789,26.263,38.627,38.627,51.852,2,-3.701],[0.9895,26.606,33.536,33.536,44.561,2,-3.972],[1,26.769,26.516,26.516,35.487,2,-4.138]];
-  D.shoe = [[[[-14.2,5.4,1.2,1.4,2.4],[-12.86,5.17,3.85,3.89,2.4],[-11.53,5.53,5.18,5,2.4],[-10.19,6.1,6.02,5.58,2.4],[-8.85,6.68,6.74,5.98,2.4],[-7.52,7.27,7.36,6.25,2.4],[-6.18,7.88,7.91,6.44,2.4],[-4.84,8.47,8.47,6.62,2.4],[-3.51,9.11,9.12,6.82,2.4],[-2.17,9.77,9.77,7,2.4],[-0.83,10.3,10.3,7.14,2.4],[0.51,10.58,10.57,7.23,2.4],[1.84,10.68,10.7,7.28,2.4],[3.18,10.68,10.73,7.31,2.4],[4.52,10.61,10.67,7.32,2.4],[5.85,10.52,10.53,7.31,2.4],[7.19,10.44,10.31,7.3,2.4],[8.53,10.35,9.99,7.26,2.4],[9.86,10.22,9.55,7.2,2.4],[11.2,10.08,9.06,7.13,2.4],[12.54,9.94,8.54,7.06,2.4],[13.87,9.81,8.04,7,2.4],[15.21,9.72,7.54,6.95,2.4],[16.55,9.67,6.99,6.88,2.4],[17.88,9.61,6.44,6.82,2.4],[19.22,9.52,5.96,6.78,2.4],[20.56,9.37,5.59,6.78,2.4],[21.89,9.12,5.38,6.85,2.4],[23.23,8.79,5.33,6.97,2.4],[24.57,8.4,5.37,7.13,2.4],[25.91,7.99,5.47,7.3,2.4],[27.24,7.6,5.56,7.49,2.4],[28.58,7.25,5.63,7.69,2.4],[29.92,6.92,5.71,7.92,2.4],[31.25,6.59,5.82,8.16,2.4],[32.59,6.3,5.91,8.4,2.4],[33.93,6.06,5.95,8.59,2.4],[35.26,5.9,5.93,8.74,2.4],[36.6,5.81,5.87,8.87,2.4],[37.94,5.75,5.78,8.96,2.4],[39.27,5.67,5.67,9,2.4],[40.61,5.53,5.54,8.98,2.4],[41.95,5.37,5.38,8.9,2.4],[43.28,5.2,5.2,8.77,2.4],[44.62,5,5.01,8.6,2.4],[45.96,4.81,4.81,8.41,2.4],[47.29,4.59,4.59,8.18,2.4],[48.63,4.35,4.36,7.93,2.4],[49.97,4.12,4.12,7.65,2.4],[51.31,3.9,3.9,7.35,2.4],[52.64,3.72,3.72,7.06,2.4],[53.98,3.61,3.59,6.78,2.4],[55.32,3.52,3.48,6.48,2.4],[56.65,3.39,3.31,6.11,2.4],[57.99,3.18,3.02,5.66,2.4],[59.33,2.89,2.61,5.05,2.4],[60.66,2.61,2.11,4.07,2.4],[62,2.35,1.45,2.4,2.4]],[[-14.2,5.4,1.2,1.4,2.4],[-12.86,5.17,3.85,3.89,2.4],[-11.53,5.53,5.18,5,2.4],[-10.19,6.1,6.02,5.58,2.4],[-8.85,6.68,6.74,5.98,2.4],[-7.52,7.27,7.36,6.25,2.4],[-6.18,7.88,7.91,6.44,2.4],[-4.84,8.47,8.47,6.62,2.4],[-3.51,9.11,9.12,6.82,2.4],[-2.17,9.77,9.77,7,2.4],[-0.83,10.3,10.3,7.14,2.4],[0.51,10.58,10.57,7.23,2.4],[1.84,10.68,10.7,7.28,2.4],[3.18,10.68,10.73,7.31,2.4],[4.52,10.61,10.67,7.32,2.4],[5.85,10.52,10.53,7.31,2.4],[7.19,10.44,10.31,7.3,2.4],[8.53,10.35,9.99,7.26,2.4],[9.86,10.22,9.55,7.2,2.4],[11.2,10.08,9.06,7.13,2.4],[12.54,9.94,8.54,7.06,2.4],[13.87,9.81,8.04,7,2.4],[15.21,9.72,7.54,6.95,2.4],[16.55,9.67,6.99,6.88,2.4],[17.88,9.61,6.44,6.82,2.4],[19.22,9.52,5.96,6.78,2.4],[20.56,9.37,5.59,6.78,2.4],[21.89,9.12,5.38,6.85,2.4],[23.23,8.79,5.33,6.97,2.4],[24.57,8.4,5.37,7.13,2.4],[25.91,7.99,5.47,7.3,2.4],[27.24,7.6,5.56,7.49,2.4],[28.58,7.25,5.63,7.69,2.4],[29.92,6.92,5.71,7.92,2.4],[31.25,6.59,5.82,8.16,2.4],[32.59,6.3,5.91,8.4,2.4],[33.93,6.06,5.95,8.59,2.4],[35.26,5.9,5.93,8.74,2.4],[36.6,5.81,5.87,8.87,2.4],[37.94,5.75,5.78,8.96,2.4],[39.27,5.67,5.67,9,2.4],[40.61,5.53,5.54,8.98,2.4],[41.95,5.37,5.38,8.9,2.4],[43.28,5.2,5.2,8.77,2.4],[44.62,5,5.01,8.6,2.4],[45.96,4.81,4.81,8.41,2.4],[47.29,4.59,4.59,8.18,2.4],[48.63,4.35,4.36,7.93,2.4],[49.97,4.12,4.12,7.65,2.4],[51.31,3.9,3.9,7.35,2.4],[52.64,3.72,3.72,7.06,2.4],[53.98,3.61,3.59,6.78,2.4],[55.32,3.52,3.48,6.48,2.4],[56.65,3.39,3.31,6.11,2.4],[57.99,3.18,3.02,5.66,2.4],[59.33,2.89,2.61,5.05,2.4],[60.66,2.61,2.11,4.07,2.4],[62,2.35,1.45,2.4,2.4]]],[[[-14.2,5.4,1.2,1.4,2.4],[-12.86,5.17,3.85,3.89,2.4],[-11.53,5.53,5.18,5,2.4],[-10.19,6.1,6.02,5.58,2.4],[-8.85,6.68,6.74,5.98,2.4],[-7.52,7.27,7.36,6.25,2.4],[-6.18,7.88,7.91,6.44,2.4],[-4.84,8.47,8.47,6.62,2.4],[-3.51,9.11,9.12,6.82,2.4],[-2.17,9.77,9.77,7,2.4],[-0.83,10.3,10.3,7.14,2.4],[0.51,10.58,10.57,7.23,2.4],[1.84,10.68,10.7,7.28,2.4],[3.18,10.68,10.73,7.31,2.4],[4.52,10.61,10.67,7.32,2.4],[5.85,10.52,10.53,7.31,2.4],[7.19,10.44,10.31,7.3,2.4],[8.53,10.35,9.99,7.26,2.4],[9.86,10.22,9.55,7.2,2.4],[11.2,10.08,9.06,7.13,2.4],[12.54,9.94,8.54,7.06,2.4],[13.87,9.81,8.04,7,2.4],[15.21,9.72,7.54,6.95,2.4],[16.55,9.67,6.99,6.88,2.4],[17.88,9.61,6.44,6.82,2.4],[19.22,9.52,5.96,6.78,2.4],[20.56,9.37,5.59,6.78,2.4],[21.89,9.12,5.38,6.85,2.4],[23.23,8.79,5.33,6.97,2.4],[24.57,8.4,5.37,7.13,2.4],[25.91,7.99,5.47,7.3,2.4],[27.24,7.6,5.56,7.49,2.4],[28.58,7.25,5.63,7.69,2.4],[29.92,6.92,5.71,7.92,2.4],[31.25,6.59,5.82,8.16,2.4],[32.59,6.3,5.91,8.4,2.4],[33.93,6.06,5.95,8.59,2.4],[35.26,5.9,5.93,8.74,2.4],[36.6,5.81,5.87,8.87,2.4],[37.94,5.75,5.78,8.96,2.4],[39.27,5.67,5.67,9,2.4],[40.61,5.53,5.54,8.98,2.4],[41.95,5.37,5.38,8.9,2.4],[43.28,5.2,5.2,8.77,2.4],[44.62,5,5.01,8.6,2.4],[45.96,4.81,4.81,8.41,2.4],[47.29,4.59,4.59,8.18,2.4],[48.63,4.35,4.36,7.93,2.4],[49.97,4.12,4.12,7.65,2.4],[51.31,3.9,3.9,7.35,2.4],[52.64,3.72,3.72,7.06,2.4],[53.98,3.61,3.59,6.78,2.4],[55.32,3.52,3.48,6.48,2.4],[56.65,3.39,3.31,6.11,2.4],[57.99,3.18,3.02,5.66,2.4],[59.33,2.89,2.61,5.05,2.4],[60.66,2.61,2.11,4.07,2.4],[62,2.35,1.45,2.4,2.4]],[[-14.2,5.4,1.2,1.4,2.4],[-12.86,5.17,3.85,3.89,2.4],[-11.53,5.53,5.18,5,2.4],[-10.19,6.1,6.02,5.58,2.4],[-8.85,6.68,6.74,5.98,2.4],[-7.52,7.27,7.36,6.25,2.4],[-6.18,7.88,7.91,6.44,2.4],[-4.84,8.47,8.47,6.62,2.4],[-3.51,9.11,9.12,6.82,2.4],[-2.17,9.77,9.77,7,2.4],[-0.83,10.3,10.3,7.14,2.4],[0.51,10.58,10.57,7.23,2.4],[1.84,10.68,10.7,7.28,2.4],[3.18,10.68,10.73,7.31,2.4],[4.52,10.61,10.67,7.32,2.4],[5.85,10.52,10.53,7.31,2.4],[7.19,10.44,10.31,7.3,2.4],[8.53,10.35,9.99,7.26,2.4],[9.86,10.22,9.55,7.2,2.4],[11.2,10.08,9.06,7.13,2.4],[12.54,9.94,8.54,7.06,2.4],[13.87,9.81,8.04,7,2.4],[15.21,9.72,7.54,6.95,2.4],[16.55,9.67,6.99,6.88,2.4],[17.88,9.61,6.44,6.82,2.4],[19.22,9.52,5.96,6.78,2.4],[20.56,9.37,5.59,6.78,2.4],[21.89,9.12,5.38,6.85,2.4],[23.23,8.79,5.33,6.97,2.4],[24.57,8.4,5.37,7.13,2.4],[25.91,7.99,5.47,7.3,2.4],[27.24,7.6,5.56,7.49,2.4],[28.58,7.25,5.63,7.69,2.4],[29.92,6.92,5.71,7.92,2.4],[31.25,6.59,5.82,8.16,2.4],[32.59,6.3,5.91,8.4,2.4],[33.93,6.06,5.95,8.59,2.4],[35.26,5.9,5.93,8.74,2.4],[36.6,5.81,5.87,8.87,2.4],[37.94,5.75,5.78,8.96,2.4],[39.27,5.67,5.67,9,2.4],[40.61,5.53,5.54,8.98,2.4],[41.95,5.37,5.38,8.9,2.4],[43.28,5.2,5.2,8.77,2.4],[44.62,5,5.01,8.6,2.4],[45.96,4.81,4.81,8.41,2.4],[47.29,4.59,4.59,8.18,2.4],[48.63,4.35,4.36,7.93,2.4],[49.97,4.12,4.12,7.65,2.4],[51.31,3.9,3.9,7.35,2.4],[52.64,3.72,3.72,7.06,2.4],[53.98,3.61,3.59,6.78,2.4],[55.32,3.52,3.48,6.48,2.4],[56.65,3.39,3.31,6.11,2.4],[57.99,3.18,3.02,5.66,2.4],[59.33,2.89,2.61,5.05,2.4],[60.66,2.61,2.11,4.07,2.4],[62,2.35,1.45,2.4,2.4]]]];
+  D.shoe = [[[[-15.5,6,1,1.2,2.2],[-14.14,6.9,5.22,3.91,2.2],[-12.78,7.39,6.91,4.7,2.2],[-11.42,8,7.91,5.19,2.2],[-10.06,8.36,8.36,5.47,2.2],[-8.7,8.45,8.45,5.6,2.2],[-7.34,8.48,8.48,5.68,2.2],[-5.98,8.58,8.58,5.78,2.2],[-4.62,8.7,8.7,5.88,2.2],[-3.26,8.79,8.79,5.98,2.2],[-1.9,8.79,8.79,6.08,2.2],[-0.54,8.76,8.76,6.18,2.2],[0.82,8.71,8.71,6.29,2.2],[2.18,8.66,8.61,6.39,2.2],[3.54,8.6,8.48,6.5,2.2],[4.89,8.55,8.27,6.59,2.2],[6.25,8.53,7.92,6.67,2.2],[7.61,8.52,7.49,6.74,2.2],[8.97,8.5,7.11,6.8,2.2],[10.33,8.5,6.82,6.83,2.22],[11.69,8.5,6.58,6.85,2.25],[13.05,8.47,6.36,6.87,2.28],[14.41,8.34,6.14,6.92,2.31],[15.77,8.12,5.92,6.98,2.34],[17.13,7.87,5.67,7.06,2.36],[18.49,7.63,5.43,7.16,2.39],[19.85,7.37,5.27,7.27,2.42],[21.21,7.05,5.19,7.4,2.44],[22.57,6.73,5.14,7.54,2.47],[23.93,6.42,5.1,7.69,2.5],[25.29,6.12,5.07,7.85,2.53],[26.65,5.84,5.05,8.02,2.56],[28.01,5.57,5.03,8.19,2.59],[29.37,5.34,4.99,8.34,2.6],[30.73,5.14,4.93,8.49,2.6],[32.09,4.96,4.86,8.64,2.6],[33.45,4.81,4.79,8.76,2.6],[34.81,4.68,4.68,8.85,2.6],[36.17,4.58,4.58,8.93,2.6],[37.53,4.47,4.47,8.98,2.6],[38.89,4.36,4.36,9,2.6],[40.25,4.24,4.24,8.97,2.58],[41.61,4.12,4.12,8.9,2.55],[42.96,4,4,8.8,2.52],[44.32,3.87,3.87,8.67,2.49],[45.68,3.74,3.74,8.51,2.47],[47.04,3.6,3.6,8.32,2.44],[48.4,3.46,3.46,8.1,2.41],[49.76,3.32,3.32,7.86,2.38],[51.12,3.17,3.17,7.6,2.35],[52.48,3.02,3.02,7.28,2.32],[53.84,2.86,2.85,6.89,2.29],[55.2,2.69,2.66,6.41,2.26],[56.56,2.51,2.43,5.81,2.21],[57.92,2.33,2.18,5.1,2.17],[59.28,2.13,1.86,4.17,2.11],[60.64,1.91,1.34,2.83,2.02],[62,1.75,0.45,1,2]],[[-15.5,6,1,1.2,2.2],[-14.14,6.9,5.22,3.91,2.2],[-12.78,7.39,6.91,4.7,2.2],[-11.42,8,7.91,5.19,2.2],[-10.06,8.36,8.36,5.47,2.2],[-8.7,8.45,8.45,5.6,2.2],[-7.34,8.48,8.48,5.68,2.2],[-5.98,8.58,8.58,5.78,2.2],[-4.62,8.7,8.7,5.88,2.2],[-3.26,8.79,8.79,5.98,2.2],[-1.9,8.79,8.79,6.08,2.2],[-0.54,8.76,8.76,6.18,2.2],[0.82,8.71,8.71,6.29,2.2],[2.18,8.66,8.61,6.39,2.2],[3.54,8.6,8.48,6.5,2.2],[4.89,8.55,8.27,6.59,2.2],[6.25,8.53,7.92,6.67,2.2],[7.61,8.52,7.49,6.74,2.2],[8.97,8.5,7.11,6.8,2.2],[10.33,8.5,6.82,6.83,2.22],[11.69,8.5,6.58,6.85,2.25],[13.05,8.47,6.36,6.87,2.28],[14.41,8.34,6.14,6.92,2.31],[15.77,8.12,5.92,6.98,2.34],[17.13,7.87,5.67,7.06,2.36],[18.49,7.63,5.43,7.16,2.39],[19.85,7.37,5.27,7.27,2.42],[21.21,7.05,5.19,7.4,2.44],[22.57,6.73,5.14,7.54,2.47],[23.93,6.42,5.1,7.69,2.5],[25.29,6.12,5.07,7.85,2.53],[26.65,5.84,5.05,8.02,2.56],[28.01,5.57,5.03,8.19,2.59],[29.37,5.34,4.99,8.34,2.6],[30.73,5.14,4.93,8.49,2.6],[32.09,4.96,4.86,8.64,2.6],[33.45,4.81,4.79,8.76,2.6],[34.81,4.68,4.68,8.85,2.6],[36.17,4.58,4.58,8.93,2.6],[37.53,4.47,4.47,8.98,2.6],[38.89,4.36,4.36,9,2.6],[40.25,4.24,4.24,8.97,2.58],[41.61,4.12,4.12,8.9,2.55],[42.96,4,4,8.8,2.52],[44.32,3.87,3.87,8.67,2.49],[45.68,3.74,3.74,8.51,2.47],[47.04,3.6,3.6,8.32,2.44],[48.4,3.46,3.46,8.1,2.41],[49.76,3.32,3.32,7.86,2.38],[51.12,3.17,3.17,7.6,2.35],[52.48,3.02,3.02,7.28,2.32],[53.84,2.86,2.85,6.89,2.29],[55.2,2.69,2.66,6.41,2.26],[56.56,2.51,2.43,5.81,2.21],[57.92,2.33,2.18,5.1,2.17],[59.28,2.13,1.86,4.17,2.11],[60.64,1.91,1.34,2.83,2.02],[62,1.75,0.45,1,2]]],[[[-15.5,6,1,1.2,2.2],[-14.14,6.9,5.22,3.91,2.2],[-12.78,7.39,6.91,4.7,2.2],[-11.42,8,7.91,5.19,2.2],[-10.06,8.36,8.36,5.47,2.2],[-8.7,8.45,8.45,5.6,2.2],[-7.34,8.48,8.48,5.68,2.2],[-5.98,8.58,8.58,5.78,2.2],[-4.62,8.7,8.7,5.88,2.2],[-3.26,8.79,8.79,5.98,2.2],[-1.9,8.79,8.79,6.08,2.2],[-0.54,8.76,8.76,6.18,2.2],[0.82,8.71,8.71,6.29,2.2],[2.18,8.66,8.61,6.39,2.2],[3.54,8.6,8.48,6.5,2.2],[4.89,8.55,8.27,6.59,2.2],[6.25,8.53,7.92,6.67,2.2],[7.61,8.52,7.49,6.74,2.2],[8.97,8.5,7.11,6.8,2.2],[10.33,8.5,6.82,6.83,2.22],[11.69,8.5,6.58,6.85,2.25],[13.05,8.47,6.36,6.87,2.28],[14.41,8.34,6.14,6.92,2.31],[15.77,8.12,5.92,6.98,2.34],[17.13,7.87,5.67,7.06,2.36],[18.49,7.63,5.43,7.16,2.39],[19.85,7.37,5.27,7.27,2.42],[21.21,7.05,5.19,7.4,2.44],[22.57,6.73,5.14,7.54,2.47],[23.93,6.42,5.1,7.69,2.5],[25.29,6.12,5.07,7.85,2.53],[26.65,5.84,5.05,8.02,2.56],[28.01,5.57,5.03,8.19,2.59],[29.37,5.34,4.99,8.34,2.6],[30.73,5.14,4.93,8.49,2.6],[32.09,4.96,4.86,8.64,2.6],[33.45,4.81,4.79,8.76,2.6],[34.81,4.68,4.68,8.85,2.6],[36.17,4.58,4.58,8.93,2.6],[37.53,4.47,4.47,8.98,2.6],[38.89,4.36,4.36,9,2.6],[40.25,4.24,4.24,8.97,2.58],[41.61,4.12,4.12,8.9,2.55],[42.96,4,4,8.8,2.52],[44.32,3.87,3.87,8.67,2.49],[45.68,3.74,3.74,8.51,2.47],[47.04,3.6,3.6,8.32,2.44],[48.4,3.46,3.46,8.1,2.41],[49.76,3.32,3.32,7.86,2.38],[51.12,3.17,3.17,7.6,2.35],[52.48,3.02,3.02,7.28,2.32],[53.84,2.86,2.85,6.89,2.29],[55.2,2.69,2.66,6.41,2.26],[56.56,2.51,2.43,5.81,2.21],[57.92,2.33,2.18,5.1,2.17],[59.28,2.13,1.86,4.17,2.11],[60.64,1.91,1.34,2.83,2.02],[62,1.75,0.45,1,2]],[[-15.5,6,1,1.2,2.2],[-14.14,6.9,5.22,3.91,2.2],[-12.78,7.39,6.91,4.7,2.2],[-11.42,8,7.91,5.19,2.2],[-10.06,8.36,8.36,5.47,2.2],[-8.7,8.45,8.45,5.6,2.2],[-7.34,8.48,8.48,5.68,2.2],[-5.98,8.58,8.58,5.78,2.2],[-4.62,8.7,8.7,5.88,2.2],[-3.26,8.79,8.79,5.98,2.2],[-1.9,8.79,8.79,6.08,2.2],[-0.54,8.76,8.76,6.18,2.2],[0.82,8.71,8.71,6.29,2.2],[2.18,8.66,8.61,6.39,2.2],[3.54,8.6,8.48,6.5,2.2],[4.89,8.55,8.27,6.59,2.2],[6.25,8.53,7.92,6.67,2.2],[7.61,8.52,7.49,6.74,2.2],[8.97,8.5,7.11,6.8,2.2],[10.33,8.5,6.82,6.83,2.22],[11.69,8.5,6.58,6.85,2.25],[13.05,8.47,6.36,6.87,2.28],[14.41,8.34,6.14,6.92,2.31],[15.77,8.12,5.92,6.98,2.34],[17.13,7.87,5.67,7.06,2.36],[18.49,7.63,5.43,7.16,2.39],[19.85,7.37,5.27,7.27,2.42],[21.21,7.05,5.19,7.4,2.44],[22.57,6.73,5.14,7.54,2.47],[23.93,6.42,5.1,7.69,2.5],[25.29,6.12,5.07,7.85,2.53],[26.65,5.84,5.05,8.02,2.56],[28.01,5.57,5.03,8.19,2.59],[29.37,5.34,4.99,8.34,2.6],[30.73,5.14,4.93,8.49,2.6],[32.09,4.96,4.86,8.64,2.6],[33.45,4.81,4.79,8.76,2.6],[34.81,4.68,4.68,8.85,2.6],[36.17,4.58,4.58,8.93,2.6],[37.53,4.47,4.47,8.98,2.6],[38.89,4.36,4.36,9,2.6],[40.25,4.24,4.24,8.97,2.58],[41.61,4.12,4.12,8.9,2.55],[42.96,4,4,8.8,2.52],[44.32,3.87,3.87,8.67,2.49],[45.68,3.74,3.74,8.51,2.47],[47.04,3.6,3.6,8.32,2.44],[48.4,3.46,3.46,8.1,2.41],[49.76,3.32,3.32,7.86,2.38],[51.12,3.17,3.17,7.6,2.35],[52.48,3.02,3.02,7.28,2.32],[53.84,2.86,2.85,6.89,2.29],[55.2,2.69,2.66,6.41,2.26],[56.56,2.51,2.43,5.81,2.21],[57.92,2.33,2.18,5.1,2.17],[59.28,2.13,1.86,4.17,2.11],[60.64,1.91,1.34,2.83,2.02],[62,1.75,0.45,1,2]]]];
   D.hand = [[[[-4,5.099,8.9,8.9,6.8,2,0],[-3,5.059,9.031,9.031,6.926,2,0],[-2,5.023,9.16,9.16,7.05,2,0],[-1,4.999,9.288,9.288,7.174,2,0],[0,4.991,9.413,9.413,7.294,2,0],[1,4.993,9.534,9.534,7.412,2,0],[2,4.999,9.65,9.65,7.526,2,0],[3,5.007,9.76,9.76,7.636,2,0],[4,5.017,9.864,9.864,7.74,2,0],[5,5.029,9.961,9.961,7.839,2,0],[6,5.043,10.049,10.049,7.931,2,0],[7,5.058,10.129,10.129,8.017,2,0],[8,5.068,10.199,10.199,8.094,2,0],[9,5.062,10.259,10.259,8.164,2,0],[10,5.032,10.31,10.31,8.226,2,0],[11,4.975,10.349,10.349,8.278,2,0],[12,4.903,10.377,10.377,8.322,2,0],[13,4.846,10.394,10.394,8.356,2,0],[14,4.842,10.4,10.4,8.38,2,0],[15,4.918,10.384,10.384,8.395,2,0],[16,5.051,10.336,10.336,8.4,2,0],[17,5.169,10.255,10.255,8.381,2,0],[18,5.207,10.14,10.14,8.325,2,0],[19,5.162,9.991,9.991,8.23,2,0],[20,5.082,9.805,9.805,8.096,2,0],[21,5.017,9.581,9.581,7.92,2,0],[22,4.98,9.316,9.316,7.699,2,0],[23,4.968,9.007,9.007,7.429,2,0],[24,4.979,8.647,8.647,7.106,2,0],[25,5.011,8.232,8.232,6.72,2,0],[26,5.056,7.752,7.752,6.261,2,0],[27,5.095,7.193,7.193,5.711,2,0],[28,5.097,6.537,6.537,5.04,2,0],[29,5.017,5.749,5.749,4.191,2,0],[30,4.842,4.764,4.764,3.016,2,0],[31,4.617,3.418,3.418,0.3,2,0],[32,3.82,0.3,0.3,0.3,2,0]],[[-4,-7.052,8.9,8.9,6.8,2,0],[-3,-7.251,9.031,9.031,6.926,2,0],[-2,-7.515,9.16,9.16,7.05,2,0],[-1,-7.819,9.288,9.288,7.174,2,0],[0,-8.126,9.413,9.413,7.294,2,0],[1,-8.414,9.534,9.534,7.412,2,0],[2,-8.677,9.65,9.65,7.526,2,0],[3,-8.92,9.76,9.76,7.636,2,0],[4,-9.151,9.864,9.864,7.74,2,0],[5,-9.377,9.961,9.961,7.839,2,0],[6,-9.6,10.049,10.049,7.931,2,0],[7,-9.823,10.129,10.129,8.017,2,0],[8,-10.046,10.199,10.199,8.094,2,0],[9,-10.266,10.259,10.259,8.164,2,0],[10,-10.464,10.31,10.31,8.226,2,0],[11,-10.598,10.349,10.349,8.278,2,0],[12,-10.592,10.377,10.377,8.322,2,0],[13,-10.363,10.394,10.394,8.356,2,0],[14,-9.862,10.4,10.4,8.38,2,0],[15,-9.086,10.384,10.384,8.395,2,0],[16,-8.017,10.336,10.336,8.4,2,0],[17,-6.637,10.255,10.255,8.381,2,0],[18,-5.031,10.14,10.14,8.325,2,0],[19,-3.374,9.991,9.991,8.23,2,0],[20,-1.793,9.805,9.805,8.096,2,0],[21,-0.334,9.581,9.581,7.92,2,0],[22,0.979,9.316,9.316,7.699,2,0],[23,2.103,9.007,9.007,7.429,2,0],[24,2.964,8.647,8.647,7.106,2,0],[25,3.493,8.232,8.232,6.72,2,0],[26,3.731,7.752,7.752,6.261,2,0],[27,3.803,7.193,7.193,5.711,2,0],[28,3.818,6.537,6.537,5.04,2,0],[29,3.82,5.749,5.749,4.191,2,0],[30,3.82,4.764,4.764,3.016,2,0],[31,3.82,3.418,3.418,0.3,2,0],[32,3.82,0.3,0.3,0.3,2,0]]],[[[-4,5.099,8.9,8.9,6.8,2,0],[-3,5.059,9.031,9.031,6.926,2,0],[-2,5.023,9.16,9.16,7.05,2,0],[-1,4.999,9.288,9.288,7.174,2,0],[0,4.991,9.413,9.413,7.294,2,0],[1,4.993,9.534,9.534,7.412,2,0],[2,4.999,9.65,9.65,7.526,2,0],[3,5.007,9.76,9.76,7.636,2,0],[4,5.017,9.864,9.864,7.74,2,0],[5,5.029,9.961,9.961,7.839,2,0],[6,5.043,10.049,10.049,7.931,2,0],[7,5.058,10.129,10.129,8.017,2,0],[8,5.068,10.199,10.199,8.094,2,0],[9,5.062,10.259,10.259,8.164,2,0],[10,5.032,10.31,10.31,8.226,2,0],[11,4.975,10.349,10.349,8.278,2,0],[12,4.903,10.377,10.377,8.322,2,0],[13,4.846,10.394,10.394,8.356,2,0],[14,4.842,10.4,10.4,8.38,2,0],[15,4.918,10.384,10.384,8.395,2,0],[16,5.051,10.336,10.336,8.4,2,0],[17,5.169,10.255,10.255,8.381,2,0],[18,5.207,10.14,10.14,8.325,2,0],[19,5.162,9.991,9.991,8.23,2,0],[20,5.082,9.805,9.805,8.096,2,0],[21,5.017,9.581,9.581,7.92,2,0],[22,4.98,9.316,9.316,7.699,2,0],[23,4.968,9.007,9.007,7.429,2,0],[24,4.979,8.647,8.647,7.106,2,0],[25,5.011,8.232,8.232,6.72,2,0],[26,5.056,7.752,7.752,6.261,2,0],[27,5.095,7.193,7.193,5.711,2,0],[28,5.097,6.537,6.537,5.04,2,0],[29,5.017,5.749,5.749,4.191,2,0],[30,4.842,4.764,4.764,3.016,2,0],[31,4.617,3.418,3.418,0.3,2,0],[32,3.82,0.3,0.3,0.3,2,0]],[[-4,-7.052,8.9,8.9,6.8,2,0],[-3,-7.251,9.031,9.031,6.926,2,0],[-2,-7.515,9.16,9.16,7.05,2,0],[-1,-7.819,9.288,9.288,7.174,2,0],[0,-8.126,9.413,9.413,7.294,2,0],[1,-8.414,9.534,9.534,7.412,2,0],[2,-8.677,9.65,9.65,7.526,2,0],[3,-8.92,9.76,9.76,7.636,2,0],[4,-9.151,9.864,9.864,7.74,2,0],[5,-9.377,9.961,9.961,7.839,2,0],[6,-9.6,10.049,10.049,7.931,2,0],[7,-9.823,10.129,10.129,8.017,2,0],[8,-10.046,10.199,10.199,8.094,2,0],[9,-10.266,10.259,10.259,8.164,2,0],[10,-10.464,10.31,10.31,8.226,2,0],[11,-10.598,10.349,10.349,8.278,2,0],[12,-10.592,10.377,10.377,8.322,2,0],[13,-10.363,10.394,10.394,8.356,2,0],[14,-9.862,10.4,10.4,8.38,2,0],[15,-9.086,10.384,10.384,8.395,2,0],[16,-8.017,10.336,10.336,8.4,2,0],[17,-6.637,10.255,10.255,8.381,2,0],[18,-5.031,10.14,10.14,8.325,2,0],[19,-3.374,9.991,9.991,8.23,2,0],[20,-1.793,9.805,9.805,8.096,2,0],[21,-0.334,9.581,9.581,7.92,2,0],[22,0.979,9.316,9.316,7.699,2,0],[23,2.103,9.007,9.007,7.429,2,0],[24,2.964,8.647,8.647,7.106,2,0],[25,3.493,8.232,8.232,6.72,2,0],[26,3.731,7.752,7.752,6.261,2,0],[27,3.803,7.193,7.193,5.711,2,0],[28,3.818,6.537,6.537,5.04,2,0],[29,3.82,5.749,5.749,4.191,2,0],[30,3.82,4.764,4.764,3.016,2,0],[31,3.82,3.418,3.418,0.3,2,0],[32,3.82,0.3,0.3,0.3,2,0]]]];
   A.hem = { walk: 152, run: 177 };
-  A.dataRun = {"head":[[62.3,-13.02,0.4,0.4,0.4,2,0],[61.939,-12.85,8.586,8.586,0,2,0],[61.477,-12.467,11.196,11.196,0,2,0],[61.016,-14.079,11.98,11.98,0,2,0],[60.555,-14.606,12.711,12.711,0,2,0],[60.094,-14.971,13.893,13.893,0,2,0],[59.632,-15.326,14.723,14.723,0,2,0],[59.171,-15.877,15.872,15.872,0,2,0],[58.71,-15.209,17.305,17.305,0,2,0],[58.249,-15.304,18.418,18.418,0,2,0],[57.787,-15.197,19.373,19.373,3.561,2,0],[57.326,-14.873,20.712,20.712,8.727,2,0],[56.865,-14.726,21.578,21.578,11.872,2,0],[56.404,-16.365,24.772,24.772,13.915,2,0],[55.856,-15.959,25.65,25.65,16.81,2,0],[54.703,-14.594,28.171,28.171,21.839,2,0],[53.55,-14.965,28.817,28.817,25.5,2,0],[52.396,-15.58,29.169,29.169,28.063,2,0],[51.243,-15.209,30.421,30.421,29.965,2,0],[50.09,-14.872,31.712,31.712,31.778,2,0],[48.937,-14.537,33.048,33.048,33.079,2,0],[47.784,-14.157,34.085,34.085,34.17,2,0],[46.631,-13.97,35.03,35.03,35.41,2,0],[45.477,-13.889,35.999,35.999,37.228,2,0],[44.324,-13.759,36.853,36.853,39.552,2,0],[43.171,-13.113,38.123,38.123,42.824,2,0],[42.018,-13.069,38.802,38.802,45.569,2,0],[40.865,-13.027,39.376,39.376,47.227,2,0],[39.712,-12.944,39.938,39.938,48.481,2,0],[38.559,-12.599,40.51,40.51,49.691,2,0],[37.405,-10.996,42.191,42.191,50.726,2,0],[36.252,-10.725,43.095,43.095,51.603,2,0],[35.099,-11.121,42.954,42.954,52.403,2,0],[33.946,-10.009,44.083,44.083,53.087,2,0],[32.793,-8.754,45.383,45.383,53.838,2,0],[31.64,-8.645,45.781,45.781,54.427,2,0],[30.486,-9.448,45.524,45.524,54.961,2,0],[29.333,-8.757,46.303,46.303,55.39,2,0],[28.18,-8.466,46.628,46.628,55.73,2,0],[27.027,-8.45,46.679,46.679,55.994,2,0],[25.874,-8.09,47.143,47.143,56.158,2,0],[24.721,-8.042,47.731,47.731,56.221,2,0],[23.568,-8.489,47.564,47.564,56.25,2,0],[22.414,-8.373,47.708,47.708,56.215,2,0],[21.261,-8.418,47.702,47.702,56.138,2,0],[20.108,-7.832,48.53,48.53,55.959,2,0],[18.955,-8.577,48.424,48.424,55.707,2,0],[17.802,-8.25,48.785,48.785,53.884,2,0],[16.649,-7.987,49.084,49.084,48.432,2,0],[15.495,-7.804,49.346,49.346,48.169,2,0],[14.342,-7.911,49.799,49.799,47.952,2,0],[13.189,-7.911,50.084,50.084,47.76,2,0],[12.036,-7.765,50.293,50.293,47.547,2,0],[10.883,-8.045,50.829,50.829,47.331,2,0],[9.73,-7.898,51.011,51.011,47.131,2,0],[8.577,-7.785,51.158,51.158,46.898,2,0],[7.423,-7.929,51.498,51.498,46.714,2,0],[6.27,-7.965,51.849,51.849,46.504,2,0],[5.117,-7.877,51.979,51.979,46.326,2,0],[3.964,-8.175,52.459,52.459,46.175,2,0],[2.811,-8.031,52.705,52.705,46.033,2,0],[1.658,-7.997,52.773,52.773,45.936,2,0],[0.505,-8.188,52.948,52.948,45.875,2,0],[-0.649,-8.441,53.172,53.172,45.854,2,0],[-1.802,-11.864,49.832,49.832,45.866,2,0],[-2.955,-12.891,49.143,49.143,45.908,2,0],[-4.108,-13.317,49.113,49.113,45.978,2,0],[-5.261,-14.154,48.276,48.276,46.064,2,0],[-6.414,-14.341,48.105,48.105,46.167,2,0],[-7.568,-14.589,47.898,47.898,46.322,2,0],[-8.721,-13.981,48.051,48.051,46.58,2,0],[-9.874,-14.601,47.153,47.153,46.842,2,0],[-11.027,-14.522,47.288,47.288,47.024,2,0],[-12.18,-14.64,47.124,47.124,47.198,2,0],[-13.333,-14.85,46.53,46.53,47.297,2,0],[-14.486,-15.061,45.969,45.969,47.315,2,0],[-15.64,-15.092,45.499,45.499,47.262,2,0],[-16.793,-15.091,45.29,45.29,47.145,2,0],[-17.946,-14.874,44.835,44.835,46.988,2,0],[-19.099,-14.94,44.611,44.611,46.795,2,0],[-20.252,-14.66,44.247,44.247,46.489,2,0],[-21.405,-14.492,44.096,44.096,46.132,2,0],[-22.559,-14.178,43.913,43.913,45.792,2,0],[-23.712,-13.805,43.765,43.765,45.276,2,0],[-24.865,-13.37,43.52,43.52,44.592,2,0],[-26.018,-12.901,43.419,43.419,43.928,2,0],[-27.171,-12.297,43.35,43.35,43.115,2,0],[-28.324,-11.598,43.317,43.317,42.151,2,0],[-29.477,-10.819,43.19,43.19,41.126,2,0],[-30.631,-9.923,43.039,43.039,40.067,2,0],[-31.784,-8.965,42.741,42.741,38.88,2,0],[-32.937,-6.582,40.537,40.537,37.776,2,0],[-34.09,-5.723,39.639,39.639,36.606,2,0],[-35.243,-5.313,39.189,39.189,35.25,2,0],[-36.396,-4.985,38.817,38.817,33.888,2,0],[-37.55,-3.898,37.463,37.463,32.489,2,0],[-38.703,-3.534,35.959,35.959,30.87,2,0],[-39.856,-2.814,33.798,33.798,29.172,2,0],[-41.009,-1.75,31.886,31.886,27.27,2,0],[-42.162,-2.203,31.972,31.972,23.233,2,0],[-43.315,-1.356,30.992,30.992,13.036,2,0],[-44.468,0.037,29.423,29.423,12.882,2,0],[-45.622,0.15,28.976,28.976,12.861,2,0],[-46.775,0.423,28.066,28.066,12.716,2,0],[-47.928,2.026,25.252,25.252,12.377,2,0],[-49.081,2.037,23.263,23.263,11.966,2,0],[-50.234,2.249,21.429,21.429,11.494,2,0],[-51.387,3.101,19.914,19.914,10.952,2,0],[-52.541,3.968,17.975,17.975,10.321,2,0],[-53.694,4.519,15.914,15.914,9.567,2,0],[-54.847,5.702,12.989,12.989,8.606,2,0],[-56,10.073,7.805,7.805,6.669,2,0]],"torso":[[292,-24.66,42.71,42.71,33.683,2,-2.63],[293.5,-23.72,41.97,41.97,33.312,2,-2.57],[295,-22.68,41.04,41.04,32.975,2,-2.52],[296.5,-21.46,39.89,39.89,32.62,2,-2.5],[298,-20.15,38.56,38.56,32.271,2,-2.47],[299.5,-18.73,37.02,37.02,31.958,2,-2.42],[301,-17.17,35.28,35.28,31.712,2,-2.33],[302.5,-15.6,33.46,33.46,31.56,2,-2.25],[304,-13.62,31.69,31.69,31.486,2,-2.2],[305.5,-11.49,30.17,30.17,31.477,2,-2.17],[307,-9.28,28.29,28.29,31.529,2,-2.13],[308.5,-6.94,26.6,26.6,31.638,2,-2.09],[310,-6.26,26.52,26.52,31.8,2,-2],[311.5,-6,25.97,25.97,32.026,2,-1.87],[313,-6.43,25.81,25.81,32.321,2,-1.74],[314.5,-5.52,25.42,25.42,32.668,2,-1.69],[316,-5.45,25.9,25.9,33.053,2,-1.65],[317.5,-5.42,26.33,26.33,33.461,2,-1.62],[319,-5.44,26.76,26.76,33.885,2,-1.38],[320.5,-5.46,27.18,27.18,34.336,2,-1.36],[322,-5.5,27.65,27.65,34.81,2,-1.28],[323.5,-5.68,28.22,28.22,35.299,2,-1.26],[325,-5.86,28.82,28.82,35.799,2,-1.26],[326.5,-6.12,29.52,29.52,36.301,2,-1.21],[328,-6.51,30.4,30.4,36.8,2,-1.11],[329.5,-7.01,31.54,31.54,37.292,2,-1.06],[331,-7.51,32.67,32.67,37.782,2,-1.12],[332.5,-7.98,33.74,33.74,38.274,2,-1.12],[334,-8.52,34.83,34.83,38.776,2,-0.94],[335.5,-9.66,35.33,35.33,39.292,2,-0.2],[337,-11.18,35.4,35.4,39.829,2,0.78],[338.5,-12.63,35.41,35.41,40.391,2,1.1],[340,-13.98,35.31,35.31,40.987,2,0.63],[341.5,-15.21,35.09,35.09,41.614,2,-0.34],[343,-16.28,34.72,34.72,42.263,2,-0.87],[344.5,-17.19,34.17,34.17,42.927,2,-1.01],[346,-17.92,33.46,33.46,43.6,2,-1.02],[347.5,-18.49,32.58,32.58,44.417,2,-1.01],[349,-18.9,31.54,31.54,45.245,2,-0.91],[350.5,-19.16,30.35,30.35,45.691,2,-0.9],[352,-19.3,29.04,29.04,45.737,2,-0.84],[353.5,-19.34,27.63,27.63,45.517,2,-0.84],[355,-19.3,26.14,26.14,45.1,2,-0.79],[356.5,-19.21,24.6,24.6,44.462,2,-0.82],[358,-19.08,23.02,23.02,43.6,2,-0.78],[359.5,-18.93,21.42,21.42,42.486,2,-0.81],[361,-18.78,19.82,19.82,41.158,2,-0.75],[362.5,-18.63,18.25,18.25,39.703,2,-0.76],[364,-18.49,16.71,16.71,38.113,2,-0.71],[365.5,-18.39,15.23,15.23,36.395,2,-0.74],[367,-18.3,13.84,13.84,34.566,2,-0.76],[368.5,-18.25,12.57,12.57,32.614,2,-0.69],[370,-18.2,11.42,11.42,30.6,2,-0.62],[371.5,-18.15,10.42,10.42,28.441,2,-0.61],[373,-18.09,10,10,26.269,2,-0.71],[374.5,-18,10,10,24.437,2,-0.86],[376,-17.88,10,10,22.914,2,-0.98],[377.5,-17.73,10,10,21.713,2,-1.12],[379,-17.55,10,10,20.899,2,-1.43],[380.5,-17.38,10,10,20.376,2,-1.66],[382,-17.21,10,10,20.015,2,-1.8],[383.5,-17.05,10,10,19.697,2,-1.8],[385,-16.89,10,10,19.465,2,-1.8],[386.5,-16.77,10,10,19.314,2,-1.8],[388,-16.7,10,10,19.2,2,-1.8],[389.5,-16.66,10,10,19.112,2,-1.8],[391,-16.64,10,10,19.058,2,-1.8],[392.5,-16.63,10,10,19.025,2,-1.8],[394,-16.63,10,10,19,2,-1.8],[395.5,-16.63,10,10,18.976,2,-1.8],[397,-16.63,10,10,18.955,2,-1.8],[398.5,-16.63,10,10,18.936,2,-1.8],[400,-16.63,10,10,18.919,2,-1.8],[401.5,-16.63,10,10,18.902,2,-1.8]],"skirt":[[0,-20.85,36.11,36.11,34.25,2,-2.63],[0.0105,-21.278,36.456,36.456,34.246,2,-2.691],[0.0211,-21.705,36.727,36.727,34.299,2,-2.743],[0.0316,-22.105,37.024,37.024,34.391,2,-2.773],[0.0421,-22.525,37.288,37.288,34.479,2,-2.831],[0.0526,-22.948,37.559,37.559,34.556,2,-2.911],[0.0632,-23.354,37.78,37.78,34.694,2,-2.904],[0.0737,-23.746,38.019,38.019,34.833,2,-2.851],[0.0842,-22.531,39.882,39.882,34.969,2,-2.861],[0.0947,-21.389,41.656,41.656,35.234,2,-2.924],[0.1053,-21.096,42.524,42.524,35.714,2,-3.016],[0.1158,-21.095,43.1,43.1,36.341,2,-3.079],[0.1263,-21.291,43.497,43.497,37.021,2,-3.111],[0.1368,-21.474,43.893,43.893,37.713,2,-3.076],[0.1474,-20.827,45.127,45.127,38.315,2,-3.06],[0.1579,-19.78,46.985,46.985,38.895,2,-3.047],[0.1684,-19.156,48.85,48.85,39.575,2,-3.004],[0.1789,-18.725,50.638,50.638,40.255,2,-2.925],[0.1895,-18.401,52.369,52.369,40.865,2,-2.861],[0.2,-17.98,54.2,54.2,41.57,2,-2.82],[0.2105,-17.733,55.899,55.899,42.273,2,-2.842],[0.2211,-17.579,57.647,57.647,42.858,2,-2.85],[0.2316,-17.472,59.451,59.451,43.427,2,-2.844],[0.2421,-17.458,61.28,61.28,43.962,2,-2.823],[0.2526,-17.497,63.082,63.082,44.419,2,-2.809],[0.2632,-17.652,64.968,64.968,44.867,2,-2.779],[0.2737,-17.868,66.884,66.884,45.311,2,-2.722],[0.2842,-18.243,68.839,68.839,45.719,2,-2.669],[0.2947,-18.699,70.836,70.836,46.115,2,-2.687],[0.3053,-19.307,72.996,72.996,46.494,2,-2.651],[0.3158,-20.142,75.382,75.382,46.859,2,-2.548],[0.3263,-21.136,77.871,77.871,47.151,2,-2.484],[0.3368,-22.22,80.413,80.413,47.466,2,-2.485],[0.3474,-23.361,83.025,83.025,47.805,2,-2.471],[0.3579,-25.56,86.667,86.667,48.084,2,-2.419],[0.3684,-27.943,90.534,90.534,48.295,2,-2.334],[0.3789,-31.268,95.269,95.269,48.614,2,-2.226],[0.3895,-34.16,99.589,99.589,48.969,2,-2.141],[0.4,-34.97,101.97,101.97,49.27,2,-2.1],[0.4105,-34.024,102.672,102.672,49.563,2,-2.025],[0.4211,-33.076,103.242,103.242,49.888,2,-1.913],[0.4316,-31.979,103.576,103.576,50.13,2,-1.877],[0.4421,-30.472,103.717,103.717,50.394,2,-1.811],[0.4526,-28.846,103.702,103.702,50.745,2,-1.677],[0.4632,-27.142,103.502,103.502,51.086,2,-1.607],[0.4737,-25.594,103.378,103.378,51.388,2,-1.542],[0.4842,-24.37,103.536,103.536,51.712,2,-1.442],[0.4947,-23.578,103.438,103.438,52.024,2,-1.374],[0.5053,-23.074,103.182,103.182,52.293,2,-1.312],[0.5158,-22.716,102.807,102.807,52.556,2,-1.221],[0.5263,-22.5,102.304,102.304,52.805,2,-1.143],[0.5368,-22.277,101.778,101.778,53.062,2,-1.081],[0.5474,-22.107,101.186,101.186,53.376,2,-0.975],[0.5579,-21.583,100.904,100.904,53.693,2,-0.912],[0.5684,-20.658,101.006,101.006,54.023,2,-0.913],[0.5789,-20.696,100.066,100.066,54.362,2,-0.842],[0.5895,-21.447,98.363,98.363,54.677,2,-0.745],[0.6,-23.29,95.46,95.46,54.95,2,-0.7],[0.6105,-23.906,93.546,93.546,55.239,2,-0.603],[0.6211,-25.021,90.977,90.977,55.565,2,-0.527],[0.6316,-26.198,88.223,88.223,55.874,2,-0.491],[0.6421,-26.645,86.071,86.071,56.214,2,-0.396],[0.6526,-28.145,82.623,82.623,56.534,2,-0.318],[0.6632,-28.812,79.138,79.138,56.848,2,-0.274],[0.6737,-28.095,75.947,75.947,57.168,2,-0.178],[0.6842,-28.762,72.682,72.682,57.461,2,-0.058],[0.6947,-29.338,70.867,70.867,57.709,2,0.006],[0.7053,-29.45,69.552,69.552,58.002,2,0.057],[0.7158,-29.551,68.083,68.083,58.362,2,0.148],[0.7263,-29.754,66.465,66.465,58.702,2,0.268],[0.7368,-29.703,65.058,65.058,59.029,2,0.408],[0.7474,-28.811,62.042,62.042,59.678,2,0.575],[0.7579,-28.237,61.387,61.387,59.857,2,0.611],[0.7684,-27.374,60.607,60.607,60.062,2,0.654],[0.7789,-26.063,59.457,59.457,60.317,2,0.715],[0.7895,-24.215,57.84,57.84,60.611,2,0.797],[0.8,-21.888,55.79,55.79,60.927,2,0.897],[0.8105,-19.366,53.572,53.572,61.248,2,1.01],[0.8211,-17.06,51.58,51.58,61.568,2,1.123],[0.8316,-15.127,49.964,49.964,61.884,2,1.231],[0.8421,-13.457,48.611,48.611,62.196,2,1.335],[0.8526,-11.793,47.255,47.255,62.5,2,1.439],[0.8632,-9.936,45.67,45.67,62.797,2,1.542],[0.8737,-7.985,43.896,43.896,63.091,2,1.644],[0.8842,-6.185,42.096,42.096,63.384,2,1.744],[0.8947,-4.778,40.42,40.42,63.677,2,1.842],[0.9053,-3.892,38.921,38.921,63.974,2,1.938],[0.9158,-3.431,37.531,37.531,64.273,2,2.027],[0.9263,-3.215,36.165,36.165,64.579,2,2.107],[0.9368,-3.142,34.774,34.774,64.893,2,2.178],[0.9474,-3.158,33.344,33.344,65.213,2,2.246],[0.9579,-3.254,31.818,31.818,65.401,2,2.314],[0.9684,-3.413,29.574,29.574,64.148,2,2.38],[0.9789,-3.608,26.362,26.362,60.587,2,2.436],[0.9895,-3.81,22.371,22.371,54.697,2,2.477],[1,-3.994,17.685,17.685,46.47,2,2.503]],"shoe":[[[[-14.2,5.4,1.2,1.4,2.4],[-12.86,5.17,3.85,3.89,2.4],[-11.53,5.53,5.18,5,2.4],[-10.19,6.1,6.02,5.58,2.4],[-8.85,6.68,6.74,5.98,2.4],[-7.52,7.27,7.36,6.25,2.4],[-6.18,7.88,7.91,6.44,2.4],[-4.84,8.47,8.47,6.62,2.4],[-3.51,9.11,9.12,6.82,2.4],[-2.17,9.77,9.77,7,2.4],[-0.83,10.3,10.3,7.14,2.4],[0.51,10.58,10.57,7.23,2.4],[1.84,10.68,10.7,7.28,2.4],[3.18,10.68,10.73,7.31,2.4],[4.52,10.61,10.67,7.32,2.4],[5.85,10.52,10.53,7.31,2.4],[7.19,10.44,10.31,7.3,2.4],[8.53,10.35,9.99,7.26,2.4],[9.86,10.22,9.55,7.2,2.4],[11.2,10.08,9.06,7.13,2.4],[12.54,9.94,8.54,7.06,2.4],[13.87,9.81,8.04,7,2.4],[15.21,9.72,7.54,6.95,2.4],[16.55,9.67,6.99,6.88,2.4],[17.88,9.61,6.44,6.82,2.4],[19.22,9.52,5.96,6.78,2.4],[20.56,9.37,5.59,6.78,2.4],[21.89,9.12,5.38,6.85,2.4],[23.23,8.79,5.33,6.97,2.4],[24.57,8.4,5.37,7.13,2.4],[25.91,7.99,5.47,7.3,2.4],[27.24,7.6,5.56,7.49,2.4],[28.58,7.25,5.63,7.69,2.4],[29.92,6.92,5.71,7.92,2.4],[31.25,6.59,5.82,8.16,2.4],[32.59,6.3,5.91,8.4,2.4],[33.93,6.06,5.95,8.59,2.4],[35.26,5.9,5.93,8.74,2.4],[36.6,5.81,5.87,8.87,2.4],[37.94,5.75,5.78,8.96,2.4],[39.27,5.67,5.67,9,2.4],[40.61,5.53,5.54,8.98,2.4],[41.95,5.37,5.38,8.9,2.4],[43.28,5.2,5.2,8.77,2.4],[44.62,5,5.01,8.6,2.4],[45.96,4.81,4.81,8.41,2.4],[47.29,4.59,4.59,8.18,2.4],[48.63,4.35,4.36,7.93,2.4],[49.97,4.12,4.12,7.65,2.4],[51.31,3.9,3.9,7.35,2.4],[52.64,3.72,3.72,7.06,2.4],[53.98,3.61,3.59,6.78,2.4],[55.32,3.52,3.48,6.48,2.4],[56.65,3.39,3.31,6.11,2.4],[57.99,3.18,3.02,5.66,2.4],[59.33,2.89,2.61,5.05,2.4],[60.66,2.61,2.11,4.07,2.4],[62,2.35,1.45,2.4,2.4]],[[-14.2,5.4,1.2,1.4,2.4],[-12.86,5.17,3.85,3.89,2.4],[-11.53,5.53,5.18,5,2.4],[-10.19,6.1,6.02,5.58,2.4],[-8.85,6.68,6.74,5.98,2.4],[-7.52,7.27,7.36,6.25,2.4],[-6.18,7.88,7.91,6.44,2.4],[-4.84,8.47,8.47,6.62,2.4],[-3.51,9.11,9.12,6.82,2.4],[-2.17,9.77,9.77,7,2.4],[-0.83,10.3,10.3,7.14,2.4],[0.51,10.58,10.57,7.23,2.4],[1.84,10.68,10.7,7.28,2.4],[3.18,10.68,10.73,7.31,2.4],[4.52,10.61,10.67,7.32,2.4],[5.85,10.52,10.53,7.31,2.4],[7.19,10.44,10.31,7.3,2.4],[8.53,10.35,9.99,7.26,2.4],[9.86,10.22,9.55,7.2,2.4],[11.2,10.08,9.06,7.13,2.4],[12.54,9.94,8.54,7.06,2.4],[13.87,9.81,8.04,7,2.4],[15.21,9.72,7.54,6.95,2.4],[16.55,9.67,6.99,6.88,2.4],[17.88,9.61,6.44,6.82,2.4],[19.22,9.52,5.96,6.78,2.4],[20.56,9.37,5.59,6.78,2.4],[21.89,9.12,5.38,6.85,2.4],[23.23,8.79,5.33,6.97,2.4],[24.57,8.4,5.37,7.13,2.4],[25.91,7.99,5.47,7.3,2.4],[27.24,7.6,5.56,7.49,2.4],[28.58,7.25,5.63,7.69,2.4],[29.92,6.92,5.71,7.92,2.4],[31.25,6.59,5.82,8.16,2.4],[32.59,6.3,5.91,8.4,2.4],[33.93,6.06,5.95,8.59,2.4],[35.26,5.9,5.93,8.74,2.4],[36.6,5.81,5.87,8.87,2.4],[37.94,5.75,5.78,8.96,2.4],[39.27,5.67,5.67,9,2.4],[40.61,5.53,5.54,8.98,2.4],[41.95,5.37,5.38,8.9,2.4],[43.28,5.2,5.2,8.77,2.4],[44.62,5,5.01,8.6,2.4],[45.96,4.81,4.81,8.41,2.4],[47.29,4.59,4.59,8.18,2.4],[48.63,4.35,4.36,7.93,2.4],[49.97,4.12,4.12,7.65,2.4],[51.31,3.9,3.9,7.35,2.4],[52.64,3.72,3.72,7.06,2.4],[53.98,3.61,3.59,6.78,2.4],[55.32,3.52,3.48,6.48,2.4],[56.65,3.39,3.31,6.11,2.4],[57.99,3.18,3.02,5.66,2.4],[59.33,2.89,2.61,5.05,2.4],[60.66,2.61,2.11,4.07,2.4],[62,2.35,1.45,2.4,2.4]]],[[[-14.2,5.4,1.2,1.4,2.4],[-12.86,5.17,3.85,3.89,2.4],[-11.53,5.53,5.18,5,2.4],[-10.19,6.1,6.02,5.58,2.4],[-8.85,6.68,6.74,5.98,2.4],[-7.52,7.27,7.36,6.25,2.4],[-6.18,7.88,7.91,6.44,2.4],[-4.84,8.47,8.47,6.62,2.4],[-3.51,9.11,9.12,6.82,2.4],[-2.17,9.77,9.77,7,2.4],[-0.83,10.3,10.3,7.14,2.4],[0.51,10.58,10.57,7.23,2.4],[1.84,10.68,10.7,7.28,2.4],[3.18,10.68,10.73,7.31,2.4],[4.52,10.61,10.67,7.32,2.4],[5.85,10.52,10.53,7.31,2.4],[7.19,10.44,10.31,7.3,2.4],[8.53,10.35,9.99,7.26,2.4],[9.86,10.22,9.55,7.2,2.4],[11.2,10.08,9.06,7.13,2.4],[12.54,9.94,8.54,7.06,2.4],[13.87,9.81,8.04,7,2.4],[15.21,9.72,7.54,6.95,2.4],[16.55,9.67,6.99,6.88,2.4],[17.88,9.61,6.44,6.82,2.4],[19.22,9.52,5.96,6.78,2.4],[20.56,9.37,5.59,6.78,2.4],[21.89,9.12,5.38,6.85,2.4],[23.23,8.79,5.33,6.97,2.4],[24.57,8.4,5.37,7.13,2.4],[25.91,7.99,5.47,7.3,2.4],[27.24,7.6,5.56,7.49,2.4],[28.58,7.25,5.63,7.69,2.4],[29.92,6.92,5.71,7.92,2.4],[31.25,6.59,5.82,8.16,2.4],[32.59,6.3,5.91,8.4,2.4],[33.93,6.06,5.95,8.59,2.4],[35.26,5.9,5.93,8.74,2.4],[36.6,5.81,5.87,8.87,2.4],[37.94,5.75,5.78,8.96,2.4],[39.27,5.67,5.67,9,2.4],[40.61,5.53,5.54,8.98,2.4],[41.95,5.37,5.38,8.9,2.4],[43.28,5.2,5.2,8.77,2.4],[44.62,5,5.01,8.6,2.4],[45.96,4.81,4.81,8.41,2.4],[47.29,4.59,4.59,8.18,2.4],[48.63,4.35,4.36,7.93,2.4],[49.97,4.12,4.12,7.65,2.4],[51.31,3.9,3.9,7.35,2.4],[52.64,3.72,3.72,7.06,2.4],[53.98,3.61,3.59,6.78,2.4],[55.32,3.52,3.48,6.48,2.4],[56.65,3.39,3.31,6.11,2.4],[57.99,3.18,3.02,5.66,2.4],[59.33,2.89,2.61,5.05,2.4],[60.66,2.61,2.11,4.07,2.4],[62,2.35,1.45,2.4,2.4]],[[-14.2,5.4,1.2,1.4,2.4],[-12.86,5.17,3.85,3.89,2.4],[-11.53,5.53,5.18,5,2.4],[-10.19,6.1,6.02,5.58,2.4],[-8.85,6.68,6.74,5.98,2.4],[-7.52,7.27,7.36,6.25,2.4],[-6.18,7.88,7.91,6.44,2.4],[-4.84,8.47,8.47,6.62,2.4],[-3.51,9.11,9.12,6.82,2.4],[-2.17,9.77,9.77,7,2.4],[-0.83,10.3,10.3,7.14,2.4],[0.51,10.58,10.57,7.23,2.4],[1.84,10.68,10.7,7.28,2.4],[3.18,10.68,10.73,7.31,2.4],[4.52,10.61,10.67,7.32,2.4],[5.85,10.52,10.53,7.31,2.4],[7.19,10.44,10.31,7.3,2.4],[8.53,10.35,9.99,7.26,2.4],[9.86,10.22,9.55,7.2,2.4],[11.2,10.08,9.06,7.13,2.4],[12.54,9.94,8.54,7.06,2.4],[13.87,9.81,8.04,7,2.4],[15.21,9.72,7.54,6.95,2.4],[16.55,9.67,6.99,6.88,2.4],[17.88,9.61,6.44,6.82,2.4],[19.22,9.52,5.96,6.78,2.4],[20.56,9.37,5.59,6.78,2.4],[21.89,9.12,5.38,6.85,2.4],[23.23,8.79,5.33,6.97,2.4],[24.57,8.4,5.37,7.13,2.4],[25.91,7.99,5.47,7.3,2.4],[27.24,7.6,5.56,7.49,2.4],[28.58,7.25,5.63,7.69,2.4],[29.92,6.92,5.71,7.92,2.4],[31.25,6.59,5.82,8.16,2.4],[32.59,6.3,5.91,8.4,2.4],[33.93,6.06,5.95,8.59,2.4],[35.26,5.9,5.93,8.74,2.4],[36.6,5.81,5.87,8.87,2.4],[37.94,5.75,5.78,8.96,2.4],[39.27,5.67,5.67,9,2.4],[40.61,5.53,5.54,8.98,2.4],[41.95,5.37,5.38,8.9,2.4],[43.28,5.2,5.2,8.77,2.4],[44.62,5,5.01,8.6,2.4],[45.96,4.81,4.81,8.41,2.4],[47.29,4.59,4.59,8.18,2.4],[48.63,4.35,4.36,7.93,2.4],[49.97,4.12,4.12,7.65,2.4],[51.31,3.9,3.9,7.35,2.4],[52.64,3.72,3.72,7.06,2.4],[53.98,3.61,3.59,6.78,2.4],[55.32,3.52,3.48,6.48,2.4],[56.65,3.39,3.31,6.11,2.4],[57.99,3.18,3.02,5.66,2.4],[59.33,2.89,2.61,5.05,2.4],[60.66,2.61,2.11,4.07,2.4],[62,2.35,1.45,2.4,2.4]]]],"hand":[[[[-4,0,6.5,6.5,6.17,2,0],[-3,0,6.5,6.5,6.17,2,0],[-2,0,6.5,6.5,6.17,2,0],[-1,0,6.9,6.9,6.55,2,0],[0,0,7.83,7.83,7.44,2,0],[1,0,8.61,8.61,8.17,2,0],[2,0,9.26,9.26,8.79,2,0],[3,0,9.81,9.81,9.32,2,0],[4,0,10.29,10.29,9.77,2,0],[5,0,10.69,10.69,10.15,2,0],[6,0,11.03,11.03,10.48,2,0],[7,0,11.31,11.31,10.75,2,0],[8,0,11.55,11.55,10.97,2,0],[9,0,11.73,11.73,11.14,2,0],[10,0,11.86,11.86,11.27,2,0],[11,0,11.95,11.95,11.35,2,0],[12,0,11.99,11.99,11.39,2,0],[13,0,11.99,11.99,11.39,2,0],[14,0,11.95,11.95,11.35,2,0],[15,0,11.86,11.86,11.27,2,0],[16,0,11.73,11.73,11.14,2,0],[17,0,11.55,11.55,10.97,2,0],[18,0,11.31,11.31,10.75,2,0],[19,0,11.03,11.03,10.48,2,0],[20,0,10.69,10.69,10.15,2,0],[21,0,10.29,10.29,9.77,2,0],[22,0,9.81,9.81,9.32,2,0],[23,0,9.26,9.26,8.79,2,0],[24,0,8.61,8.61,8.17,2,0],[25,0,7.83,7.83,7.44,2,0],[26,0,6.9,6.9,6.55,2,0],[27,0,5.73,5.73,5.44,2,0],[28,0,4.11,4.11,3.91,2,0],[29,0,0.3,0.3,0.28,2,0],[30,0,0.3,0.3,0.28,2,0],[31,0,0.3,0.3,0.28,2,0],[32,0,0.3,0.3,0.28,2,0]],[[-4,0,6.5,6.5,6.17,2,0],[-3,0,6.5,6.5,6.17,2,0],[-2,0,6.5,6.5,6.17,2,0],[-1,0,6.9,6.9,6.55,2,0],[0,0,7.83,7.83,7.44,2,0],[1,0,8.61,8.61,8.17,2,0],[2,0,9.26,9.26,8.79,2,0],[3,0,9.81,9.81,9.32,2,0],[4,0,10.29,10.29,9.77,2,0],[5,0,10.69,10.69,10.15,2,0],[6,0,11.03,11.03,10.48,2,0],[7,0,11.31,11.31,10.75,2,0],[8,0,11.55,11.55,10.97,2,0],[9,0,11.73,11.73,11.14,2,0],[10,0,11.86,11.86,11.27,2,0],[11,0,11.95,11.95,11.35,2,0],[12,0,11.99,11.99,11.39,2,0],[13,0,11.99,11.99,11.39,2,0],[14,0,11.95,11.95,11.35,2,0],[15,0,11.86,11.86,11.27,2,0],[16,0,11.73,11.73,11.14,2,0],[17,0,11.55,11.55,10.97,2,0],[18,0,11.31,11.31,10.75,2,0],[19,0,11.03,11.03,10.48,2,0],[20,0,10.69,10.69,10.15,2,0],[21,0,10.29,10.29,9.77,2,0],[22,0,9.81,9.81,9.32,2,0],[23,0,9.26,9.26,8.79,2,0],[24,0,8.61,8.61,8.17,2,0],[25,0,7.83,7.83,7.44,2,0],[26,0,6.9,6.9,6.55,2,0],[27,0,5.73,5.73,5.44,2,0],[28,0,4.11,4.11,3.91,2,0],[29,0,0.3,0.3,0.28,2,0],[30,0,0.3,0.3,0.28,2,0],[31,0,0.3,0.3,0.28,2,0],[32,0,0.3,0.3,0.28,2,0]]],[[[-4,0,6.5,6.5,6.17,2,0],[-3,0,6.5,6.5,6.17,2,0],[-2,0,6.5,6.5,6.17,2,0],[-1,0,6.9,6.9,6.55,2,0],[0,0,7.83,7.83,7.44,2,0],[1,0,8.61,8.61,8.17,2,0],[2,0,9.26,9.26,8.79,2,0],[3,0,9.81,9.81,9.32,2,0],[4,0,10.29,10.29,9.77,2,0],[5,0,10.69,10.69,10.15,2,0],[6,0,11.03,11.03,10.48,2,0],[7,0,11.31,11.31,10.75,2,0],[8,0,11.55,11.55,10.97,2,0],[9,0,11.73,11.73,11.14,2,0],[10,0,11.86,11.86,11.27,2,0],[11,0,11.95,11.95,11.35,2,0],[12,0,11.99,11.99,11.39,2,0],[13,0,11.99,11.99,11.39,2,0],[14,0,11.95,11.95,11.35,2,0],[15,0,11.86,11.86,11.27,2,0],[16,0,11.73,11.73,11.14,2,0],[17,0,11.55,11.55,10.97,2,0],[18,0,11.31,11.31,10.75,2,0],[19,0,11.03,11.03,10.48,2,0],[20,0,10.69,10.69,10.15,2,0],[21,0,10.29,10.29,9.77,2,0],[22,0,9.81,9.81,9.32,2,0],[23,0,9.26,9.26,8.79,2,0],[24,0,8.61,8.61,8.17,2,0],[25,0,7.83,7.83,7.44,2,0],[26,0,6.9,6.9,6.55,2,0],[27,0,5.73,5.73,5.44,2,0],[28,0,4.11,4.11,3.91,2,0],[29,0,0.3,0.3,0.28,2,0],[30,0,0.3,0.3,0.28,2,0],[31,0,0.3,0.3,0.28,2,0],[32,0,0.3,0.3,0.28,2,0]],[[-4,0,6.5,6.5,6.17,2,0],[-3,0,6.5,6.5,6.17,2,0],[-2,0,6.5,6.5,6.17,2,0],[-1,0,6.9,6.9,6.55,2,0],[0,0,7.83,7.83,7.44,2,0],[1,0,8.61,8.61,8.17,2,0],[2,0,9.26,9.26,8.79,2,0],[3,0,9.81,9.81,9.32,2,0],[4,0,10.29,10.29,9.77,2,0],[5,0,10.69,10.69,10.15,2,0],[6,0,11.03,11.03,10.48,2,0],[7,0,11.31,11.31,10.75,2,0],[8,0,11.55,11.55,10.97,2,0],[9,0,11.73,11.73,11.14,2,0],[10,0,11.86,11.86,11.27,2,0],[11,0,11.95,11.95,11.35,2,0],[12,0,11.99,11.99,11.39,2,0],[13,0,11.99,11.99,11.39,2,0],[14,0,11.95,11.95,11.35,2,0],[15,0,11.86,11.86,11.27,2,0],[16,0,11.73,11.73,11.14,2,0],[17,0,11.55,11.55,10.97,2,0],[18,0,11.31,11.31,10.75,2,0],[19,0,11.03,11.03,10.48,2,0],[20,0,10.69,10.69,10.15,2,0],[21,0,10.29,10.29,9.77,2,0],[22,0,9.81,9.81,9.32,2,0],[23,0,9.26,9.26,8.79,2,0],[24,0,8.61,8.61,8.17,2,0],[25,0,7.83,7.83,7.44,2,0],[26,0,6.9,6.9,6.55,2,0],[27,0,5.73,5.73,5.44,2,0],[28,0,4.11,4.11,3.91,2,0],[29,0,0.3,0.3,0.28,2,0],[30,0,0.3,0.3,0.28,2,0],[31,0,0.3,0.3,0.28,2,0],[32,0,0.3,0.3,0.28,2,0]]]]};
-  A.limbs = {"leg":{"walk":[[5.78,24.2,5.78,24.2,5.78,24.2,6.1,24.2,7.28,24.2,8.78,24.2,9.16,24.2,8.28,24.19,6.85,23.51,4.97,21.03,2.94,18.06,1.32,16.31,-0.02,15.55,-1.19,15.21,-1.67,15.21,-1.29,15.41,-0.26,15.4,1.27,14.78,3.26,13.57,5.59,12.18,8.14,11.03,11.02,10.65,14.27,9.02,17.09,8.66,18.86,8.31],[-15.53,16.98,-15.85,16.98,-16.42,16.98,-15.15,16.98,-7.44,16.98,4.97,16.98,13.45,16.98,15.59,16.98,15.55,16.95,15.24,16.87,13.98,16.77,11.19,16.59,7.47,16.24,4.37,15.89,2.72,15.57,2.19,14.85,2.24,13.58,2.54,12.11,2.94,10.86,3.41,10.13,3.97,8.71,4.81,8.51,6.13,8.31,7.63,8.11,8.89,7.9]],"front":[[-20.33,15.1,-11.2,15.1,-6.63,15.1,-5.72,15.1,-5.72,15.1,-5.72,15.1,-5.72,15.1,-5.72,15.1,-5.72,15.1,-5.73,15.03,-5.76,14.7,-5.65,14.12,-5.11,13.68,-4.15,13.7,-3.21,14.01,-2.66,14.16,-2.47,13.9,-2.5,13.11,-2.64,11.92,-2.85,10.63,-3.1,9.53,-3.51,9.11,-4.57,7.71,-6.81,7.41,-10.03,7.1],[17.18,15.25,11.98,15.25,4.69,15.25,-0.53,15.25,-1.87,15.25,-1.87,15.25,-1.87,15.25,-0.51,15.25,3.58,15.25,6.32,15.15,3.68,14.74,-0.39,14.1,-2.01,13.71,-2.54,13.77,-3.06,14.07,-3.37,14.2,-3.46,13.9,-3.33,13.06,-3.03,11.87,-2.65,10.61,-2.2,9.51,-1.6,9.1,-0.31,7.7,2.4,7.4,6.44,7.1]],"run":[[16.15,27.1,16.17,27.1,16.26,27.09,16.55,26.99,17.2,26.61,18.08,25.73,18.46,24.46,17.13,23.23,13.15,22.33,6.69,21.52,-0.82,20.49,-7.56,19.32,-12.37,18.31,-15.08,17.52,-16.17,16.82,-16.19,16.07,-15.52,15.01,-14.37,13.64,-12.86,12.25,-11.04,11.23,-8.95,10.99,-6.7,9.4,-4.47,9.12,-2.42,8.85,-0.54,8.57],[18.43,19.09,20.93,19.09,22.37,19.09,21.93,19.09,19.5,19.09,15.95,19.09,12.79,19.09,11.28,19.04,11.75,18.88,13.38,18.52,14.77,17.93,14.79,17.21,13.28,16.54,10.98,16.01,8.86,15.54,7.51,14.94,6.94,13.95,6.91,12.61,7.18,11.22,7.65,10.15,8.37,9.73,9.48,8.32,10.98,8.07,12.72,7.83,14.52,7.59]]},"arm":{"walk":[[3.78,8.54,8.11,8.54,13.18,8.54,16.2,8.54,16.18,8.54,14.39,8.54,10.96,8.54,6.87,8.54,4.38,8.54,3.84,8.54,4,8.54,4.14,8.54,4.17,8.54,4.27,8.54,4.4,8.54,4.36,8.54,4.16,8.54,3.94,8.54,3.84,8.51,3.99,8.38,4.4,8.11,4.88,7.84,5.15,7.88,5.19,8.43,5.2,9.44],[-7.02,10.55,-11.54,10.55,-12.67,10.55,-11.35,10.55,-9.98,10.55,-9.21,10.55,-8.71,10.55,-8.22,10.55,-7.7,10.52,-7.23,10.37,-6.9,10.09,-6.69,9.89,-6.48,9.93,-6.3,10.12,-6.24,10.27,-6.31,10.23,-6.45,9.98,-6.61,9.57,-6.74,9.09,-6.81,8.65,-6.79,8.32,-6.68,8.14,-6.62,8.16,-6.79,8.55,-7.25,9.35]],"front":[[-7.75,10.39,-7.59,10.39,-6.44,10.39,-4.51,10.39,-3.01,10.38,-2.36,10.31,-2.08,10.16,-1.89,9.95,-1.75,9.73,-1.64,9.64,-1.54,9.74,-1.45,9.91,-1.44,9.95,-1.61,9.8,-1.95,9.51,-2.38,9.11,-2.83,8.6,-3.32,8.03,-3.86,7.45,-4.43,6.92,-4.95,6.6,-5.31,6.81,-5.41,7.72,-5.4,9.08,-5.46,10.41],[5.9,10.81,5.98,10.81,5.59,10.81,4.17,10.8,2.14,10.74,0.68,10.59,0.04,10.35,-0.32,10.06,-0.67,9.8,-1.01,9.64,-1.32,9.67,-1.54,9.85,-1.66,10.03,-1.67,10.04,-1.57,9.87,-1.36,9.53,-1.08,9.08,-0.79,8.62,-0.55,8.17,-0.33,7.74,-0.11,7.3,0.14,6.84,0.4,6.38,0.59,6.02,0.69,5.81]],"run":[[3.81,12.6,4.29,12.35,4.68,12.1,4.93,11.85,5.21,11.6,5.91,11.35,7.45,11.1,9.93,10.85,13.02,10.61,16.03,10.41,18.21,10.45,19.1,10.83,18.73,10.97,17.43,10.17,15.62,9.05,13.61,8.3,11.57,7.99,9.63,7.88,7.81,7.76,6.17,7.54,4.8,7.26,3.87,6.97,3.4,6.68,3.19,6.39,3.04,6.1],[-8.4,12.6,-11.75,12.35,-14.86,12.1,-17.58,11.85,-19.78,11.6,-21.29,11.35,-22.05,11.1,-22.18,10.85,-21.96,10.61,-21.65,10.41,-21.44,10.45,-21.52,10.83,-21.98,10.97,-22.75,10.17,-23.57,9.05,-24.17,8.3,-24.47,7.99,-24.55,7.88,-24.29,7.76,-23.22,7.54,-21.01,7.26,-18.4,6.97,-16.59,6.68,-15.97,6.39,-15.99,6.1]]}};
+  A.dataRun = {"head":[[62.3,-13.02,0.4,0.4,0.4,2,0],[61.939,-12.85,8.586,8.586,0,2,0],[61.477,-12.467,11.196,11.196,0,2,0],[61.016,-14.079,11.98,11.98,0,2,0],[60.555,-14.606,12.711,12.711,0,2,0],[60.094,-14.971,13.893,13.893,0,2,0],[59.632,-15.326,14.723,14.723,0,2,0],[59.171,-15.877,15.872,15.872,0,2,0],[58.71,-15.209,17.305,17.305,0,2,0],[58.249,-15.304,18.418,18.418,0,2,0],[57.787,-15.197,19.373,19.373,3.561,2,0],[57.326,-14.873,20.712,20.712,8.727,2,0],[56.865,-14.726,21.578,21.578,11.872,2,0],[56.404,-16.365,24.772,24.772,13.915,2,0],[55.856,-15.959,25.65,25.65,16.81,2,0],[54.703,-14.594,28.171,28.171,21.839,2,0],[53.55,-14.965,28.817,28.817,25.5,2,0],[52.396,-15.58,29.169,29.169,28.063,2,0],[51.243,-15.209,30.421,30.421,29.965,2,0],[50.09,-14.872,31.712,31.712,31.778,2,0],[48.937,-14.537,33.048,33.048,33.079,2,0],[47.784,-14.157,34.085,34.085,34.17,2,0],[46.631,-13.97,35.03,35.03,35.41,2,0],[45.477,-13.889,35.999,35.999,37.228,2,0],[44.324,-13.759,36.853,36.853,39.552,2,0],[43.171,-13.113,38.123,38.123,42.824,2,0],[42.018,-13.069,38.802,38.802,45.569,2,0],[40.865,-13.027,39.376,39.376,47.227,2,0],[39.712,-12.944,39.938,39.938,48.481,2,0],[38.559,-12.599,40.51,40.51,49.691,2,0],[37.405,-10.996,42.191,42.191,50.726,2,0],[36.252,-10.725,43.095,43.095,51.603,2,0],[35.099,-11.121,42.954,42.954,52.403,2,0],[33.946,-10.009,44.083,44.083,53.087,2,0],[32.793,-8.754,45.383,45.383,53.838,2,0],[31.64,-8.645,45.781,45.781,54.427,2,0],[30.486,-9.448,45.524,45.524,54.961,2,0],[29.333,-8.757,46.303,46.303,55.39,2,0],[28.18,-8.466,46.628,46.628,55.73,2,0],[27.027,-8.45,46.679,46.679,55.994,2,0],[25.874,-8.09,47.143,47.143,56.158,2,0],[24.721,-8.042,47.731,47.731,56.221,2,0],[23.568,-8.489,47.564,47.564,56.25,2,0],[22.414,-8.373,47.708,47.708,56.215,2,0],[21.261,-8.418,47.702,47.702,56.138,2,0],[20.108,-7.832,48.53,48.53,55.959,2,0],[18.955,-8.577,48.424,48.424,55.707,2,0],[17.802,-8.25,48.785,48.785,53.884,2,0],[16.649,-7.987,49.084,49.084,48.432,2,0],[15.495,-7.804,49.346,49.346,48.169,2,0],[14.342,-7.911,49.799,49.799,47.952,2,0],[13.189,-7.911,50.084,50.084,47.76,2,0],[12.036,-7.765,50.293,50.293,47.547,2,0],[10.883,-8.045,50.829,50.829,47.331,2,0],[9.73,-7.898,51.011,51.011,47.131,2,0],[8.577,-7.785,51.158,51.158,46.898,2,0],[7.423,-7.929,51.498,51.498,46.714,2,0],[6.27,-7.965,51.849,51.849,46.504,2,0],[5.117,-7.877,51.979,51.979,46.326,2,0],[3.964,-8.175,52.459,52.459,46.175,2,0],[2.811,-8.031,52.705,52.705,46.033,2,0],[1.658,-7.997,52.773,52.773,45.936,2,0],[0.505,-8.188,52.948,52.948,45.875,2,0],[-0.649,-8.441,53.172,53.172,45.854,2,0],[-1.802,-11.864,49.832,49.832,45.866,2,0],[-2.955,-12.891,49.143,49.143,45.908,2,0],[-4.108,-13.317,49.113,49.113,45.978,2,0],[-5.261,-14.154,48.276,48.276,46.064,2,0],[-6.414,-14.341,48.105,48.105,46.167,2,0],[-7.568,-14.589,47.898,47.898,46.322,2,0],[-8.721,-13.981,48.051,48.051,46.58,2,0],[-9.874,-14.601,47.153,47.153,46.842,2,0],[-11.027,-14.522,47.288,47.288,47.024,2,0],[-12.18,-14.64,47.124,47.124,47.198,2,0],[-13.333,-14.85,46.53,46.53,47.297,2,0],[-14.486,-15.061,45.969,45.969,47.315,2,0],[-15.64,-15.092,45.499,45.499,47.262,2,0],[-16.793,-15.091,45.29,45.29,47.145,2,0],[-17.946,-14.874,44.835,44.835,46.988,2,0],[-19.099,-14.94,44.611,44.611,46.795,2,0],[-20.252,-14.66,44.247,44.247,46.489,2,0],[-21.405,-14.492,44.096,44.096,46.132,2,0],[-22.559,-14.178,43.913,43.913,45.792,2,0],[-23.712,-13.805,43.765,43.765,45.276,2,0],[-24.865,-13.37,43.52,43.52,44.592,2,0],[-26.018,-12.901,43.419,43.419,43.928,2,0],[-27.171,-12.297,43.35,43.35,43.115,2,0],[-28.324,-11.598,43.317,43.317,42.151,2,0],[-29.477,-10.819,43.19,43.19,41.126,2,0],[-30.631,-9.923,43.039,43.039,40.067,2,0],[-31.784,-8.965,42.741,42.741,38.88,2,0],[-32.937,-6.582,40.537,40.537,37.776,2,0],[-34.09,-5.723,39.639,39.639,36.606,2,0],[-35.243,-5.313,39.189,39.189,35.25,2,0],[-36.396,-4.985,38.817,38.817,33.888,2,0],[-37.55,-3.898,37.463,37.463,32.489,2,0],[-38.703,-3.534,35.959,35.959,30.87,2,0],[-39.856,-2.814,33.798,33.798,29.172,2,0],[-41.009,-1.75,31.886,31.886,27.27,2,0],[-42.162,-2.203,31.972,31.972,23.233,2,0],[-43.315,-1.356,30.992,30.992,13.036,2,0],[-44.468,0.037,29.423,29.423,12.882,2,0],[-45.622,0.15,28.976,28.976,12.861,2,0],[-46.775,0.423,28.066,28.066,12.716,2,0],[-47.928,2.026,25.252,25.252,12.377,2,0],[-49.081,2.037,23.263,23.263,11.966,2,0],[-50.234,2.249,21.429,21.429,11.494,2,0],[-51.387,3.101,19.914,19.914,10.952,2,0],[-52.541,3.968,17.975,17.975,10.321,2,0],[-53.694,4.519,15.914,15.914,9.567,2,0],[-54.847,5.702,12.989,12.989,8.606,2,0],[-56,10.073,7.805,7.805,6.669,2,0]],"torso":[[292,-24.66,42.71,42.71,33.683,2,-2.63],[293.5,-23.72,41.97,41.97,33.312,2,-2.57],[295,-22.68,41.04,41.04,32.975,2,-2.52],[296.5,-21.46,39.89,39.89,32.62,2,-2.5],[298,-20.15,38.56,38.56,32.271,2,-2.47],[299.5,-18.73,37.02,37.02,31.958,2,-2.42],[301,-17.17,35.28,35.28,31.712,2,-2.33],[302.5,-15.6,33.46,33.46,31.56,2,-2.25],[304,-13.62,31.69,31.69,31.486,2,-2.2],[305.5,-11.49,30.17,30.17,31.477,2,-2.17],[307,-9.28,28.29,28.29,31.529,2,-2.13],[308.5,-6.94,26.6,26.6,31.638,2,-2.09],[310,-6.26,26.52,26.52,31.8,2,-2],[311.5,-6,25.97,25.97,32.026,2,-1.87],[313,-6.43,25.81,25.81,32.321,2,-1.74],[314.5,-5.52,25.42,25.42,32.668,2,-1.69],[316,-5.45,25.9,25.9,33.053,2,-1.65],[317.5,-5.42,26.33,26.33,33.461,2,-1.62],[319,-5.44,26.76,26.76,33.885,2,-1.38],[320.5,-5.46,27.18,27.18,34.336,2,-1.36],[322,-5.5,27.65,27.65,34.81,2,-1.28],[323.5,-5.68,28.22,28.22,35.299,2,-1.26],[325,-5.86,28.82,28.82,35.799,2,-1.26],[326.5,-6.12,29.52,29.52,36.301,2,-1.21],[328,-6.51,30.4,30.4,36.8,2,-1.11],[329.5,-7.01,31.54,31.54,37.292,2,-1.06],[331,-7.51,32.67,32.67,37.782,2,-1.12],[332.5,-7.98,33.74,33.74,38.274,2,-1.12],[334,-8.52,34.83,34.83,38.776,2,-0.94],[335.5,-9.66,35.33,35.33,39.292,2,-0.2],[337,-11.18,35.4,35.4,39.829,2,0.78],[338.5,-12.63,35.41,35.41,40.391,2,1.1],[340,-13.98,35.31,35.31,40.987,2,0.63],[341.5,-15.21,35.09,35.09,41.614,2,-0.34],[343,-16.28,34.72,34.72,42.263,2,-0.87],[344.5,-17.19,34.17,34.17,42.927,2,-1.01],[346,-17.92,33.46,33.46,43.6,2,-1.02],[347.5,-18.49,32.58,32.58,44.417,2,-1.01],[349,-18.9,31.54,31.54,45.245,2,-0.91],[350.5,-19.16,30.35,30.35,45.691,2,-0.9],[352,-19.3,29.04,29.04,45.737,2,-0.84],[353.5,-19.34,27.63,27.63,45.517,2,-0.84],[355,-19.3,26.14,26.14,45.1,2,-0.79],[356.5,-19.21,24.6,24.6,44.462,2,-0.82],[358,-19.08,23.02,23.02,43.6,2,-0.78],[359.5,-18.93,21.42,21.42,42.486,2,-0.81],[361,-18.78,19.82,19.82,41.158,2,-0.75],[362.5,-18.63,18.25,18.25,39.703,2,-0.76],[364,-18.49,16.71,16.71,38.113,2,-0.71],[365.5,-18.39,15.23,15.23,36.395,2,-0.74],[367,-18.3,13.84,13.84,34.566,2,-0.76],[368.5,-18.25,12.57,12.57,32.614,2,-0.69],[370,-18.2,11.42,11.42,30.6,2,-0.62],[371.5,-18.15,10.42,10.42,28.441,2,-0.61],[373,-18.09,10,10,26.269,2,-0.71],[374.5,-18,10,10,24.437,2,-0.86],[376,-17.88,10,10,22.914,2,-0.98],[377.5,-17.73,10,10,21.713,2,-1.12],[379,-17.55,10,10,20.899,2,-1.43],[380.5,-17.38,10,10,20.376,2,-1.66],[382,-17.21,10,10,20.015,2,-1.8],[383.5,-17.05,10,10,19.697,2,-1.8],[385,-16.89,10,10,19.465,2,-1.8],[386.5,-16.77,10,10,19.314,2,-1.8],[388,-16.7,10,10,19.2,2,-1.8],[389.5,-16.66,10,10,19.112,2,-1.8],[391,-16.64,10,10,19.058,2,-1.8],[392.5,-16.63,10,10,19.025,2,-1.8],[394,-16.63,10,10,19,2,-1.8],[395.5,-16.63,10,10,18.976,2,-1.8],[397,-16.63,10,10,18.955,2,-1.8],[398.5,-16.63,10,10,18.936,2,-1.8],[400,-16.63,10,10,18.919,2,-1.8],[401.5,-16.63,10,10,18.902,2,-1.8]],"skirt":[[0,-20.85,36.11,36.11,34.25,2,-2.63],[0.0105,-21.278,36.456,36.456,34.246,2,-2.691],[0.0211,-21.705,36.727,36.727,34.299,2,-2.743],[0.0316,-22.105,37.024,37.024,34.391,2,-2.773],[0.0421,-22.525,37.288,37.288,34.479,2,-2.831],[0.0526,-22.948,37.559,37.559,34.556,2,-2.911],[0.0632,-23.354,37.78,37.78,34.694,2,-2.904],[0.0737,-23.746,38.019,38.019,34.833,2,-2.851],[0.0842,-22.531,39.882,39.882,34.969,2,-2.861],[0.0947,-21.389,41.656,41.656,35.234,2,-2.924],[0.1053,-21.096,42.524,42.524,35.714,2,-3.016],[0.1158,-21.095,43.1,43.1,36.341,2,-3.079],[0.1263,-21.291,43.497,43.497,37.021,2,-3.111],[0.1368,-21.474,43.893,43.893,37.713,2,-3.076],[0.1474,-20.827,45.127,45.127,38.315,2,-3.06],[0.1579,-19.78,46.985,46.985,38.895,2,-3.047],[0.1684,-19.156,48.85,48.85,39.575,2,-3.004],[0.1789,-18.725,50.638,50.638,40.255,2,-2.925],[0.1895,-18.401,52.369,52.369,40.865,2,-2.861],[0.2,-17.98,54.2,54.2,41.57,2,-2.82],[0.2105,-17.733,55.899,55.899,42.273,2,-2.842],[0.2211,-17.579,57.647,57.647,42.858,2,-2.85],[0.2316,-17.472,59.451,59.451,43.427,2,-2.844],[0.2421,-17.458,61.28,61.28,43.962,2,-2.823],[0.2526,-17.497,63.082,63.082,44.419,2,-2.809],[0.2632,-17.652,64.968,64.968,44.867,2,-2.779],[0.2737,-17.868,66.884,66.884,45.311,2,-2.722],[0.2842,-18.243,68.839,68.839,45.719,2,-2.669],[0.2947,-18.699,70.836,70.836,46.115,2,-2.687],[0.3053,-19.307,72.996,72.996,46.494,2,-2.651],[0.3158,-20.142,75.382,75.382,46.859,2,-2.548],[0.3263,-21.136,77.871,77.871,47.151,2,-2.484],[0.3368,-22.22,80.413,80.413,47.466,2,-2.485],[0.3474,-23.361,83.025,83.025,47.805,2,-2.471],[0.3579,-25.56,86.667,86.667,48.084,2,-2.419],[0.3684,-27.943,90.534,90.534,48.295,2,-2.334],[0.3789,-31.268,95.269,95.269,48.614,2,-2.226],[0.3895,-34.16,99.589,99.589,48.969,2,-2.141],[0.4,-34.97,101.97,101.97,49.27,2,-2.1],[0.4105,-34.024,102.672,102.672,49.563,2,-2.025],[0.4211,-33.076,103.242,103.242,49.888,2,-1.913],[0.4316,-31.979,103.576,103.576,50.13,2,-1.877],[0.4421,-30.472,103.717,103.717,50.394,2,-1.811],[0.4526,-28.846,103.702,103.702,50.745,2,-1.677],[0.4632,-27.142,103.502,103.502,51.086,2,-1.607],[0.4737,-25.594,103.378,103.378,51.388,2,-1.542],[0.4842,-24.37,103.536,103.536,51.712,2,-1.442],[0.4947,-23.578,103.438,103.438,52.024,2,-1.374],[0.5053,-23.074,103.182,103.182,52.293,2,-1.312],[0.5158,-22.716,102.807,102.807,52.556,2,-1.221],[0.5263,-22.5,102.304,102.304,52.805,2,-1.143],[0.5368,-22.277,101.778,101.778,53.062,2,-1.081],[0.5474,-22.107,101.186,101.186,53.376,2,-0.975],[0.5579,-21.583,100.904,100.904,53.693,2,-0.912],[0.5684,-20.658,101.006,101.006,54.023,2,-0.913],[0.5789,-20.696,100.066,100.066,54.362,2,-0.842],[0.5895,-21.447,98.363,98.363,54.677,2,-0.745],[0.6,-23.29,95.46,95.46,54.95,2,-0.7],[0.6105,-23.906,93.546,93.546,55.239,2,-0.603],[0.6211,-25.021,90.977,90.977,55.565,2,-0.527],[0.6316,-26.198,88.223,88.223,55.874,2,-0.491],[0.6421,-26.645,86.071,86.071,56.214,2,-0.396],[0.6526,-28.145,82.623,82.623,56.534,2,-0.318],[0.6632,-28.812,79.138,79.138,56.848,2,-0.274],[0.6737,-28.095,75.947,75.947,57.168,2,-0.178],[0.6842,-28.762,72.682,72.682,57.461,2,-0.058],[0.6947,-29.338,70.867,70.867,57.709,2,0.006],[0.7053,-29.45,69.552,69.552,58.002,2,0.057],[0.7158,-29.551,68.083,68.083,58.362,2,0.148],[0.7263,-29.754,66.465,66.465,58.702,2,0.268],[0.7368,-29.703,65.058,65.058,59.029,2,0.408],[0.7474,-28.811,62.042,62.042,59.678,2,0.575],[0.7579,-28.237,61.387,61.387,59.857,2,0.611],[0.7684,-27.374,60.607,60.607,60.062,2,0.654],[0.7789,-26.063,59.457,59.457,60.317,2,0.715],[0.7895,-24.215,57.84,57.84,60.611,2,0.797],[0.8,-21.888,55.79,55.79,60.927,2,0.897],[0.8105,-19.366,53.572,53.572,61.248,2,1.01],[0.8211,-17.06,51.58,51.58,61.568,2,1.123],[0.8316,-15.127,49.964,49.964,61.884,2,1.231],[0.8421,-13.457,48.611,48.611,62.196,2,1.335],[0.8526,-11.793,47.255,47.255,62.5,2,1.439],[0.8632,-9.936,45.67,45.67,62.797,2,1.542],[0.8737,-7.985,43.896,43.896,63.091,2,1.644],[0.8842,-6.185,42.096,42.096,63.384,2,1.744],[0.8947,-4.778,40.42,40.42,63.677,2,1.842],[0.9053,-3.892,38.921,38.921,63.974,2,1.938],[0.9158,-3.431,37.531,37.531,64.273,2,2.027],[0.9263,-3.215,36.165,36.165,64.579,2,2.107],[0.9368,-3.142,34.774,34.774,64.893,2,2.178],[0.9474,-3.158,33.344,33.344,65.213,2,2.246],[0.9579,-3.254,31.818,31.818,65.401,2,2.314],[0.9684,-3.413,29.574,29.574,64.148,2,2.38],[0.9789,-3.608,26.362,26.362,60.587,2,2.436],[0.9895,-3.81,22.371,22.371,54.697,2,2.477],[1,-3.994,17.685,17.685,46.47,2,2.503]],"shoe":[[[[-15.5,6,1,1.2,2.2],[-14.14,6.9,5.22,3.91,2.2],[-12.78,7.39,6.91,4.7,2.2],[-11.42,8,7.91,5.19,2.2],[-10.06,8.36,8.36,5.47,2.2],[-8.7,8.45,8.45,5.6,2.2],[-7.34,8.48,8.48,5.68,2.2],[-5.98,8.58,8.58,5.78,2.2],[-4.62,8.7,8.7,5.88,2.2],[-3.26,8.79,8.79,5.98,2.2],[-1.9,8.79,8.79,6.08,2.2],[-0.54,8.76,8.76,6.18,2.2],[0.82,8.71,8.71,6.29,2.2],[2.18,8.66,8.61,6.39,2.2],[3.54,8.6,8.48,6.5,2.2],[4.89,8.55,8.27,6.59,2.2],[6.25,8.53,7.92,6.67,2.2],[7.61,8.52,7.49,6.74,2.2],[8.97,8.5,7.11,6.8,2.2],[10.33,8.5,6.82,6.83,2.22],[11.69,8.5,6.58,6.85,2.25],[13.05,8.47,6.36,6.87,2.28],[14.41,8.34,6.14,6.92,2.31],[15.77,8.12,5.92,6.98,2.34],[17.13,7.87,5.67,7.06,2.36],[18.49,7.63,5.43,7.16,2.39],[19.85,7.37,5.27,7.27,2.42],[21.21,7.05,5.19,7.4,2.44],[22.57,6.73,5.14,7.54,2.47],[23.93,6.42,5.1,7.69,2.5],[25.29,6.12,5.07,7.85,2.53],[26.65,5.84,5.05,8.02,2.56],[28.01,5.57,5.03,8.19,2.59],[29.37,5.34,4.99,8.34,2.6],[30.73,5.14,4.93,8.49,2.6],[32.09,4.96,4.86,8.64,2.6],[33.45,4.81,4.79,8.76,2.6],[34.81,4.68,4.68,8.85,2.6],[36.17,4.58,4.58,8.93,2.6],[37.53,4.47,4.47,8.98,2.6],[38.89,4.36,4.36,9,2.6],[40.25,4.24,4.24,8.97,2.58],[41.61,4.12,4.12,8.9,2.55],[42.96,4,4,8.8,2.52],[44.32,3.87,3.87,8.67,2.49],[45.68,3.74,3.74,8.51,2.47],[47.04,3.6,3.6,8.32,2.44],[48.4,3.46,3.46,8.1,2.41],[49.76,3.32,3.32,7.86,2.38],[51.12,3.17,3.17,7.6,2.35],[52.48,3.02,3.02,7.28,2.32],[53.84,2.86,2.85,6.89,2.29],[55.2,2.69,2.66,6.41,2.26],[56.56,2.51,2.43,5.81,2.21],[57.92,2.33,2.18,5.1,2.17],[59.28,2.13,1.86,4.17,2.11],[60.64,1.91,1.34,2.83,2.02],[62,1.75,0.45,1,2]],[[-15.5,6,1,1.2,2.2],[-14.14,6.9,5.22,3.91,2.2],[-12.78,7.39,6.91,4.7,2.2],[-11.42,8,7.91,5.19,2.2],[-10.06,8.36,8.36,5.47,2.2],[-8.7,8.45,8.45,5.6,2.2],[-7.34,8.48,8.48,5.68,2.2],[-5.98,8.58,8.58,5.78,2.2],[-4.62,8.7,8.7,5.88,2.2],[-3.26,8.79,8.79,5.98,2.2],[-1.9,8.79,8.79,6.08,2.2],[-0.54,8.76,8.76,6.18,2.2],[0.82,8.71,8.71,6.29,2.2],[2.18,8.66,8.61,6.39,2.2],[3.54,8.6,8.48,6.5,2.2],[4.89,8.55,8.27,6.59,2.2],[6.25,8.53,7.92,6.67,2.2],[7.61,8.52,7.49,6.74,2.2],[8.97,8.5,7.11,6.8,2.2],[10.33,8.5,6.82,6.83,2.22],[11.69,8.5,6.58,6.85,2.25],[13.05,8.47,6.36,6.87,2.28],[14.41,8.34,6.14,6.92,2.31],[15.77,8.12,5.92,6.98,2.34],[17.13,7.87,5.67,7.06,2.36],[18.49,7.63,5.43,7.16,2.39],[19.85,7.37,5.27,7.27,2.42],[21.21,7.05,5.19,7.4,2.44],[22.57,6.73,5.14,7.54,2.47],[23.93,6.42,5.1,7.69,2.5],[25.29,6.12,5.07,7.85,2.53],[26.65,5.84,5.05,8.02,2.56],[28.01,5.57,5.03,8.19,2.59],[29.37,5.34,4.99,8.34,2.6],[30.73,5.14,4.93,8.49,2.6],[32.09,4.96,4.86,8.64,2.6],[33.45,4.81,4.79,8.76,2.6],[34.81,4.68,4.68,8.85,2.6],[36.17,4.58,4.58,8.93,2.6],[37.53,4.47,4.47,8.98,2.6],[38.89,4.36,4.36,9,2.6],[40.25,4.24,4.24,8.97,2.58],[41.61,4.12,4.12,8.9,2.55],[42.96,4,4,8.8,2.52],[44.32,3.87,3.87,8.67,2.49],[45.68,3.74,3.74,8.51,2.47],[47.04,3.6,3.6,8.32,2.44],[48.4,3.46,3.46,8.1,2.41],[49.76,3.32,3.32,7.86,2.38],[51.12,3.17,3.17,7.6,2.35],[52.48,3.02,3.02,7.28,2.32],[53.84,2.86,2.85,6.89,2.29],[55.2,2.69,2.66,6.41,2.26],[56.56,2.51,2.43,5.81,2.21],[57.92,2.33,2.18,5.1,2.17],[59.28,2.13,1.86,4.17,2.11],[60.64,1.91,1.34,2.83,2.02],[62,1.75,0.45,1,2]]],[[[-15.5,6,1,1.2,2.2],[-14.14,6.9,5.22,3.91,2.2],[-12.78,7.39,6.91,4.7,2.2],[-11.42,8,7.91,5.19,2.2],[-10.06,8.36,8.36,5.47,2.2],[-8.7,8.45,8.45,5.6,2.2],[-7.34,8.48,8.48,5.68,2.2],[-5.98,8.58,8.58,5.78,2.2],[-4.62,8.7,8.7,5.88,2.2],[-3.26,8.79,8.79,5.98,2.2],[-1.9,8.79,8.79,6.08,2.2],[-0.54,8.76,8.76,6.18,2.2],[0.82,8.71,8.71,6.29,2.2],[2.18,8.66,8.61,6.39,2.2],[3.54,8.6,8.48,6.5,2.2],[4.89,8.55,8.27,6.59,2.2],[6.25,8.53,7.92,6.67,2.2],[7.61,8.52,7.49,6.74,2.2],[8.97,8.5,7.11,6.8,2.2],[10.33,8.5,6.82,6.83,2.22],[11.69,8.5,6.58,6.85,2.25],[13.05,8.47,6.36,6.87,2.28],[14.41,8.34,6.14,6.92,2.31],[15.77,8.12,5.92,6.98,2.34],[17.13,7.87,5.67,7.06,2.36],[18.49,7.63,5.43,7.16,2.39],[19.85,7.37,5.27,7.27,2.42],[21.21,7.05,5.19,7.4,2.44],[22.57,6.73,5.14,7.54,2.47],[23.93,6.42,5.1,7.69,2.5],[25.29,6.12,5.07,7.85,2.53],[26.65,5.84,5.05,8.02,2.56],[28.01,5.57,5.03,8.19,2.59],[29.37,5.34,4.99,8.34,2.6],[30.73,5.14,4.93,8.49,2.6],[32.09,4.96,4.86,8.64,2.6],[33.45,4.81,4.79,8.76,2.6],[34.81,4.68,4.68,8.85,2.6],[36.17,4.58,4.58,8.93,2.6],[37.53,4.47,4.47,8.98,2.6],[38.89,4.36,4.36,9,2.6],[40.25,4.24,4.24,8.97,2.58],[41.61,4.12,4.12,8.9,2.55],[42.96,4,4,8.8,2.52],[44.32,3.87,3.87,8.67,2.49],[45.68,3.74,3.74,8.51,2.47],[47.04,3.6,3.6,8.32,2.44],[48.4,3.46,3.46,8.1,2.41],[49.76,3.32,3.32,7.86,2.38],[51.12,3.17,3.17,7.6,2.35],[52.48,3.02,3.02,7.28,2.32],[53.84,2.86,2.85,6.89,2.29],[55.2,2.69,2.66,6.41,2.26],[56.56,2.51,2.43,5.81,2.21],[57.92,2.33,2.18,5.1,2.17],[59.28,2.13,1.86,4.17,2.11],[60.64,1.91,1.34,2.83,2.02],[62,1.75,0.45,1,2]],[[-15.5,6,1,1.2,2.2],[-14.14,6.9,5.22,3.91,2.2],[-12.78,7.39,6.91,4.7,2.2],[-11.42,8,7.91,5.19,2.2],[-10.06,8.36,8.36,5.47,2.2],[-8.7,8.45,8.45,5.6,2.2],[-7.34,8.48,8.48,5.68,2.2],[-5.98,8.58,8.58,5.78,2.2],[-4.62,8.7,8.7,5.88,2.2],[-3.26,8.79,8.79,5.98,2.2],[-1.9,8.79,8.79,6.08,2.2],[-0.54,8.76,8.76,6.18,2.2],[0.82,8.71,8.71,6.29,2.2],[2.18,8.66,8.61,6.39,2.2],[3.54,8.6,8.48,6.5,2.2],[4.89,8.55,8.27,6.59,2.2],[6.25,8.53,7.92,6.67,2.2],[7.61,8.52,7.49,6.74,2.2],[8.97,8.5,7.11,6.8,2.2],[10.33,8.5,6.82,6.83,2.22],[11.69,8.5,6.58,6.85,2.25],[13.05,8.47,6.36,6.87,2.28],[14.41,8.34,6.14,6.92,2.31],[15.77,8.12,5.92,6.98,2.34],[17.13,7.87,5.67,7.06,2.36],[18.49,7.63,5.43,7.16,2.39],[19.85,7.37,5.27,7.27,2.42],[21.21,7.05,5.19,7.4,2.44],[22.57,6.73,5.14,7.54,2.47],[23.93,6.42,5.1,7.69,2.5],[25.29,6.12,5.07,7.85,2.53],[26.65,5.84,5.05,8.02,2.56],[28.01,5.57,5.03,8.19,2.59],[29.37,5.34,4.99,8.34,2.6],[30.73,5.14,4.93,8.49,2.6],[32.09,4.96,4.86,8.64,2.6],[33.45,4.81,4.79,8.76,2.6],[34.81,4.68,4.68,8.85,2.6],[36.17,4.58,4.58,8.93,2.6],[37.53,4.47,4.47,8.98,2.6],[38.89,4.36,4.36,9,2.6],[40.25,4.24,4.24,8.97,2.58],[41.61,4.12,4.12,8.9,2.55],[42.96,4,4,8.8,2.52],[44.32,3.87,3.87,8.67,2.49],[45.68,3.74,3.74,8.51,2.47],[47.04,3.6,3.6,8.32,2.44],[48.4,3.46,3.46,8.1,2.41],[49.76,3.32,3.32,7.86,2.38],[51.12,3.17,3.17,7.6,2.35],[52.48,3.02,3.02,7.28,2.32],[53.84,2.86,2.85,6.89,2.29],[55.2,2.69,2.66,6.41,2.26],[56.56,2.51,2.43,5.81,2.21],[57.92,2.33,2.18,5.1,2.17],[59.28,2.13,1.86,4.17,2.11],[60.64,1.91,1.34,2.83,2.02],[62,1.75,0.45,1,2]]]],"hand":[[[[-4,0,6.5,6.5,6.17,2,0],[-3,0,6.5,6.5,6.17,2,0],[-2,0,6.5,6.5,6.17,2,0],[-1,0,6.9,6.9,6.55,2,0],[0,0,7.83,7.83,7.44,2,0],[1,0,8.61,8.61,8.17,2,0],[2,0,9.26,9.26,8.79,2,0],[3,0,9.81,9.81,9.32,2,0],[4,0,10.29,10.29,9.77,2,0],[5,0,10.69,10.69,10.15,2,0],[6,0,11.03,11.03,10.48,2,0],[7,0,11.31,11.31,10.75,2,0],[8,0,11.55,11.55,10.97,2,0],[9,0,11.73,11.73,11.14,2,0],[10,0,11.86,11.86,11.27,2,0],[11,0,11.95,11.95,11.35,2,0],[12,0,11.99,11.99,11.39,2,0],[13,0,11.99,11.99,11.39,2,0],[14,0,11.95,11.95,11.35,2,0],[15,0,11.86,11.86,11.27,2,0],[16,0,11.73,11.73,11.14,2,0],[17,0,11.55,11.55,10.97,2,0],[18,0,11.31,11.31,10.75,2,0],[19,0,11.03,11.03,10.48,2,0],[20,0,10.69,10.69,10.15,2,0],[21,0,10.29,10.29,9.77,2,0],[22,0,9.81,9.81,9.32,2,0],[23,0,9.26,9.26,8.79,2,0],[24,0,8.61,8.61,8.17,2,0],[25,0,7.83,7.83,7.44,2,0],[26,0,6.9,6.9,6.55,2,0],[27,0,5.73,5.73,5.44,2,0],[28,0,4.11,4.11,3.91,2,0],[29,0,0.3,0.3,0.28,2,0],[30,0,0.3,0.3,0.28,2,0],[31,0,0.3,0.3,0.28,2,0],[32,0,0.3,0.3,0.28,2,0]],[[-4,0,6.5,6.5,6.17,2,0],[-3,0,6.5,6.5,6.17,2,0],[-2,0,6.5,6.5,6.17,2,0],[-1,0,6.9,6.9,6.55,2,0],[0,0,7.83,7.83,7.44,2,0],[1,0,8.61,8.61,8.17,2,0],[2,0,9.26,9.26,8.79,2,0],[3,0,9.81,9.81,9.32,2,0],[4,0,10.29,10.29,9.77,2,0],[5,0,10.69,10.69,10.15,2,0],[6,0,11.03,11.03,10.48,2,0],[7,0,11.31,11.31,10.75,2,0],[8,0,11.55,11.55,10.97,2,0],[9,0,11.73,11.73,11.14,2,0],[10,0,11.86,11.86,11.27,2,0],[11,0,11.95,11.95,11.35,2,0],[12,0,11.99,11.99,11.39,2,0],[13,0,11.99,11.99,11.39,2,0],[14,0,11.95,11.95,11.35,2,0],[15,0,11.86,11.86,11.27,2,0],[16,0,11.73,11.73,11.14,2,0],[17,0,11.55,11.55,10.97,2,0],[18,0,11.31,11.31,10.75,2,0],[19,0,11.03,11.03,10.48,2,0],[20,0,10.69,10.69,10.15,2,0],[21,0,10.29,10.29,9.77,2,0],[22,0,9.81,9.81,9.32,2,0],[23,0,9.26,9.26,8.79,2,0],[24,0,8.61,8.61,8.17,2,0],[25,0,7.83,7.83,7.44,2,0],[26,0,6.9,6.9,6.55,2,0],[27,0,5.73,5.73,5.44,2,0],[28,0,4.11,4.11,3.91,2,0],[29,0,0.3,0.3,0.28,2,0],[30,0,0.3,0.3,0.28,2,0],[31,0,0.3,0.3,0.28,2,0],[32,0,0.3,0.3,0.28,2,0]]],[[[-4,0,6.5,6.5,6.17,2,0],[-3,0,6.5,6.5,6.17,2,0],[-2,0,6.5,6.5,6.17,2,0],[-1,0,6.9,6.9,6.55,2,0],[0,0,7.83,7.83,7.44,2,0],[1,0,8.61,8.61,8.17,2,0],[2,0,9.26,9.26,8.79,2,0],[3,0,9.81,9.81,9.32,2,0],[4,0,10.29,10.29,9.77,2,0],[5,0,10.69,10.69,10.15,2,0],[6,0,11.03,11.03,10.48,2,0],[7,0,11.31,11.31,10.75,2,0],[8,0,11.55,11.55,10.97,2,0],[9,0,11.73,11.73,11.14,2,0],[10,0,11.86,11.86,11.27,2,0],[11,0,11.95,11.95,11.35,2,0],[12,0,11.99,11.99,11.39,2,0],[13,0,11.99,11.99,11.39,2,0],[14,0,11.95,11.95,11.35,2,0],[15,0,11.86,11.86,11.27,2,0],[16,0,11.73,11.73,11.14,2,0],[17,0,11.55,11.55,10.97,2,0],[18,0,11.31,11.31,10.75,2,0],[19,0,11.03,11.03,10.48,2,0],[20,0,10.69,10.69,10.15,2,0],[21,0,10.29,10.29,9.77,2,0],[22,0,9.81,9.81,9.32,2,0],[23,0,9.26,9.26,8.79,2,0],[24,0,8.61,8.61,8.17,2,0],[25,0,7.83,7.83,7.44,2,0],[26,0,6.9,6.9,6.55,2,0],[27,0,5.73,5.73,5.44,2,0],[28,0,4.11,4.11,3.91,2,0],[29,0,0.3,0.3,0.28,2,0],[30,0,0.3,0.3,0.28,2,0],[31,0,0.3,0.3,0.28,2,0],[32,0,0.3,0.3,0.28,2,0]],[[-4,0,6.5,6.5,6.17,2,0],[-3,0,6.5,6.5,6.17,2,0],[-2,0,6.5,6.5,6.17,2,0],[-1,0,6.9,6.9,6.55,2,0],[0,0,7.83,7.83,7.44,2,0],[1,0,8.61,8.61,8.17,2,0],[2,0,9.26,9.26,8.79,2,0],[3,0,9.81,9.81,9.32,2,0],[4,0,10.29,10.29,9.77,2,0],[5,0,10.69,10.69,10.15,2,0],[6,0,11.03,11.03,10.48,2,0],[7,0,11.31,11.31,10.75,2,0],[8,0,11.55,11.55,10.97,2,0],[9,0,11.73,11.73,11.14,2,0],[10,0,11.86,11.86,11.27,2,0],[11,0,11.95,11.95,11.35,2,0],[12,0,11.99,11.99,11.39,2,0],[13,0,11.99,11.99,11.39,2,0],[14,0,11.95,11.95,11.35,2,0],[15,0,11.86,11.86,11.27,2,0],[16,0,11.73,11.73,11.14,2,0],[17,0,11.55,11.55,10.97,2,0],[18,0,11.31,11.31,10.75,2,0],[19,0,11.03,11.03,10.48,2,0],[20,0,10.69,10.69,10.15,2,0],[21,0,10.29,10.29,9.77,2,0],[22,0,9.81,9.81,9.32,2,0],[23,0,9.26,9.26,8.79,2,0],[24,0,8.61,8.61,8.17,2,0],[25,0,7.83,7.83,7.44,2,0],[26,0,6.9,6.9,6.55,2,0],[27,0,5.73,5.73,5.44,2,0],[28,0,4.11,4.11,3.91,2,0],[29,0,0.3,0.3,0.28,2,0],[30,0,0.3,0.3,0.28,2,0],[31,0,0.3,0.3,0.28,2,0],[32,0,0.3,0.3,0.28,2,0]]]]};
+  A.limbs = {"leg":{"walk":[[5.78,24.2,5.78,24.2,5.78,24.2,6.1,24.2,7.28,24.2,8.78,24.2,9.16,24.2,8.28,24.19,6.85,23.51,4.97,21.03,2.94,18.06,1.32,16.31,-0.02,15.55,-1.19,15.21,-1.67,15.21,-1.29,15.41,-0.26,15.4,1.27,14.78,3.26,13.57,5.59,12.18,8.14,11.03,11.02,10.65,14.27,7.6,17.09,7,18.86,6.6],[-15.53,16.98,-15.85,16.98,-16.42,16.98,-15.15,16.98,-7.44,16.98,4.97,16.98,13.45,16.98,15.59,16.98,15.55,16.95,15.24,16.87,13.98,16.77,11.19,16.59,7.47,16.24,4.37,15.89,2.72,15.57,2.19,14.85,2.24,13.58,2.54,12.11,2.94,10.86,3.41,10.13,3.97,8.71,4.81,8.51,6.13,7.6,7.63,7,8.89,6.6]],"front":[[-20.33,15.1,-11.2,15.1,-6.63,15.1,-5.72,15.1,-5.72,15.1,-5.72,15.1,-5.72,15.1,-5.72,15.1,-5.72,15.1,-5.73,15.03,-5.76,14.7,-5.65,14.12,-5.11,13.68,-4.15,13.7,-3.21,14.01,-2.66,14.16,-2.47,13.9,-2.5,13.11,-2.64,11.92,-2.85,10.63,-3.1,9.53,-3.51,9.11,-2.06,7,-3.06,6.5,-4.51,6.1],[17.18,15.25,11.98,15.25,4.69,15.25,-0.53,15.25,-1.87,15.25,-1.87,15.25,-1.87,15.25,-0.51,15.25,3.58,15.25,6.32,15.15,3.68,14.74,-0.39,14.1,-2.01,13.71,-2.54,13.77,-3.06,14.07,-3.37,14.2,-3.46,13.9,-3.33,13.06,-3.03,11.87,-2.65,10.61,-2.2,9.51,-1.6,9.1,-0.14,7,1.08,6.5,2.9,6.1]],"run":[[16.15,27.1,16.17,27.1,16.26,27.09,16.55,26.99,17.2,26.61,18.08,25.73,18.46,24.46,17.13,23.23,13.15,22.33,6.69,21.52,-0.82,20.49,-7.56,19.32,-12.37,18.31,-15.08,17.52,-16.17,16.82,-16.19,16.07,-15.52,15.01,-14.37,13.64,-12.86,12.25,-11.04,11.23,-8.95,10.99,-6.7,9.4,-4.47,8,-2.42,7.4,-0.54,7],[18.43,19.09,20.93,19.09,22.37,19.09,21.93,19.09,19.5,19.09,15.95,19.09,12.79,19.09,11.28,19.04,11.75,18.88,13.38,18.52,14.77,17.93,14.79,17.21,13.28,16.54,10.98,16.01,8.86,15.54,7.51,14.94,6.94,13.95,6.91,12.61,7.18,11.22,7.65,10.15,8.37,9.73,9.48,8.32,10.98,8,12.72,7.4,14.52,7]]},"arm":{"walk":[[3.78,8.54,8.11,8.54,13.18,8.54,16.2,8.54,16.18,8.54,14.39,8.54,10.96,8.54,6.87,8.54,4.38,8.54,3.84,8.54,4,8.54,4.14,8.54,4.17,8.54,4.27,8.54,4.4,8.54,4.36,8.54,4.16,8.54,3.94,8.54,3.84,8.51,3.99,8.38,4.4,8.11,4.88,7.84,5.15,7.88,5.19,8.43,5.2,9.44],[-7.02,10.55,-11.54,10.55,-12.67,10.55,-11.35,10.55,-9.98,10.55,-9.21,10.55,-8.71,10.55,-8.22,10.55,-7.7,10.52,-7.23,10.37,-6.9,10.09,-6.69,9.89,-6.48,9.93,-6.3,10.12,-6.24,10.27,-6.31,10.23,-6.45,9.98,-6.61,9.57,-6.74,9.09,-6.81,8.65,-6.79,8.32,-6.68,8.14,-6.62,8.16,-6.79,8.55,-7.25,9.35]],"front":[[-7.75,10.39,-7.59,10.39,-6.44,10.39,-4.51,10.39,-3.01,10.38,-2.36,10.31,-2.08,10.16,-1.89,9.95,-1.75,9.73,-1.64,9.64,-1.54,9.74,-1.45,9.91,-1.44,9.95,-1.61,9.8,-1.95,9.51,-2.38,9.11,-2.83,8.6,-3.32,8.03,-3.86,7.45,-4.43,6.92,-4.95,6.6,-5.31,6.81,-5.41,7.72,-5.4,9.08,-5.46,10.41],[5.9,10.81,5.98,10.81,5.59,10.81,4.17,10.8,2.14,10.74,0.68,10.59,0.04,10.35,-0.32,10.06,-0.67,9.8,-1.01,9.64,-1.32,9.67,-1.54,9.85,-1.66,10.03,-1.67,10.04,-1.57,9.87,-1.36,9.53,-1.08,9.08,-0.79,8.62,-0.55,8.17,-0.33,7.74,-0.11,7.3,0.14,6.84,0.4,6.38,0.59,6.02,0.69,5.81]],"run":[[3.81,12.6,4.29,12.35,4.68,12.1,4.93,11.85,5.21,11.6,5.91,11.35,7.45,11.1,9.93,10.85,13.02,10.61,16.03,10.41,18.21,10.45,19.1,10.83,18.73,10.97,17.43,10.17,15.62,9.05,13.61,8.3,11.57,7.99,9.63,7.88,7.81,7.76,6.17,7.54,4.8,7.26,3.87,6.97,3.4,6.68,3.19,6.39,3.04,6.1],[-8.4,12.6,-11.75,12.35,-14.86,12.1,-17.58,11.85,-19.78,11.6,-21.29,11.35,-22.05,11.1,-22.18,10.85,-21.96,10.61,-21.65,10.41,-21.44,10.45,-21.52,10.83,-21.98,10.97,-22.75,10.17,-23.57,9.05,-24.17,8.3,-24.47,7.99,-24.55,7.88,-24.29,7.76,-23.22,7.54,-21.01,7.26,-18.4,6.97,-16.59,6.68,-15.97,6.39,-15.99,6.1]]}};
   A.pony = {"n":21,"side":{"f":[-50.12,-49.71,-52.8,-55.95,-58.49,-58.84,-57.87,-56.8,-56.53,-56.24,-54.66,-53.81,-54.15,-53.44,-53.35,-54.08,-55.92,-56.42,-55.85,-55.42,-53.15],"u":[32.22,27.51,21.38,15.28,8.78,1.55,-5.63,-12.8,-20.08,-27.35,-34.36,-41.53,-48.8,-56.04,-63.33,-70.53,-77.44,-84.64,-91.89,-99.14,-105.81],"H":[4.59,9.61,11.4,8.98,10.34,11.31,12.24,14.73,16.33,16.11,14.61,15.28,14.33,11.11,10.88,9.51,7.93,6.44,4.01,3.58,2.62]},"front":{"c":[44.64,58.59,60.45,61.9,63.25,64.32,65,65.45,65.72,65.4,63.99,62.3,60.77,59.01,56.45,53.27,49.88,47.67,48.51,50.43,51.58],"u":[41.87,39.68,35.46,31.12,26.76,22.35,17.87,13.38,8.87,4.37,0.03,-4.24,-8.55,-12.8,-16.74,-20.32,-23.77,-27.82,-32.21,-36.41,-40.81],"H":[9.76,10.54,11.39,12.21,13.5,14.79,15.58,16.07,16.38,15.79,13.95,12.81,12.36,12.01,11.46,10.96,11.46,12.29,8.58,5.87,4.73]},"run":{"f":[-59.15,-64.57,-69.59,-73.61,-77.55,-81.96,-86.54,-91.11,-95.63,-100.11,-105.01,-110.18,-114.77,-118.91,-123.12,-127.58,-131.77,-135.71,-140.02,-145.05,-150.35],"c":[44.64,58.59,60.45,61.9,63.25,64.32,65,65.45,65.72,65.4,63.99,62.3,60.77,59.01,56.45,53.27,49.88,47.67,48.51,50.43,51.58],"u":[29.42,24.28,22.52,18.11,13.57,9.79,6.36,2.9,-0.66,-4.3,-6.82,-8.32,-11.69,-15.94,-20.07,-23.76,-27.91,-32.46,-36.39,-38.42,-38.11],"H":[8.59,8.55,10.86,13.59,17.81,22.15,23.42,24.93,24.25,24.82,27.77,24.66,18.61,16.2,15.21,14.33,11.46,8.99,9.39,9.29,5.89]}};
   A.traceInfo = { kFront: 1.1746, kSide: 0.5177, kRun: 0.8159 };
   A.rebuild();
@@ -8242,6 +8445,37 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
   //      head nod / tilt, toe push-off and a soft heel strike, longer smoother strides.  stride is also what the timeline uses for the foot contact (girl.STRIDE).
   var walkStyle = {"stride":372,"walkDrop":0,"bob":5.5,"bobH2":0.05,"bobH2ph":0.7,"bobPh":0.27,"hipSway":4,"walkYaw":10,"shoulderCounter":1.9,"swingFwd":29,"swingBack":29,"gammaWalk0":8,"gammaWalk1":28,"handLag":0.42,"headNod":3.4,"headTilt":0.14,"lift":17,"bhs":15,"bto":38,"q1":0.19,"q2":0.31,"walkLean":-2.2,"hemBounce":3.4,"swingTan":1,"swingTan1":1,"liftSkew":0.35};
   for (k in walkStyle) A.cfg[k] = walkStyle[k];
+  // ---- GRACEFUL WALK (round 10, GAIT): long easy stride (380 u per cycle, 2.1 steps/s at V_WALK 400), biomechanical stance (heel strike toes-up 18 deg, flat by 11 %, heel rise
+  //      from 36 %, toe-off at 46 deg), stance knee by the knee-target solve (girl_a.js C.kneeK), pointed swing foot with the keyed world-frame swing (C.swE/swZ/swB), upright
+  //      torso (no lean), long relaxed arm swing with a SOFT elbow (9 + 9 deg), toe-out ~10 deg standing.  Bare feet: girl_c2_trace.js D.shoe (R10/gait/foot.mjs).
+  var walkGrace = {"stride":380,"walkXoff":0,"hsF":73,"rho":0.6,"q1":0.11,"q2":0.36,"bhs":18,"bto":46,"lift":31,"walkLean":0,"walkStance":17,"toeWalk":6,"toeIdle":10,"toeL":-1,"toeR":-1,
+    "hipSway":4.6,"walkYaw":11,"shoulderCounter":1.8,"swingFwd":24,"swingBack":26,"gammaWalk0":9,"gammaWalk1":9,"handLag":0.25,"kneeSoft":0,"pelvisSmooth":20,"legReach":1.0};
+  for (k in walkGrace) A.cfg[k] = walkGrace[k];
+  // ---- ELEGANT CARTOON RUN (round 10, GAIT; replaces the fitted scurry crouch): stride 620 (3 steps/s at V_RUN 940), stance 34 % (flight 32 %), ball-of-foot landing, heel kicked
+  //      up to hip height behind, knee driving through high, bouncy pelvis (226 at mid-stance -> 257 in flight), torso lean ~17-20 deg from the hips, head LEVEL, arms pumping at ~90 deg.
+  var runGrace = {"strideRun":700,"runRho":0.325,"runQ1":0.06,"runQ2":0.16,"runXoff":0,"runHsF":75,"runBhs":-12,"runPelvis":240,"runBob":14,
+    "runBobK":[[0,-0.65],[0.3,-0.2],[0.65,-0.3],[0.78,0.7],[0.86,1.15],[0.95,0.1]],"runLean":16,"runLeanDeg":8,"runLean0":0.4,"runBendH":45,"runHead":3,"runHeadLevel":1,"runPelvisPitch":-4,
+    "runArmA":[44,95],"runArmB":[-40,85],"runShoulderBack":20,"runShoulderFwd":8,"runHemLift":1.2,"runLegK":0.02};
+  for (k in runGrace) A.cfg[k] = runGrace[k];
+
+  // ---- WALK STYLE PRESETS (runtime switch: landingGirlAnimation.scene.girl.setWalkPreset('A'|'B'|'C'|'current'); the stride (372) and the foot contact are the same in all of them)
+  //   current = the R8 values; A = 'tall glide' (upright, long extended legs, minimal bob, long relaxed arm swing); B = 'light and lifted' (chest lifted, buoyant push-off bounce, quicker toe-off, soft arms);
+  //   C = 'poised flow' (A + visible hip sway, a lagging trailing hem, a floating head, a slightly longer swing arc)
+  var WP_BASE = {"walkDrop":0,"bob":5.5,"bobH2":0.05,"bobH2ph":0.7,"bobPh":0.27,"hipSway":4,"walkYaw":10,"shoulderCounter":1.9,"swingFwd":29,"swingBack":29,"gammaWalk0":8,"gammaWalk1":28,"handLag":0.42,"headNod":3.4,"headTilt":0.14,"lift":17,"bhs":15,"bto":38,"q1":0.19,"q2":0.31,"walkLean":-2.2,"hemBounce":3.4,"liftSkew":0.35,
+    "kneeSoft":0.008,"walkChest":2.4,"headBob":2.6,"pelvTilt":3,"hemFlutter":1.8,"hemTiltA":7.5,"shLag":0.07,"armLag":0.035,"foreLag":0.11,"headLag":0.15,"spineAmp":3.4,"spineLag":0.1,"asym":1};
+  function wpMake(o) { var r = {}, q; for (q in WP_BASE) r[q] = WP_BASE[q]; for (q in o) r[q] = o[q]; return r; }
+  var tallA = {"kneeSoft":0,"bob":2.6,"bobH2":0.02,"hipSway":3.2,"walkYaw":9,"shoulderCounter":1.8,"swingFwd":21,"swingBack":31,"gammaWalk0":10,"gammaWalk1":8,"handLag":0.25,"headNod":0.6,"headTilt":0.06,"headBob":0.7,"headLag":0.12,"walkLean":0,"spineAmp":1.6,"walkChest":1.2,"pelvTilt":1.5,"lift":20,"hemFlutter":1.2,"hemTiltA":5.5,"hemBounce":2.4,"foreLag":0.1,"armLag":0.03,"shLag":0.06,"asym":0.7};
+  A.walkPresets = {
+    current: wpMake({}),
+    A: wpMake(tallA),
+    B: wpMake({"kneeSoft":0,"bob":5,"bobH2":0.14,"hipSway":3.4,"walkYaw":9,"swingFwd":22,"swingBack":28,"gammaWalk0":10,"gammaWalk1":10,"handLag":0.3,"headNod":0.5,"headTilt":0.07,"headBob":1.1,"headLag":0.12,"walkLean":0,"spineAmp":1.4,"walkChest":3.4,"pelvTilt":1.8,"lift":22,"bto":44,"liftSkew":0.4,"q1":0.17,"hemFlutter":2,"hemTiltA":6.5,"hemBounce":3,"foreLag":0.1,"armLag":0.03,"shLag":0.06,"asym":0.8}),
+    C: wpMake((function () { var o = {}, q; for (q in tallA) o[q] = tallA[q]; o.hipSway = 5.2; o.walkYaw = 12; o.shoulderCounter = 1.8; o.swingFwd = 28; o.swingBack = 28; o.gammaWalk0 = 11; o.gammaWalk1 = 14; o.walkDrop = 3; o.headBob = 1.8; o.headLag = 0.18; o.hemTiltA = 9; o.hemFlutter = 3.2; o.hemBounce = 3.6; o.lift = 21; o.spineAmp = 2.4; o.walkChest = 1.6; o.pelvTilt = 2.2; o.handLag = 0.35; o.asym = 0.9; return o; })())
+  };
+  A.walkPreset = 'current';
+  A.setWalkPreset = function (n) { var p = A.walkPresets[n], q; if (!p) return false; for (q in p) A.cfg[q] = p[q]; for (q in walkGrace) if (q in p && n !== 'current') A.cfg[q] = p[q]; else if (n === 'current') A.cfg[q] = walkGrace[q]; A.walkPreset = n; if (A.touch) A.touch(); return true; };
+  // round 10: the graceful walk (walkGrace above) is the default; the R9 presets A/B/C stay selectable for comparison only (they override some of its keys)
+  A.walkPresets.current = (function () { var o = wpMake({}), q; for (q in walkGrace) o[q] = walkGrace[q]; return o; })();
+  A.setWalkPreset('current');
   var hc = {"tieU":27,"tiePhi":2.4,"sprout":[-0.2,0.635,0.74],"lockN":8,"lockLen":1.03,"lockW":1.5,"lamK":0.59,"waveK":1,"curlK":1.1,"back":0.16,"backMed":0.21,"bTo":0.36,"medLen":0.9,"fineN":26,"fineLen":0.9,"looseLen":1,"lenSide":0.97,"lenFront":0.87,"widSide":1.07,"widFront":1.45,"runWind":120,"core":1,"coreT0":0.575,"coreT1":0.885,"rootW":7,"ribT0":0.4,"ribT1":0.58};
   for (k in hc) A.hairCfg[k] = hc[k];
   A.rebuild();
@@ -8253,6 +8487,10 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
    GA.swirl  -  thought dots + the flowing "vortex" of ribbon lines around the girl   (SPEC 4.2)
    Classic script, IIFE, deterministic (GA.util.rng only), everything is a pure function of t.
 
+   ROUND 10 (ACTS, THOUGHTS agent): the births follow the four acts of the ~20 s thought process (k = seconds after turnFront1 = tStart - 1.1): act I (k < 5.5) only the lead arm and ONE small
+   tight ring (r0 1.25) orbit her; act II (5.5-12) the 3 golden ribbons, the counter ring, the S gesture, the first silk bundle, the pale sweeps and two dotted trails wind in; act III (12-17.7)
+   the two other bundles, the hooks, the loop flourishes, the flicks and the other trails tangle it (turbulence 0.18 -> 0.45 -> 1.0, loop amplitude 0.80 -> 0.88 -> 1.0 per act); act IV = the surge.
+   The envelope the scene passes is ~30 % larger (rx min(0.35 W, 1000), ry 460; ery is still clamped to the visible canvas).
    ROUND 4: ENVELOPE + ORBITS.  build() opts rx, ry (+ cx, cy) are the vortex ENVELOPE ellipse around her head / neck (scene: rx = min(0.27 W, 780), ry = 380; clamped so that it fits the
    visible canvas).  EVERY vertex of every arm, trail, scribble and flick is inside it: lines are built inside a circle-space radius cap (soft limiter), the world position is squeezed
    below the rim at the end of evalLine (q > 0.93 is compressed, never reaches 1) and the width fades from 0.80 to 1.03 of the rim - nothing is ever cut by a screen / band edge.
@@ -8405,20 +8643,22 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     var P = G.P;
     if (te <= P.tStart) return 0;
     var x0 = te - P.tStart, T0 = P.tFull - P.tStart, r = x0 + (x0 < T0 ? 0.9 * x0 * x0 / (2 * T0) : 0.9 * T0 / 2 + 0.9 * (x0 - T0)), a = P.tHit - 2.0;
-    if (te > a) { var x = Math.min(1, (te - a) / 1.9); r += 2.2 * 1.9 * (x * x * x - 0.5 * x * x * x * x); }      // the winding speeds up (x 3.2 at the end of the surge)
+    if (te > a) { var x = Math.min(1, (te - a) / 1.9); r += 2.8 * 1.9 * (x * x * x - 0.5 * x * x * x * x); }      // the winding speeds up (x 3.8 at the end of the surge)
     return r;
   }
   function gstate(t, g) {
     var P = G.P, te = Math.min(t, freezeT());
     var k = clamp01((te - P.tStart) / (P.tFull - P.tStart));
-    g.es = (0.80 + 0.20 * eOut3(k)) * (P.tHit < 1e8 ? 1 - 0.08 * sstep(P.tHit - 2.0, P.tHit - 0.1, te) : 1);   // the funnel tightens by 14 % before the hit, the dissolve releases it
+    var fun = P.tHit < 1e8 ? sstep(P.tHit - 2.6, P.tHit - 0.3, te) : 0;                            // ROUND 10 act IV: the vortex winds into a tight funnel around her head (30 % smaller, lifted 70 units, winding faster)
+    g.es = (0.80 + 0.20 * eOut3(k)) * (1 - 0.30 * fun); g.fy = -70 * fun;
     g.ex = P.ex * (1 + 0.018 * Math.sin(0.55 * te + 1.2));
     g.ey = P.ey * (1 + 0.022 * Math.sin(0.47 * te + 2.1));
     var tilt = -0.20 + 0.03 * Math.sin(0.31 * te + 0.4);
     g.ct = Math.cos(tilt); g.st = Math.sin(tilt);
     g.R = rotInt(te);
-    g.tur = (0.30 + 0.70 * k) * (1 + 0.45 * sstep(P.tHit - 2.3, P.tHit - 0.2, te));                  // calm early, tangled toward the climax and in the last 2 s before the hit
-    g.lp = (0.82 + 0.18 * k) * (1 + 0.12 * sstep(P.tHit - 2.3, P.tHit - 0.2, te));
+    var kk = te - P.tStart + 1.1;                                                                       // ROUND 10: seconds after turnFront1 (the acts: II from 5.5, III from 12, IV = the surge)
+    g.tur = (0.18 + 0.27 * sstep(5.0, 8.0, kk) + 0.55 * sstep(11.5, 15.5, kk)) * (1 + 0.45 * sstep(P.tHit - 2.3, P.tHit - 0.2, te));   // calm in act I, lively in II, tangled in III and in the surge
+    g.lp = (0.80 + 0.08 * sstep(5.0, 8.0, kk) + 0.12 * sstep(11.5, 15.5, kk)) * (1 + 0.12 * sstep(P.tHit - 2.3, P.tHit - 0.2, te));
     g.p1 = 0.70 * te + 1.1; g.p2 = 0.53 * te + 4.0; g.p3 = 0.61 * te + 2.3; g.p4 = 0.47 * te + 5.2;
     return g;
   }
@@ -8428,12 +8668,12 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     var ux = u * g.ex * pf * Math.pow(Math.max(rho, 0.2), G.P.gam), vy = v * vs * g.ey * pf, b = TW_ * Math.log(Math.max(rho, 0.2)), cb = Math.cos(b), sb = Math.sin(b);
     var c = g.ct * cb - g.st * sb, s = g.st * cb + g.ct * sb;
     out.x = G.P.cx + g.es * (ux * c - vy * s);
-    out.y = G.P.cy + g.es * (ux * s + vy * c);
+    out.y = G.P.cy + (g.fy || 0) + g.es * (ux * s + vy * c);
     out.sn = sn;
     return out;
   }
   function worldToCircle(x, y, g) {
-    var P = G.P, dx = (x - P.cx) / g.es, dy = (y - P.cy) / g.es;
+    var P = G.P, dx = (x - P.cx) / g.es, dy = (y - P.cy - (g.fy || 0)) / g.es;
     var u = dx / g.ex, v = dy / g.ey;
     for (var it = 0; it < 12; it++) {
       var rho = Math.hypot(u, v) || 1e-3, sn = v / rho, pf = 1 + PERSP * sn, vs = Math.pow(Math.max(rho, 0.2), -SQ);
@@ -8581,7 +8821,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     var kpul = L.pul ? L.pul * Math.sin(TAU * L.pulNu * te + L.pulPh) : 0;
     var swa = L.sway ? L.sway * Math.sin(TAU * L.swayNu * te + L.swayPh) : 0, csw = Math.cos(swa), ssw = Math.sin(swa);
     var TA = g.tur * L.tA * TURB_A, doT = TA > 0.05, p1 = g.p1, p2 = g.p2, p3 = g.p3, p4 = g.p4;
-    var ex = g.ex, ey = g.ey, es = g.es, ct = g.ct, st = g.st, cx = P.cx, cy = P.cy;
+    var ex = g.ex, ey = g.ey, es = g.es, ct = g.ct, st = g.st, cx = P.cx, cy = P.cy + (g.fy || 0);
     var ecx = P.ecx, ecy = P.ecy, iEx = 1 / P.erx, iEy = 1 / P.ery;
     var lo = L.lo, one = 1 - lo;
     var axA = L.ax, cbA = L.cb, sbA = L.sb, C = L.C, S = L.S, iR = L.iR, vs = L.vs, uS = L.uS, uC = L.uC, wS = L.wS, wC = L.wC, s1S = L.s1S, s1C = L.s1C, s2S = L.s2S, s2C = L.s2C, env = L.env;
@@ -8712,7 +8952,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     D = null;
     G = {
       P: P, rng: rng, lines: [], arms: [], sweeps: [], pats: [], acc: [], items: [], g: {}, gt: {}, pt: { x: 0, y: 0, sn: 0 },
-      gb: { es: 1, ex: P.ex, ey: P.ey, ct: Math.cos(-0.2), st: Math.sin(-0.2), R: 0 },
+      gb: { es: 1, ex: P.ex, ey: P.ey, ct: Math.cos(-0.2), st: Math.sin(-0.2), R: 0, fy: 0 },
       C: makeColors(st), colSig: colSig(st), dst: { sx: 0, sy: 0, sr: 0, bx: 0, by: 0, br: 0 },
       info: { cubes: 0, dots: 0, lines: 0, lastDeath: 0 }, haloF: 1, ready: false, jobs: [], ji: 0, warm: o.warmup === false ? WARM_N : 0, opts: o,
     };
@@ -8755,34 +8995,34 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     // (137.5 deg), so nothing clumps and nothing is accidentally parallel.  One dominant gesture = 3 long bold ribbons; supporting fine lines come as intentional silk BUNDLES.
     var armRows = [
       // --- 3 dominant tapered ribbons around the cloud (thick middle, hairline tips); the first is the golden spiral that sweeps in to her head; the first two pass in front of her
-      { t: 'in', a: -100, r0: 2.40, k: -0.306, r1: 0.95, w: 7.0, c: 'ink', tilt: 12, fr: 0, lw: [{ c: 0.42, hw: 98, a: 40, l: 120, sg: 1, ph: 0 }, { c: 0.9, hw: 53, a: 28, l: 70, sg: -1, ph: 0 }], roll: 1.3, nu: -0.40, f: 0.90, lo: 0.70, tf: 0.42, om: 1.0, dir: 1, bf: 0.03, dd: 3.6 },
-      { t: 'in', a: 37.5, r0: 2.50, k: -0.12, r1: 1.55, w: 6.6, c: 'ink', tilt: 8, fr: 1, lw: [{ c: 0.34, hw: 106, a: 42, l: 130, sg: -1, ph: 0 }, { c: 0.92, hw: 56, a: 30, l: 75, sg: -1, ph: 0 }], roll: -1.1, nu: -0.36, f: 0.95, lo: 0.70, tf: 0.42, om: 1.1, dir: 1, bf: 0.10, dd: 3.6 },
-      { t: 'in', a: 175, r0: 2.40, k: -0.10, r1: 1.45, w: 5.8, c: 'ink', tilt: 14, fr: 0, lw: [{ c: 0.7, hw: 98, a: 40, l: 120, sg: 1, ph: 0 }], roll: 1.5, nu: -0.28, f: 1.00, lo: 0.70, tf: 0.42, om: 0.9, dir: 1, bf: 0.20, dd: 3.4 },
+      { t: 'in', a: -100, r0: 2.40, k: -0.306, r1: 0.95, w: 7.0, c: 'ink', tilt: 12, fr: 0, lw: [{ c: 0.42, hw: 98, a: 40, l: 120, sg: 1, ph: 0 }, { c: 0.9, hw: 53, a: 28, l: 70, sg: -1, ph: 0 }], roll: 1.3, nu: -0.40, f: 0.90, lo: 0.70, tf: 0.42, om: 1.0, dir: 1, bf: 0.27, dd: 3.6 },
+      { t: 'in', a: 37.5, r0: 2.50, k: -0.12, r1: 1.55, w: 6.6, c: 'ink', tilt: 8, fr: 1, lw: [{ c: 0.34, hw: 106, a: 42, l: 130, sg: -1, ph: 0 }, { c: 0.92, hw: 56, a: 30, l: 75, sg: -1, ph: 0 }], roll: -1.1, nu: -0.36, f: 0.95, lo: 0.70, tf: 0.42, om: 1.1, dir: 1, bf: 0.355, dd: 3.6 },
+      { t: 'in', a: 175, r0: 2.40, k: -0.10, r1: 1.45, w: 5.8, c: 'ink', tilt: 14, fr: 0, lw: [{ c: 0.7, hw: 98, a: 40, l: 120, sg: 1, ph: 0 }], roll: 1.5, nu: -0.28, f: 1.00, lo: 0.70, tf: 0.42, om: 0.9, dir: 1, bf: 0.50, dd: 3.4 },
       // --- two rings that hold the cloud; the second is a counter-current
-      { t: 'out', a: 80, r0: 1.90, k: 0.045, r1: 5.0, w: 4.8, c: 'ink', tilt: 10, fr: 0, lw: [{ c: 0.5, hw: 100, a: 34, l: 100, sg: 1, ph: 0 }], roll: -1.2, nu: 0.30, f: 0.90, lo: 0.70, tf: 0.38, om: 1.15, dir: 1, bf: 0.14, dd: 3.4 },
-      { t: 'out', a: 217.5, r0: 2.20, k: 0.02, r1: 4.6, w: 3.4, c: 'ink', tilt: 6, fr: 0, lw: [{ c: 0.5, hw: 105, a: 42, l: 130, sg: -1, ph: 0 }], roll: 1.0, nu: 0.26, f: 1.00, lo: 0.70, tf: 0.40, om: -0.9, dir: -1, bf: 0.34, dd: 3.2 },
+      { t: 'out', a: 80, r0: 1.25, k: 0.045, r1: 4.2, w: 3.8, c: 'ink', tilt: 10, fr: 0, lw: [{ c: 0.5, hw: 100, a: 34, l: 100, sg: 1, ph: 0 }], roll: -1.2, nu: 0.30, f: 0.90, lo: 0.70, tf: 0.38, om: 1.15, dir: 1, bf: 0.072, dd: 3.0 },   // ROUND 10 act I: a small tight ring that begins to orbit her early and slowly widens
+      { t: 'out', a: 217.5, r0: 2.20, k: 0.02, r1: 4.6, w: 3.4, c: 'ink', tilt: 6, fr: 0, lw: [{ c: 0.5, hw: 105, a: 42, l: 130, sg: -1, ph: 0 }], roll: 1.0, nu: 0.26, f: 1.00, lo: 0.70, tf: 0.40, om: -0.9, dir: -1, bf: 0.428, dd: 3.2 },
       // --- one calligraphic S gesture that weaves across the cloud
-      { t: 'ges', a: 138, r0: 1.20, k: 0.17, r1: 4.2, w: 4.0, c: 'ink', tilt: -2, fr: 0, lw: [{ c: 0.5, hw: 94, a: 34, l: 100, sg: 1, ph: 0 }], roll: -1.4, nu: 0.36, f: 1.00, lo: 0.40, tf: 0.34, om: 1.0, dir: 1, bf: 0.30, dd: 3.2, wa: 0.20, wm: 1.15 },
+      { t: 'ges', a: 138, r0: 1.20, k: 0.17, r1: 4.2, w: 4.0, c: 'ink', tilt: -2, fr: 0, lw: [{ c: 0.5, hw: 94, a: 34, l: 100, sg: 1, ph: 0 }], roll: -1.4, nu: 0.36, f: 1.00, lo: 0.40, tf: 0.34, om: 1.0, dir: 1, bf: 0.572, dd: 3.2, wa: 0.20, wm: 1.15 },
     ];
     // silk BUNDLES (3 + 3 + 4 fine lines): same path / speed / breathing, small fan-out, centre lines bolder, ends staggered
     var bundleRows = [
-      { t: 'in', n: 3, a: -92, r0: 2.35, k: -0.306, r1: 1.00, w: 2.5, tilt: 12, om: 1.0, dir: 1, da: 0.060, dr: 0.040, bf: 0.12, dd: 3.4, cols: ['g1', 'ink', 'g1'] },     // sweeps with the first ribbon
-      { t: 'orb', n: 3, a: 150, r0: 2.15, k: 0.03, r1: 4.3, w: 2.2, tilt: 10, om: 1.3, dir: 1, da: 0.045, dr: 0.040, bf: 0.26, dd: 3.2, wa: 0.0, wm: 1.1, cols: ['g1', 'ink', 'g1'] },   // outer silk orbit around the whole cloud
-      { t: 'in', n: 2, a: 20, r0: 2.30, k: -0.14, r1: 1.40, w: 2.0, tilt: 8, om: -1.0, dir: -1, da: 0.060, dr: 0.045, bf: 0.42, dd: 3.0, cols: ['ink', 'g1'] },     // elegant counter-current
+      { t: 'in', n: 3, a: -92, r0: 2.35, k: -0.306, r1: 1.00, w: 2.5, tilt: 12, om: 1.0, dir: 1, da: 0.060, dr: 0.040, bf: 0.319, dd: 3.4, cols: ['g1', 'ink', 'g1'] },     // sweeps with the first ribbon
+      { t: 'orb', n: 3, a: 150, r0: 2.15, k: 0.03, r1: 4.3, w: 2.2, tilt: 10, om: 1.3, dir: 1, da: 0.045, dr: 0.040, bf: 0.675, dd: 3.2, wa: 0.0, wm: 1.1, cols: ['g1', 'ink', 'g1'] },   // outer silk orbit around the whole cloud
+      { t: 'in', n: 2, a: 20, r0: 2.30, k: -0.14, r1: 1.40, w: 2.0, tilt: 8, om: -1.0, dir: -1, da: 0.060, dr: 0.045, bf: 0.729, dd: 3.0, cols: ['ink', 'g1'] },     // elegant counter-current
     ];
     var hookRows = [   // overshoot-and-curl arcs: a start angle, dir, r rho, span rad, drift, curl (inward bend of the return leg), w, c, tilt, bf
-      { a: -30, dir: 1, r: 1.70, span: 2.4, drift: 0.15, curl: 0.50, w: 2.8, c: 'ink', tilt: 12, bf: 0.50, om: 1.0 },
-      { a: 107.5, dir: -1, r: 1.50, span: 2.2, drift: 0.15, curl: 0.50, w: 2.4, c: 'ink', tilt: 6, bf: 0.64, om: -1.1 },
+      { a: -30, dir: 1, r: 1.70, span: 2.4, drift: 0.15, curl: 0.50, w: 2.8, c: 'ink', tilt: 12, bf: 0.705, om: 1.0 },
+      { a: 107.5, dir: -1, r: 1.50, span: 2.2, drift: 0.15, curl: 0.50, w: 2.4, c: 'ink', tilt: 6, bf: 0.80, om: -1.1 },
     ];
     var scribRows = [  // 2 graceful cursive LOOP flourishes drifting along an orbit: a start angle, dir, rho cluster radius, span orbit rad, loop size, loops, w, c, tilt, bf
-      { a: -120, dir: 1, r: 1.50, span: 0.8, size: 0.27, m: 2.3, w: 2.4, c: 'ink', tilt: 8, bf: 0.48, om: 1.5 },
-      { a: 17.5, dir: -1, r: 1.35, span: 0.75, size: 0.27, m: 2.1, w: 2.2, c: 'ink', tilt: -4, bf: 0.66, om: -1.7 },
+      { a: -120, dir: 1, r: 1.50, span: 0.8, size: 0.27, m: 2.3, w: 2.4, c: 'ink', tilt: 8, bf: 0.753, om: 1.5 },
+      { a: 17.5, dir: -1, r: 1.35, span: 0.75, size: 0.27, m: 2.1, w: 2.2, c: 'ink', tilt: -4, bf: 0.85, om: -1.7 },
     ];
     var flickRows = [];   // quick thin flicks (golden-angle spaced): a angle, ra rho, span (deg) to the end point, rb rho, bend, curl, w, c, tilt, t0 (fraction of T), per s, dur s, hw half window
     (function () {
       var FW = [2.2, 2.4, 2.6, 2.2, 2.5, 2.3, 2.6, 2.4], FT = [10, -16, 22, -22, 6, -8, 14, -12], FS = [120, 100, 140, 110, 95, 125, 115, 105];
       for (var q = 0; q < 8; q += 2) flickRows.push({ a: -160 + q * 137.5, ra: 1.9 + 0.2 * ((q * 3) % 4) / 3, span: FS[q], rb: 1.35 + 0.35 * ((q * 5) % 4) / 3, bend: (q & 1 ? -1 : 1) * (0.22 + 0.03 * (q % 3)), curl: (q & 2 ? -1 : 1) * 0.06,
-        w: FW[q], c: q === 2 || q === 5 ? 'g1' : 'ink', tilt: FT[q], t0: 0.60 + 0.085 * q, per: 2.7 + 0.18 * ((q * 7) % 6), dur: 0.85 + 0.04 * (q % 4), hw: 0.15 + 0.01 * (q % 4) });
+        w: FW[q], c: q === 2 || q === 5 ? 'g1' : 'ink', tilt: FT[q], t0: 0.69 + 0.07 * q, per: 2.7 + 0.18 * ((q * 7) % 6), dur: 0.85 + 0.04 * (q % 4), hw: 0.15 + 0.01 * (q % 4) });
     })();
     var nBun = 0; for (var bq = 0; bq < bundleRows.length; bq++) nBun += bundleRows[bq].n;
     var N = 1 + armRows.length + nBun + hookRows.length + scribRows.length + flickRows.length;
@@ -8952,9 +9192,9 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
         else if (L.bf <= 1) L.tb = Math.min(L.tb, P.tFull - L.dur - 0.25);
         else L.tb = Math.min(L.tb, tLate - L.dur);
       }
-      var swBirth = [0.16, 0.38];
+      var swBirth = [0.39, 0.48];
       for (k = 0; k < G.sweeps.length; k++) { L = G.sweeps[k]; L.dur = U.clamp(rng.range(0.30, 0.40) * T, 2.4, 3.8); L.tb = Math.min(P.tStart + swBirth[k] * T, P.tFull - L.dur - 0.2); }
-      var patBirth = [0.30, 0.42, 0.52, 0.66, 0.74];
+      var patBirth = [0.46, 0.56, 0.72, 0.81, 0.86];
       for (k = 0; k < G.pats.length; k++) { L = G.pats[k]; L.dur = U.clamp(rng.range(0.26, 0.34) * T, 2.0, 3.2); L.tb = Math.min(P.tStart + patBirth[k] * T, P.tFull - L.dur - 0.2); }
       // floating accents: calm dots and rings
       var kinds = ['dot', 'dot', 'ring', 'dot', 'dot', 'ring', 'dot', 'dot', 'ring', 'dot', 'dot', 'dot', 'ring', 'dot'];
@@ -9024,6 +9264,8 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
       position with keep >= j. */
   function decimateMask(L, mask) {
     var n = L.n, X = L.X, Y = L.Y, sweep = L.kind === 'sweep', tol = L.sp.tol || (sweep ? 1.0 : Math.min(0.7, 0.32 + 0.07 * L.sp.base)), maxChord = L.sp.chord || (sweep ? 160 : 90), endLen = sweep ? 160 : 60;
+    if (tol < 1.5) tol *= 1.15;                                                     // ROUND 10: the arms are ~30 % longer in the bigger envelope: +15 % tolerance (still sub-pixel) and +25 % chord keep the vertex count near the round-9 budget
+    if (!sweep) maxChord *= 1.25;
     var dist = new Float32Array(n), j, m, last = 0;
     for (j = 1; j < n; j++) { var dx = X[j] - X[j - 1], dy = Y[j] - Y[j - 1]; dist[j] = dist[j - 1] + Math.sqrt(dx * dx + dy * dy); }
     var total = dist[n - 1];
@@ -9686,7 +9928,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     var cc = g.ct * L.cb[j] - g.st * L.sb[j], ss = g.st * L.cb[j] + g.ct * L.sb[j];
     var dx = g.es * (ux * cc - vy * ss), dy = g.es * (ux * ss + vy * cc);
     if (L.sway) { var swa = L.sway * Math.sin(TAU * L.swayNu * te + L.swayPh), cs = Math.cos(swa), sw = Math.sin(swa), ddx = dx * cs - dy * sw; dy = dx * sw + dy * cs; dx = ddx; }
-    var x = P.cx + dx, y = P.cy + dy, TA = g.tur * L.tA * TURB_A;
+    var x = P.cx + dx, y = P.cy + (g.fy || 0) + dy, TA = g.tur * L.tA * TURB_A;
     if (TA > 0.05) {
       var tx = TA * (Math.sin(KY * y + g.p1) + 0.55 * Math.sin(K2 * (x + y) + g.p2)), ty = TA * (Math.sin(KX * x + g.p3) + 0.55 * Math.sin(K3 * (y - x) + g.p4));
       x += tx; y += ty;
@@ -10794,14 +11036,15 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
    colours come from GA.style at draw time (ink / paper theme), nothing is ever filled with white (the canvas may be transparent).
 
    PUBLIC API
-     GA.thoughts.build({W,H,cx,cy,rx,ry,seed,tStart,tFull,tHit,swirl [,cubes,dots,autoDissolve,variant,visTop,visBottom]})   CHEAP (1-4 ms): picks the cast,
+     GA.thoughts.build({W,H,cx,cy,rx,ry,seed,tStart,tFull,tHit,swirl [,cubes,dots,autoDissolve,variant,visTop,visBottom,tAct0]})   CHEAP (1-4 ms): picks the cast,
          schedules the pop-ins and creates the items.  The expensive work (orbit planning, per-item ink analysis, erase masks) is done
          INCREMENTALLY by prepare() / draw().  If tHit is finite and autoDissolve !== false, dissolveFrom(tHit,{speed:1,stagger:CFG.STAGGER = 0.55}) is armed
          (it forces the preparation first); tHit undefined / Infinity => nothing is scheduled (call dissolveFrom yourself).
          The director must call GA.fx.cubes.reset() / GA.fx.dots.reset() BEFORE building the modules (scene.js does).
          cx,cy = vortex centre (girl's neck); rx/ry = the VORTEX ENVELOPE (everything revolves around her inside it; default min(0.27 W, 780) x 380);
          visTop / visBottom = the visible canvas in world y (default GA.stage.visTop / visBottom: nothing is ever clipped by it);
-         swirl = GA.swirl (only used to read the spin direction).  variant = integer that selects the cast (default: rotates per loop).
+         swirl = GA.swirl (only used to read the spin direction).  variant = integer that selects the cast (default: rotates per loop).  tAct0 = the loop time she
+         faces us (cues.turnFront1; default tStart - 1.1): the origin of the four acts (k = seconds after it; the acts scale with tNom - tStart).
      GA.thoughts.prepare(budgetMs)   do (at most about) budgetMs milliseconds of the deferred work; true when everything is ready (== isReady()).
          Usable at ANY time before the first pop (also in the very first frames after build()): plan, per-item ink analysis, canvases, 3 dry dissolves
          (JIT warm-up, one every other call, ~5 ms each); ~250 ms of work in total on a fast CPU, ~700 ms on a slow one.  Call it every frame with 2-3 ms
@@ -10837,7 +11080,8 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
      GA.thoughts.flushSpawn()              finish the pending cube / dot spawning of a dissolve now (tests / recordings).
    EXTRAS
      GA.thoughts.cfg      tunables (CFG below)
-     GA.thoughts.info()   { items, names, roles, heroes, cast, variant, cubes, dots, lastDeath, spawn:[{name,t}], missing:[], dir, buildMs, delay }
+     GA.thoughts.info()   { items, names, roles, heroes, cast, variant, cubes, dots, lastDeath, spawn:[{name,t}], missing:[], dir, buildMs, delay,
+                            beats:[{kind:hero|bulb|firework, name, t (loop s), k (s after turnFront1), sync}], acts:{turnFront1, I, II, III, IV, hit, kScale} (loop s) }
      GA.thoughts.itemsAt(t) -> [{name,role,hero,x,y,s,ex,ey,front,age,state:'enter'|'orbit'|'crumble'}]   (tests / overlays)
      GA.thoughts.debug()  internal state
      GA.thoughts.testBounds({step, W, visTop, visBottom, dissolveAt}) -> {maxOutsideCanvas, maxOutsideEnvelope, maxAboveBand, maxBelowGround, worst, samples, items, ok}
@@ -10846,19 +11090,23 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
 
    CAST: A BUSY MIND (the user: "my mind is very visual and chaotic and happening all the time"; design thinking - spatial thinking and iterating until a design is
          solved - stays the focus, abstract, never literal; she reads a lot: books are the biggest hobby; a chai glass and a tennis racket are small)
-     Four hand-curated casts (GA.thoughts.casts, in loop order: iterate, spatial, solve, depth) rotate from loop to loop.  Every cast has the same 59 items + up to 18 icons (~77 in all); ~70
-     are alive at the end (the fireworks burn out): 4 heroes 205-270 units, 9 supporting 100-170, 5 books 76-110 (open, stack, flipping pages, spines, closed),
-     chai glass 62, racket 72, tennis ball / pencil, 6 small design pieces 56-92, 14 micro marks 18-44 (spark, spiral, loop, squiggle, zigzag, orbit with a
-     satellite, dotted trail, tumbling mini cube, folded strip, pencil doodle that draws itself, constellation, redrawn triangle / square, dial: registered as
-     mSpark .. mRing at the top of this file), 5 idea bulbs 30-56 (props_d bulb*), 12 firework bursts 105-165 (props_d fw*; one-shot, each a fresh burst at a
-     seeded polar position, life = one period, denser towards the hit).  Design pieces and fragments come from props_d.js (rotatingVolume, stackShift, tryAgainFold,
+     Four hand-curated casts (GA.thoughts.casts, in loop order: iterate, spatial, solve, depth) rotate from loop to loop.  Every cast has the same 75 scheduled items
+     (+ ~13 churn twins, ~88 in all; ~70 alive at the end: bulbs and fireworks burn out): 4 heroes 255-338 units (x SIZE_UP 1.25), 9 supporting 125-205, 5 books
+     108-150 (open, stack, flipping pages, spines, closed), chai glass 87, racket 80, tennis ball / pencil, 6 small design pieces 66-110, 12 micro marks 21-52 (spark,
+     spiral, loop, squiggle, zigzag, orbit with a satellite, dotted trail, tumbling mini cube, folded strip, pencil doodle that draws itself, constellation, redrawn
+     triangle / square, dial: registered as mSpark .. mRing at the top of this file), 5 idea bulbs 38-88 (props_d bulb*, at the sync beats, fade after 5.2 s), 10 firework
+     bursts 119-206 (props_d fw*; one-shot, each a fresh burst at a seeded polar position, life = one period, at the BEAT.fw / fwExtra times), 20 freehand icons 52-94.
+     Design pieces and fragments come from props_d.js (rotatingVolume, stackShift, tryAgainFold,
      solvedMark, doodleLoop, stringModel, foldStrip, maquetteCluster, dotWarp, bendLattice ...), books / chai / racket from props_a / props_b.  A missing name falls
      back to the next unused piece of its ring.  BLACKLIST = literal pieces that can never be scheduled.
      FREEHAND ICONS (kind N): up to CFG.ICONS = 18 small hand-drawn line icons (props_e.js; every registered piece tagged 'icon' or named icXxx is discovered at build
      time, the cast takes 18 of them rotating per loop) at 46-80 units, distributed through the depth layers and orbits like the other small pieces; they start their
      draw-on cycle (p.t = age, boil included) when they pop, are drawn at alpha 0.9 and go into the sprite atlas at 18 Hz.  info().icons lists the names.
-     PACING: the first four heroes pop over ~2 s, then supporting pieces with more and more small marks in between (a few at first, the full cloud by tNom-1.5);
-     the fireworks come from tStart+1 on and thicken towards the hit.
+     PACING (ROUND 10, FOUR ACTS; see ACT / BEAT and the comment above them): k = seconds after turnFront1 (= tStart - 1.1).  I (0-5.5) the four heroes one at a time
+     (1.4 / 2.9 / 4.15 / 5.35), the first bulb at 2.4, two sparks; II (5.5-12) a satellite icon per hero, the supporting pieces every 0.68 s each with a satellite
+     (a GROUP: same orbit speed / layer, tethered, a thread), books / hobbies between, bulbs 6.2 / 9.8, firework 9.5; III (12-17.7) the rest of the small pieces
+     swarm in with accelerating gaps, fireworks 12.6 / 14.1 / 15.6 / 16.8 (+ smaller extras), bulbs 13.4 / 16.2, random threads, churn twins; IV (17.7-20.3) no new
+     pops, orbits contract (CFG.FUNNEL) and the flow surges.  info().beats / info().acts publish the real times (R10/tho/BEATS.json).
    GEOMETRY: EVERYTHING REVOLVES AROUND HER, INSIDE THE VORTEX ENVELOPE
      The scene passes the ENVELOPE (build({cx, cy, rx, ry}): an ellipse centred on her neck).  Slots are POLAR (radius fraction rf of (rx, ry), screen angle th).
      Every item rides its own ellipse around HER (a copy of the envelope ellipse scaled by rf, centre a little below the neck, slightly tilted, vertically
@@ -10907,13 +11155,11 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     KNOCK: 0.86,         // strength of the soft paper-coloured knockout behind every design piece (the swirl lines fade out behind it)
     LIFE_ALPHA: [0.82, 0.93],
     DEPTH_ALPHA: 0.14,   // the far half of an orbit is drawn up to this much lighter (and PERSP smaller)
-    SPAWN_FIRST: 0.3,    // first item pops at tStart + this
-    SPAWN_LAST: 2.3,     // last item pops this long before the (nominal) hit
-    GAP_FIRST: 0.95, GAP_LAST: 0.40,   // relative spacing of the pops (smalls squeeze in at half a gap); the series is scaled to fit [first, last]
+    SPAWN_LAST: 1.2,     // after a wait for the preparation the remaining pops are squeezed to end this long before the hit (the schedule itself: ACT / BEAT below)
     GLIDE_FIRST: 0.60, GLIDE: 0.30,    // fraction of the way to her head an item starts from (the first three / the others)
     W_IN: 0.118, W_OUT: 0.072, // angular travel (rad) of an item per unit of "flow" (the flow clock runs ~0.7..1.3 units per second): inner rings faster
     COUNTER_K: 0.62,     // the few counter-revolving pieces turn this much slower
-    SURGE: 1.1,          // the flow speeds up by this much (relative) in the last 1.6 s before the hit
+    SURGE: 1.7,          // the flow speeds up by this much (relative) in the last 2.5 s before the hit (the funnel)
     ENV_K: 0.87,        // the CENTRE of every item stays inside this multiple of the vortex envelope (rx, ry from the scene)
     VIS_MARGIN: 22,      // every item's box (entrance overshoot, bob, dissolve push included) stays this far inside the visible canvas
     FACE_HW: 100, FACE_HH: 100, GIRL_FAR_HW: 30, GIRL_GAP: 22,   // head clearance (all sides); half width of the column an item may hide behind (far side); gaps to the girl
@@ -10922,22 +11168,25 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     SPR_HZ: 12, SPR_HZ_FAST: 20, SPR_HZ_K: { A: 24, H: 24, M: 18, F: 24, I: 18, N: 12 }, SPR_TOL: 0.04,   // small pieces are drawn from cached sprites refreshed at this rate (or when their size changes more than SPR_TOL)
     LINKS: 16,           // taut hairline threads between nearby pieces (a string model / mind map), appearing and fading
     SHADOW: 0.1,         // peak alpha of the soft ground shadow under the design pieces
-    HERO_W_K: 1.4,       // the heroes orbit this much faster (about 7-12 deg/s)
-    ICONS: 20, ICON_SZ: [44, 80], RF_MIN: 0.34, RF_MAX: 0.87,   // freehand icons (props_e): how many alive at once, size range; the centres of all pieces stay at 0.34-0.93 of the envelope (the swirl encompasses the cloud);   // freehand icons (props_e): how many, and their size range
-    LIGHT_TRIES: 40,     // orbit candidates tried for each small piece (the big ones get PLAN_TRIES + refinement)
-    BURSTS: 16, BURST_FIRST: 1.0,   // fireworks: one-shot bursts at seeded polar positions, denser towards the hit
+    HERO_W_K: 1.5,       // the heroes orbit this much faster than the ring they ride (ROUND 10: ~4-9 deg/s in acts I-III: alive, still readable for 2-3 s)
+    SIZE_UP: 1.25,       // ROUND 10: every slot / size range is this much bigger than the approved round-9 cloud (the envelope grew ~30 % as well)
+    FUNNEL: 0.28, FUNNEL_LIFT: 90, FUNNEL_SHRINK: 0.15,   // act IV (last 2.6 s): every orbit contracts by FUNNEL towards her HEAD centre (cy - FUNNEL_LIFT), the pieces shrink by FUNNEL_SHRINK, the flow surges: a pull-in (the planner scores the contracted path, so nothing crosses her body / face)
+    ICONS: 20, ICON_SZ: [44, 80], RF_MIN: 0.34, RF_MAX: 0.87,   // freehand icons (props_e): how many alive at once, size range (x SIZE_UP); the centres of all pieces stay at 0.34-0.93 of the envelope (the swirl encompasses the cloud)
+    LIGHT_TRIES: 32,     // orbit candidates tried for each small piece (the big ones get PLAN_TRIES + refinement)
+    MATE_TRIES: 52, TETHER: 54,   // satellites of a group: more candidates, and their centre stays within TETHER units of touching their leader (planner penalty)
+    BURSTS: 16,          // fireworks: one-shot bursts at seeded polar positions at the BEAT.fw / fwExtra times (see below); caps their number
     MIN_POP_GAP: 0.30,   // pops are never closer than this (at most two entrance wipes at a time)
-    WAIT_MS: 6,          // while the first pop waits for the preparation, each frame spends this long on it
+    WAIT_MS: 8,          // while the first pop waits for the preparation, each frame spends this long on it
     WAIT_DT: 0.25,       // a frame step larger than this is a seek / jump: the preparation is completed synchronously instead of waiting
     FRONT_Z: 0.12,       // sin(orbit angle) above which an item is in front of the girl ('front' layer)
     PERSP: 0.12,         // near items are drawn this much bigger (far ones smaller)
     GIRL_HW: 125, HERO_GIRL_HW: 150, GIRL_TOP: 170,   // girl exclusion: |x-cx| < GIRL_HW (heroes: HERO_GIRL_HW) for y > cy - GIRL_TOP (items keep their whole box out of it)
-    Y_MIN: -6, Y_BOTTOM_GAP: -34, X_MARGIN: 16,   // SOFT preference: items stay inside [Y_MIN, groundY - Y_BOTTOM_GAP] (the band); the hard limit is the visible canvas
+    Y_MIN: -14, Y_BOTTOM_GAP: -40, X_MARGIN: 16,   // SOFT preference: items stay inside [Y_MIN, groundY - Y_BOTTOM_GAP] (the band + a hair: the page fades the canvas only beyond ~y -150 / 900); the hard limit is the visible canvas
     COMFORT: 30,         // wanted gap (units) between neighbouring items (books / small ones less)
     HOME_PULL: 0.18,     // planner: penalty per unit between an item's mean position and its slot's home (beyond 40 units)
-    PLAN_TRIES: 150,         // random orbit candidates evaluated per item (pass 1; pass 2 uses half), plus local refinements
+    PLAN_TRIES: 100,         // random orbit candidates evaluated per item (pass 1; pass 2 uses half), plus local refinements (ROUND 10: 150 -> 100 and 0.45 s sampling: the preparation fits into the walk-in slices on a normal laptop)
     WARM_RUNS: 3,        // dry dissolves run during the preparation (JIT warm-up), one per frame
-    PREP_MS: 2.4,        // budget of the preparation that draw() does by itself while the cast is not ready yet
+    PREP_MS: 6.0,        // budget of the preparation that draw() does by itself while the cast is not ready yet (ROUND 10: 2.4 -> 6 so the planner finishes during the cheap walk-in frames and the first pop never waits)
     STAGGER: 0.55,       // default stagger of a scheduled dissolve: item starts at t0 + 0 .. STAGGER (nearest to her head first)
     STAGGER_POW: 1.3,    // > 1: the first items start almost together, the far ones trail
     ERASE: [0.40, 0.54], // seconds (at speed 1) the front needs to cross an item (first texel erases at its start, the last one at start + this)
@@ -10964,8 +11213,9 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
   var RINGS = { D: FALLBACK, T: ['shapeCircle', 'dotCluster', 'dotDisc', 'cubeLine', 'volumeShift', 'kitOfParts'], B: ['bookOpen', 'bookClosed', 'bookStack', 'bookSpines', 'bookFlip'], C: ['chaiGlass', 'kulhad', 'chaiCup'], R: ['tennisRacket'],
     X: ['tennisBall', 'pencil'], N: [], M: MICRO, F: ['fwPeony', 'fwWillow', 'fwRing', 'fwSpiral', 'fwCrackle', 'fwChrysanthemum', 'fwSparkle', 'mSpark'], I: ['bulbClassic', 'bulbSpiral', 'bulbSwitch', 'bulbCluster', 'mRing'] };
   var SIZE_K = { tennisRacket: 1.0, bookSpines: 1.0, rotatingVolume: 0.8, tryAgainFold: 0.8 };   // per-piece size trim on top of the slot size
+  var SIZE_UP_K = { B: 1.1, C: 1.12, R: 1.12, X: 1.12, T: 1.18, M: 1.18, N: 1.18 };            // ROUND 10 growth per kind (the rest: CFG.SIZE_UP): the hierarchy heroes > supporting > books / hobbies > small stays
   var LW_K = { solvedMark: 0.85 };                         // per-piece line-weight trim
-  var HERO_MAX = 270;                                      // no hero is larger than this (longest visible side, world units)
+  var HERO_MAX = 338;                                      // no hero is larger than this (longest visible side, world units; 270 x SIZE_UP)
   var ICON_EXCLUDE = { icRacket: 1, icChaiGlass: 1, icCoffeeCup: 1, icTennisBall: 1, icPencil: 1, icOpenBook: 1, icClosedBook: 1, icCube: 1 };   // the hobby slots (racket, chai glass, ball, pencil, 5 books) and the cubes already hold these subjects
 
   /* ---- the slots.  POLAR positions in the VORTEX ENVELOPE (ellipse rx, ry centred on her neck, given by the scene): rf = radius as a fraction of the envelope
@@ -10984,8 +11234,27 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     { k: 'C', rf: 0.60, th: 62, s: 78, dl: 1 },
   ];
   var HOBBY = [{ k: 'R', rf: 0.98, th: 162, s: 72, dl: 0 }, { k: 'X', rf: 0.70, th: -82, s: 42, dl: 0 }, { k: 'X', rf: 0.92, th: 202, s: 78, dl: -1 }];
-  var LIGHT_COUNT = { T: 5, M: 7, I: 8, N: 22 };
-  var CHURN = { N: 1, M: 1, T: 1, I: 1 };                   // these small pieces live 3-6 s, fade, and a twin appears elsewhere (the cloud is never static)
+  var LIGHT_COUNT = { T: 6, M: 12, I: 5, N: 20 };           // small design pieces, micro marks, idea bulbs (= the 5 sync beats), freehand icons
+  var CHURN = { N: 1, M: 1, T: 1 };                         // these small pieces live 3-7 s, fade, and a twin appears elsewhere (the cloud is never static); bulbs just fade
+  /* ---- THE FOUR ACTS of the thought process (ROUND 10).  k = seconds after the scene's cue turnFront1 (she faces us).  The module only receives tStart
+          (= turnFront1 + ACT_OFF: cues dots = turnFront1 + 0.2, swirlStart = dots + 0.9) and the hit tNom (= turnFront1 + 20.3): tOfK() maps k to loop seconds and
+          scales the acts when a host's thinking span is not the 19.2 s of the landing page (build option tAct0 = turnFront1 overrides the offset).
+          I  spark (0-5.5):      one hero at a time, each given its moment; the first bulb; two tiny sparks.
+          II ideas multiply (5.5-12): a satellite icon attaches to every hero, then the supporting pieces every ~0.7 s, each with a satellite 0.3-0.5 s later
+                                 (a GROUP: same orbit speed / depth layer, tethered by the planner, linked by a thread), books / chai / racket / ball / pencil
+                                 in between, bulbs, the first firework.
+          III overload (12-17.7): the rest of the small pieces swarm in with accelerating gaps, fireworks and bulbs pop all over, random threads, churn twins.
+          IV funnel (17.7-20.3): no new piece; the orbits contract (CFG.FUNNEL) and the flow surges; the ball arrives.
+          BEAT = the real pop times: bulb / fw are SYNC POINTS the girl reacts to; info().beats publishes them (loop seconds + k) after any wait / compression. ---- */
+  var ACT_OFF = 1.1;
+  var ACT = { I: 0, II: 5.5, III: 12.0, IV: 17.7, END: 20.3 };
+  var BEAT = {
+    hero: [1.4, 2.9, 4.15, 5.35], heroMate: [5.7, 6.1, 6.5, 6.9], spark: [4.55, 5.05],
+    S: [5.9, 6.58, 7.26, 7.94, 8.62, 9.3, 9.98, 10.66, 11.34], mateLag: [0.32, 0.5],
+    B: [6.25, 7.6, 8.95, 10.3, 11.65], C: [7.0], R: [8.3], X: [9.65, 11.0],
+    bulb: [2.4, 6.2, 9.8, 13.4, 16.2], fw: [9.5, 12.6, 14.1, 15.6, 16.8], fwExtra: [13.35, 15.05, 17.35, 18.25, 19.05],
+    swarm: [12.25, 17.6], swarmGap: [0.34, 0.11], bulbLife: 5.2,
+  };
   /* the 32 freehand icons of props_e.js in a category-mixed order (design tools / mind / hobbies alternate); each cast takes 22 consecutive ones starting 8 further on, so all 32 appear over four loops */
   var ICON_ORDER = ['icPencil', 'icLightbulb', 'icOpenBook', 'icCube', 'icEye', 'icChaiGlass', 'icCompass', 'icRefresh', 'icRacket', 'icMagnifier', 'icHeadSpiral', 'icNotebook', 'icSetSquare', 'icInfinity', 'icCoffeeCup', 'icPaperPlane',
     'icKey', 'icClosedBook', 'icScissors', 'icSparkle', 'icHeadphones', 'icPuzzle', 'icCloud', 'icEraser', 'icCamera', 'icBoat', 'icRuler', 'icTennisBall', 'icBrush', 'icPlant', 'icTablet', 'icLaptop'];
@@ -11236,9 +11505,12 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
 
   // ------------------------------------------------------------------------------------------------ flow clock
   /** "flow" = the clock that drives every orbit: runs faster with the swirl's intensity and surges in the last 1.6 s before the (nominal) hit */
+  /** k (seconds after turnFront1) of loop time t, and back (G.actOff = tStart - turnFront1, G.kScale = the host's thinking span / the landing page's) */
+  function kOf(t) { return G.actOff + (t - G.tStart) / G.kScale; }
+  function tOfK(k) { return G.tStart + (k - G.actOff) * G.kScale; }
   function flowRate(t) {
-    var r = 0.72 + 0.55 * sstep(G.tStart, G.tFull, t);
-    r *= 1 + CFG.SURGE * sstep(G.tNom - 2.5, G.tNom, t);                             // the crescendo: everything speeds up in the last 2.5 s
+    var k = kOf(t), r = 0.52 + 0.36 * sstep(ACT.II - 0.8, ACT.II + 1.8, k) + 0.57 * sstep(ACT.III - 0.6, ACT.III + 3.6, k);   // the acts: I calm (0.52), II lively (0.88), III busy (1.45)
+    r *= 1 + CFG.SURGE * sstep(G.tNom - 2.5, G.tNom, t);                             // act IV, the funnel: everything speeds up in the last 2.5 s
     r *= 1 - 0.5 * sstep(G.tNom, G.tNom + 0.9, t);
     return r;
   }
@@ -11258,10 +11530,10 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
   // ------------------------------------------------------------------------------------------------ orbit + pose
   /** position on the item's tilted ellipse at flow value R (planning + runtime share this) */
   function orbitXY(it, R, t, out) {
-    var phi = it.phi0 + G.dir * it.sg * it.w * (R - it.R0), sp = sin(phi), cp = cos(phi);
-    var ex = it.a * (1 + 0.04 * sin(0.33 * t + it.p1)) * cp, ey = it.b * (1 + 0.05 * sin(0.27 * t + it.p2)) * sp;
-    out.x = G.cx + it.ox + ex * it.ct - ey * it.st;
-    out.y = G.cy + it.oy + ex * it.st + ey * it.ct;
+    var phi = it.phi0 + G.dir * it.sg * it.w * (R - it.R0), sp = sin(phi), cp = cos(phi), fs = sstep(G.tNom - 2.6, G.tNom - 0.4, t), f = 1 - CFG.FUNNEL * fs;   // act IV: the funnel pulls everything in towards her head
+    var ex = it.a * f * (1 + 0.04 * sin(0.33 * t + it.p1)) * cp, ey = it.b * f * (1 + 0.05 * sin(0.27 * t + it.p2)) * sp;
+    out.x = G.cx + it.ox * f + ex * it.ct - ey * it.st;
+    out.y = G.cy + it.oy + ex * it.st + ey * it.ct - (it.oy + CFG.FUNNEL_LIFT) * (1 - f);
     out.zn = sp;
     return out;
   }
@@ -11296,7 +11568,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
       }
     }
     o.x = x; o.y = y; o.zn = zn;
-    o.sc = it.sc0 > 0 && t >= it.t0 ? it.sc0 : (1 + CFG.PERSP * zn) * (1 + it.br * sin(0.9 * t + it.p7)) * (1 + swell);
+    o.sc = it.sc0 > 0 && t >= it.t0 ? it.sc0 : (1 + CFG.PERSP * zn) * (1 + it.br * sin(0.9 * t + it.p7)) * (1 + swell) * (1 - CFG.FUNNEL_SHRINK * sstep(G.tNom - 2.6, G.tNom - 0.4, t));   // (act IV: sucked in, a little smaller)
     o.da = min(1, (1 - CFG.DEPTH_ALPHA * sstep(0.1, -1, zn)) * it.dla * (1 + 0.05 * sin(1.3 * t + it.p6)));   // far = a little lighter; gentle breathing of the alpha
     var ph = R * 0.9;
     o.rx = it.rx0 + it.ax * sin(ph * it.f1 + it.q1);
@@ -11337,7 +11609,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
       return null;
     }
     function ent(sl, name, extra) {
-      var e = { n: name, k: sl.k, rf: clamp(sl.rf, CFG.RF_MIN, CFG.RF_MAX), th: sl.th * Math.PI / 180, cw: sl.cw || 1, v: sl.k === 'B' && cast.Bv && cast.Bv[ctr.B - 1] !== undefined ? cast.Bv[ctr.B - 1] : sl.v, size: sl.s * (SIZE_K[name] || 1), dl: sl.dl || 0 };
+      var e = { n: name, k: sl.k, rf: clamp(sl.rf, CFG.RF_MIN, CFG.RF_MAX), th: sl.th * Math.PI / 180, cw: sl.cw || 1, v: sl.k === 'B' && cast.Bv && cast.Bv[ctr.B - 1] !== undefined ? cast.Bv[ctr.B - 1] : sl.v, size: sl.s * (SIZE_UP_K[sl.k] || CFG.SIZE_UP) * (SIZE_K[name] || 1), dl: sl.dl || 0, kt: 0, u: 0 };
       if (extra) for (var k in extra) e[k] = extra[k];
       return e;
     }
@@ -11361,24 +11633,56 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
       }
     }
     light.sort(function (a, b) { return a.u - b.u; });
-    // pop order: the first four heroes, then the other heavy pieces with the small ones in between (more and more of them)
-    var seq = heavy.slice(0, 4), hv = heavy.slice(4), ratio = light.length / Math.max(1, hv.length), li = 0, a0;
-    for (i = 0; i < hv.length; i++) {
-      seq.push(hv[i]); a0 = floor((i + 1) * ratio);
-      while (li < a0 && li < light.length) seq.push(light[li++]);
+    // ---- THE ACT SCHEDULE (k = seconds after turnFront1, see ACT / BEAT).  Heroes one at a time in act I; in act II every hero and every supporting piece gets a
+    //      SATELLITE (a small piece beside it, same orbit speed / sense / depth layer: a group), books and hobbies in between; the remaining small pieces swarm in
+    //      during act III with accelerating gaps; bulbs and fireworks at the sync beats.
+    function byKind(list, ks) { var o = []; for (var q2 = 0; q2 < list.length; q2++) if (ks.indexOf(list[q2].k) >= 0) o.push(list[q2]); return o; }
+    var heroes = byKind(heavy, 'AH'), sups = byKind(heavy, 'S'), books = byKind(heavy, 'B'), chai = byKind(heavy, 'C');
+    var tl = byKind(light, 'T'), ml = byKind(light, 'M'), il = byKind(light, 'I'), nl = byKind(light, 'N'), rl = byKind(light, 'R'), xl = byKind(light, 'X');
+    function at(list, ks, step) { for (var q2 = 0; q2 < list.length; q2++) list[q2].kt = q2 < ks.length ? ks[q2] : ks[ks.length - 1] + (step || 0.4) * (q2 - ks.length + 1); }
+    at(heroes, BEAT.hero, 0.6); at(sups, BEAT.S, 0.68); at(books, BEAT.B, 0.7); at(chai, BEAT.C, 0.7); at(rl, BEAT.R, 0.7); at(xl, BEAT.X, 0.7); at(il, BEAT.bulb, 1.5);
+    for (i = 0; i < il.length; i++) { il[i].life = BEAT.bulbLife; il[i].churn = false; }
+    if (il.length) { il[0].rf = 0.44; il[0].th = -62 * Math.PI / 180; il[0].dl = 0; il[0].cw = 1; il[0].size *= 1.35; }                        // the first idea lights up beside her head
+    var sparks = ml.splice(0, min(2, ml.length)); at(sparks, BEAT.spark, 0.5);
+    for (i = 0; i < sparks.length; i++) sparks[i].churn = false;
+    function mate(en, lead, k) {                                                                   // a satellite: beside its leader, same depth layer / sense / (later) orbit speed
+      en.leader = lead; en.kt = k; en.dl = lead.dl; en.cw = lead.cw; en.churn = 'mate';
+      en.th = lead.th + rng.sign() * rng.range(28, 42) * Math.PI / 180; en.rf = clamp(lead.rf + rng.range(-0.1, 0.12), CFG.RF_MIN, CFG.RF_MAX);
     }
-    while (li < light.length) seq.push(light[li++]);
-    // fireworks: one-shot bursts at seeded polar positions, denser towards the hit (a crescendo)
-    var nb = clamp(round(CFG.BURSTS * pow(W / 2773, 0.9)), 4, CFG.BURSTS), tF0 = G.tStart + CFG.BURST_FIRST, LF = G.tNom - 0.7 - tF0;
-    for (i = 0; i < nb; i++) {
+    var leaders = heroes.concat(sups), pick = [nl, ml, tl], pi = 0, cand, lead, en;
+    for (i = 0; i < leaders.length; i++) {
+      lead = leaders[i];
+      if (i < heroes.length) cand = nl.length ? nl : ml.length ? ml : tl;                           // the heroes get icons
+      else { cand = null; for (q = 0; q < 3 && !cand; q++) { var lst = pick[(pi + q) % 3]; if (lst.length) cand = lst; } pi++; }
+      if (!cand || !cand.length) break;
+      en = cand.shift();
+      mate(en, lead, i < heroes.length ? BEAT.heroMate[min(i, BEAT.heroMate.length - 1)] : lead.kt + rng.range(BEAT.mateLag[0], BEAT.mateLag[1]));
+    }
+    // the swarm (act III): the rest, kinds interleaved, accelerating gaps, a few pops in bursts of 2-3 and a few stragglers
+    var swarm = [], lists = [nl, tl, ml], li = 0, guard = 0;
+    while ((nl.length || tl.length || ml.length) && guard++ < 200) { var L2 = lists[li % 3]; li++; if (L2.length) swarm.push(L2.shift()); }
+    var nsw = swarm.length, g0 = BEAT.swarmGap[0], g1 = BEAT.swarmGap[1], acc = 0, gaps = [];
+    for (i = 0; i < nsw; i++) { gaps.push(g0 + (g1 - g0) * i / max(1, nsw - 1)); acc += gaps[i]; }
+    var kk = BEAT.swarm[0], span = (BEAT.swarm[1] - BEAT.swarm[0]) / max(1e-3, acc);
+    for (i = 0; i < nsw; i++) { swarm[i].kt = kk; kk += gaps[i] * span; }
+    for (i = 1; i < nsw - 2; i++) {
+      if ((i * 7 + 3) % 5 === 0) { swarm[i + 1].kt = swarm[i].kt + 0.05; swarm[i + 2].kt = swarm[i].kt + 0.11; i += 2; }
+      else if ((i * 11 + 1) % 9 === 0) swarm[i].kt += 0.3;
+    }
+    var seq = heavy.concat(light);
+    seq.sort(function (a, b) { return a.kt - b.kt || (a.u || 0) - (b.u || 0); });
+    // fireworks: one-shot bursts at seeded polar positions: the 5 sync bursts (big, mid layer) and the smaller extras of the overload / the funnel
+    var nb = clamp(round(CFG.BURSTS * pow(W / 2773, 0.9)), 4, CFG.BURSTS), fk = BEAT.fw.concat(BEAT.fwExtra);
+    for (i = 0; i < nb && i < fk.length; i++) {
       name = nameFor('F'); if (!name) continue;
-      var gb = golden(j++), per = GA.props.list[name] && GA.props.list[name].period, at = i < 3 ? G.tStart + 2.1 + 0.55 * i + rng.range(-0.1, 0.1) : tF0 + 3.1 + (LF - 3.1) * Math.pow((i - 2.5) / (nb - 2.5), 0.42) + rng.range(-0.2, 0.2);
-      bursts.push(ent({ k: 'F', rf: 0.45 + 0.47 * Math.sqrt((gb.rf - 0.37) / 0.56), th: gb.th, s: rng.range(105, 165), dl: DLP[j % 10] }, name, { at: max(tF0, at), life: clamp(per || 2.4, 1.4, 3.4) }));
+      var gb = golden(j++), per = GA.props.list[name] && GA.props.list[name].period, sync = i < BEAT.fw.length;
+      bursts.push(ent({ k: 'F', rf: 0.45 + 0.47 * Math.sqrt((gb.rf - 0.37) / 0.56), th: gb.th, s: sync ? rng.range(128, 165) : rng.range(95, 120), dl: sync ? 0 : DLP[j % 10] }, name, { kt: fk[i], sync: sync, life: clamp(per || 2.4, 1.4, 3.4) }));
     }
     function twin(en) {                                                                                  // the same kind of piece re-enters at another slot (another radius, angle and depth layer)
       var g = golden(j++), e = {}, k;
       for (k in en) e[k] = en[k];
       e.rf = clamp(g.rf, CFG.RF_MIN, CFG.RF_MAX); e.th = g.th * Math.PI / 180; e.dl = DLP[j % 10]; e.life = undefined; e.size = en.size * rng.range(0.85, 1.15); e.cw = (j % 5 === 0) ? -1 : 1;
+      e.leader = undefined; e.item = undefined; e.churn = false;                                       // (a twin is free: no group, no further twin)
       return e;
     }
     G.info.cast = cast.name;
@@ -11388,25 +11692,6 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
 
   /** pop times of the entries in pop order: every gap is weighted by the kind (heroes slow, small marks quick) and shrinks towards the end; scaled to fill [tA, tB];
       pieces that wipe in are never closer than MIN_POP_GAP (at most two wipes at a time) */
-  function schedule(entries, tA, tB) {
-    var n = entries.length, w = [0], i, sum = 0, GW = { A: 2.2, H: 1.9, S: 1.0, B: 0.55, C: 0.5, R: 0.5, X: 0.45, T: 0.45, N: 0.3, M: 0.22, I: 0.25 }, p, k;
-    for (i = 1; i < n; i++) { p = i / Math.max(1, n - 1); w.push((GW[entries[i].k] || 0.5) * (1 - 0.68 * p)); sum += w[i]; }
-    k = (tB - tA) / Math.max(1e-3, sum);
-    var t = tA, out = [tA], lastW = (entries[0].k === 'A' || entries[0].k === 'H' || entries[0].k === 'S') ? tA : -1e9, wipe;
-    for (i = 1; i < n; i++) {
-      t += w[i] * k; wipe = entries[i].k === 'A' || entries[i].k === 'H' || entries[i].k === 'S';
-      if (wipe) { if (t - lastW < CFG.MIN_POP_GAP) t = lastW + CFG.MIN_POP_GAP; lastW = t; }
-      out.push(t);
-    }
-    var LIGHTK = { M: 1, N: 1, T: 1, I: 1, X: 1 };
-    for (i = 1; i < n - 2; i++) {                                                                      // some small pieces pop in bursts of 2-3, some lag behind
-      if (LIGHTK[entries[i].k] && LIGHTK[entries[i + 1].k] && LIGHTK[entries[i + 2].k] && (i * 7 + 3) % 5 === 0) { out[i + 1] = out[i] + 0.05; out[i + 2] = out[i] + 0.11; i += 2; }
-      else if (LIGHTK[entries[i].k] && (i * 11 + 1) % 9 === 0) out[i] += 0.35;
-    }
-    if (t > tB + 1e-3 && n > 2) { var f = (tB - tA) / (t - tA); for (i = 1; i < n; i++) out[i] = tA + (out[i] - tA) * f; }
-    return out;
-  }
-
   function variantSeed(seed, v) { return v === undefined ? seed : seed - (seed % 6) + v; }
   var KINDS = {
     A: { hero: 1, heavy: 1, wipe: 1, knock: 1, spr: 1, enter: 1.5 }, H: { hero: 1, heavy: 1, wipe: 1, knock: 1, spr: 1, enter: 1.5 },
@@ -11430,13 +11715,13 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     var dartFar = !heavy && !burst && dl < 0 && en.rf <= 0.72, dartMid = !heavy && !burst && dl === 0 && en.rf <= 0.6, tk = hero ? 1 : 1.5;
     if (en.k === 'N') { rest = rng.range(-0.45, 0.45); rz0 = rest; cz = abs(cos(rz0)); sz = abs(sin(rz0)); }                          // the icons roll more
     var it = {
-      name: en.n, role: life ? 'L' : tiny ? 'A' : 'D', hero: hero, kind: en.k, def: def, idx: idx, small: tiny, s: s, bw: bw, bh: bh, seed: variantSeed(rng.int(1, 9999), en.v), ts: ts,
+      name: en.n, role: life ? 'L' : tiny ? 'A' : 'D', hero: hero, kind: en.k, sync: !!en.sync, def: def, idx: idx, small: tiny, s: s, bw: bw, bh: bh, seed: variantSeed(rng.int(1, 9999), en.v), ts: ts,
       heavy: heavy, light: !heavy, mstep: heavy ? 1 : 2, useWipe: !!K.wipe, spr: !!K.spr, fast: !!FAST_SPR[en.n], sprite: null, shd: heavy, dl: dl, dla: CFG.DL_ALPHA[dl + 1], life: per, m1: 0,
       wob: wob, bobMax: wob * 32, noBehind: bc, dtA: dartFar || dartMid ? 1 : 0, dtP: rng.range(3.6, 6.4), dtPh: rng.range(0, 1), dtD: 0.075, dtX: dartFar ? rng.sign() * rng.range(55, 85) : 0, dtY: dartFar ? rng.range(-25, 25) : 0, dtRad: dartMid ? rng.range(35, 55) : 0,
       swA: swoop ? rng.range(0.28, 0.5) : 0, swP: rng.range(3.6, 6.2), swPh: rng.range(0, 1), swD: 0.38,
       popR: 1.3 * min(0.52 * hypot(bw, bh) * 1.15, CFG.POP_R) + 6, rf: en.rf, th: en.th, sg: en.cw, wBase: wBase, gwFar: bc ? CFG.GIRL_HW : heavy ? CFG.GIRL_FAR_HW : 85, gg: heavy ? CFG.GIRL_GAP : 12,
       home: { x: G.cx + en.rf * G.rx * cos(en.th), y: G.cy + en.rf * G.ry * sin(en.th) },
-      alpha: (bc ? 1 : life ? rng.range(CFG.LIFE_ALPHA[0], CFG.LIFE_ALPHA[1]) : en.k === 'N' ? 0.9 : 1), lwm: (life ? CFG.LIFE_LW * (bc ? 1.15 : 0.9) : hero ? CFG.HERO_LW : tiny ? 1 : CFG.SUP_LW) * CFG.DL_LW[dl + 1] * (LW_K[en.n] || 1),
+      alpha: (bc ? 1 : life ? rng.range(CFG.LIFE_ALPHA[0], CFG.LIFE_ALPHA[1]) : en.k === 'N' ? 0.9 : en.k === 'M' ? 0.82 : en.k === 'T' ? 0.92 : 1), lwm: (life ? CFG.LIFE_LW * (bc ? 1.15 : 0.9) : hero ? CFG.HERO_LW : tiny ? 1 : CFG.SUP_LW) * CFG.DL_LW[dl + 1] * (LW_K[en.n] || 1),
       tp: ts, comfort: hero ? CFG.COMFORT + 6 : en.k === 'S' ? CFG.COMFORT - 4 : en.k === 'B' ? 46 : en.k === 'C' ? 40 : 8, br: hero ? 0.03 : heavy ? 0.026 : 0.045, knock: !!K.knock, age: 0, rotF: 0, kn: null, fieldOK: false,
       enter: K.enter || 1, wipeT: hero ? 0.9 : 0.55, pz: null, sz: hero ? 0.74 : K.wipe ? rng.range(0.5, 0.64) : rng.range(0.34, 0.55), sw: hero ? 7 : K.wipe ? 11 : rng.range(11, 18), glide: burst ? 0 : idx < 3 ? CFG.GLIDE_FIRST : CFG.GLIDE,
       ex: 0.5 * (bw * cz + bh * sz) * 1.04, ey: 0.5 * (bw * sz + bh * cz) * 1.04,
@@ -11447,7 +11732,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
       q1: rng.range(0, TAU), q2: rng.range(0, TAU), q3: rng.range(0, TAU),
       rzr: rng.range(-0.025, 0.025) * (tiny ? 6 : hero ? 0.4 : 2), spin: rng.sign() * rng.range(0.6, 1.0) * (hero ? 0.3 : 1),
       p1: rng.range(0, TAU), p2: rng.range(0, TAU), p3: rng.range(0, TAU), p4: rng.range(0, TAU), p5: rng.range(0, TAU), p6: rng.range(0, TAU), p7: rng.range(0, TAU),
-      pt0: burst || K.t0 ? 0.04 : hero ? 0.2 : rng.range(0, 40), wipe: rng.range(0, TAU), pa: rng.range(0, TAU),
+      pt0: burst || K.t0 || en.k === 'I' ? 0.04 : hero ? 0.2 : rng.range(0, 40), wipe: rng.range(0, TAU), pa: rng.range(0, TAU),   // (bursts, icons and bulbs start their story at their pop: the bulb lights up on its beat)
       // orbit (filled by the planner)
       a: 500, b: 250, tilt: 0, ct: 1, st: 0, ox: 0, oy: 0, phi0: 0, w: 0.12, R0: 0, dRm: 0,
       // preparation + dissolve state
@@ -11458,6 +11743,9 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     };
     it.R0 = rint(ts);
     it.dRm = rint(ts + 0.5 * min(per, G.tNom + 0.3 - ts)) - it.R0;
+    if (en.leader && en.leader.item) {                                                       // a SATELLITE: it rides its leader's orbit (speed, sense, phase offset: a group that stays together), no swoops / darts of its own
+      var ld = en.leader.item; it.lead = ld; it.wBase = ld.wBase; it.sg = ld.sg; it.mside = en.th > ld.th ? 1 : -1; it.wob = min(it.wob, 1.2); it.swA = 0; it.dtA = 0;
+    }
     return it;
   }
 
@@ -11483,7 +11771,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
       then everybody again against ALL the others, then repair rounds for the unhappy ones.  The random stream is consumed in a fixed order,
       so the result does not depend on how the work is sliced. */
   function planInit(items, opt) {
-    var W = G.W, N = items.length, dtg = 0.4, tg0 = items[0].ts, M = floor((G.tNom + 0.3 - tg0) / dtg) + 1, i, m, it;
+    var W = G.W, N = items.length, dtg = 0.45, tg0 = items[0].ts, M = floor((G.tNom + 0.3 - tg0) / dtg) + 1, i, m, it;
     var gTop = G.cy - CFG.GIRL_TOP, gBot = G.groundY + 20, hTop = G.vt - 10, hBot = G.cy - 150;
     var Pl = G.plan = {
       N: N, M: M, tg0: tg0, items: items, rng: U.rng(G.seed + 3), RT: new Float64Array(M), TT: new Float64Array(M),
@@ -11519,13 +11807,17 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
       v = Pl.vt - (y - eyb); if (v > 0) pen += v * 4;
       v = (y + eyb) - Pl.vb; if (v > 0) pen += v * 4;
       v = Pl.sTop - (y - ey); if (v > 0) pen += v * 5;                          // (soft: stay inside the band)
-      v = (y + ey) - Pl.sBot; if (v > 0) pen += v * 5;
+      v = (y + ey) - Pl.sBot; if (v > 0) pen += v * 8;                            // (nothing hangs below her feet)
       dx = (x - G.cx) / Pl.rx; dy = (y - G.cy) / Pl.ry; nr = sqrt(dx * dx + dy * dy);
       if (nr > CFG.ENV_K) pen += (nr - CFG.ENV_K) * Pl.rx * 14;                 // the centre stays inside the vortex envelope
       gwU = zn < -0.15 || it.dl < 0 ? it.gwFar : it.gw;                          // far side / far depth layer: she may hide part of it
-      g = obbGap(x, y, hw, hh, it.oc, it.os, G.cx, Pl.gy, gwU, Pl.ghh, 1, 0); if (g < it.gg) pen += (it.gg - g) * 5;
+      var gxt = TT[m2] > G.tNom - 2.6 ? 60 : 0;                                   // (act IV: the funnel moves pieces ~250 u/s: keep 60 extra units so nothing drifts into her between two samples)
+      g = obbGap(x, y, hw, hh, it.oc, it.os, G.cx, Pl.gy, gwU, Pl.ghh, 1, 0); if (g < it.gg + gxt) pen += (it.gg + gxt - g) * (zn > -0.15 && it.dl >= 0 ? 25 : 5);   // (a piece passing in FRONT of her column is never acceptable: 5x the far-side weight)
       g = obbGap(x, y, hw, hh, it.oc, it.os, G.cx, Pl.hdY, CFG.FACE_HW, CFG.FACE_HH, 1, 0); if (g < 20) pen += (20 - g) * 5;     // never crowd her face
       if (Pl.corridor && TT[m2] > G.tHit - 1.7) { g = obbGap(x, y, hw, hh, it.oc, it.os, G.cx, Pl.hy, Pl.hhw, Pl.hhh, 1, 0); if (g < 0) pen -= g * 2; }
+      if (it.lead && it.lead.placed && m2 >= it.lead.m0 && m2 < it.lead.m1) {                 // a satellite stays tethered to its leader (centre within TETHER of touching it)
+        var ld = it.lead; v = hypot(x - ld.px[m2], y - ld.py[m2]) - 0.45 * (ld.diag * ld.ps[m2] + it.diag * kk) - CFG.TETHER; if (v > 0) pen += v * 0.5;
+      }
       if ((m2 - it.m0) % it.mstep === 0) {
         for (j2 = 0; j2 < N; j2++) {
           q = items[j2];
@@ -11555,6 +11847,15 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
       such that the mean position of its life is the slot's home (small pieces try a wider neighbourhood) */
   function planSample(it) {
     var Pl = G.plan, rng = Pl.rng, c = Pl.cand, lt = it.light, rf = clamp(it.rf + rng.gauss() * (lt ? 0.1 : 0.06), CFG.RF_MIN - 0.02, CFG.RF_MAX + 0.02), kap = lt ? rng.range(0.62, 1.25) : rng.range(0.84, 1.1);
+    if (it.lead) {                                                                          // a satellite: (nearly) its leader's ellipse, the same speed and flow origin, a phase offset beside it
+      var ld = it.lead;
+      c.tilt = clamp(ld.tilt + rng.gauss() * 0.06, -0.6, 0.5); c.ct = cos(c.tilt); c.st = sin(c.tilt);
+      c.ox = clamp(ld.ox + rng.range(-24, 24), -60, 60); c.oy = clamp(ld.oy + rng.range(-16, 24), -20, 80);
+      c.a = clamp(ld.a * (1 + rng.gauss() * 0.07), Pl.AMIN, Pl.AMAX); c.b = clamp(ld.b * (1 + rng.gauss() * 0.09), Pl.BMIN, Pl.BMAX);
+      c.w = ld.w * rng.range(0.985, 1.015); c.R0 = ld.R0; c.sg = ld.sg; c.p1 = ld.p1; c.p2 = ld.p2;
+      c.phi0 = ld.phi0 + it.mside * (rng.next() < 0.8 ? 1 : -1) * rng.range(0.34, 0.62);
+      return;
+    }
     c.tilt = lt ? rng.range(-0.55, 0.45) : rng.range(-0.2, 0.14); c.ct = cos(c.tilt); c.st = sin(c.tilt);
     c.ox = lt ? rng.range(-60, 60) : rng.range(-28, 28); c.oy = lt ? rng.range(-20, 70) : rng.range(0, 50);
     c.a = clamp(rf * Pl.rx, Pl.AMIN, Pl.AMAX); c.b = clamp(rf * Pl.ry * kap, Pl.BMIN, Pl.BMAX);
@@ -11571,14 +11872,14 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     c.a = clamp(src.a * (1 + rng.gauss() * 0.06 * k), Pl.AMIN, Pl.AMAX); c.b = clamp(src.b * (1 + rng.gauss() * 0.07 * k), Pl.BMIN, Pl.BMAX);
     c.tilt = clamp(src.tilt + rng.gauss() * 0.04 * k, it.light ? -0.6 : -0.3, it.light ? 0.5 : 0.2); c.ct = cos(c.tilt); c.st = sin(c.tilt);
     c.ox = clamp(src.ox + rng.gauss() * 14 * k, -45, 45); c.oy = clamp(src.oy + rng.gauss() * 14 * k, -10, 80);
-    c.w = clamp(src.w + rng.gauss() * 0.008 * k, it.wBase * 0.85, it.wBase * 1.15);
+    c.w = it.lead ? src.w : clamp(src.w + rng.gauss() * 0.008 * k, it.wBase * 0.85, it.wBase * 1.15);     // (a satellite keeps its leader's speed)
   }
   /** the next job: {i, tries, hill, again} or a re-score job {score:true, i}; null when the plan is complete */
   function planNextJob() {
     var Pl = G.plan, items = Pl.items, hv = Pl.hv, k;
     for (;;) {
-      if (Pl.stage === 0) { if (Pl.idx < hv.length) return { i: hv[Pl.idx++], tries: CFG.PLAN_TRIES, hill: 90, again: false }; Pl.stage = 1; Pl.idx = 0; }
-      else if (Pl.stage === 1) { if (Pl.idx < hv.length) return { i: hv[Pl.idx++], tries: CFG.PLAN_TRIES >> 1, hill: 60, again: true }; Pl.stage = 2; Pl.idx = 0; Pl.bad = null; Pl.rs = 0; }
+      if (Pl.stage === 0) { if (Pl.idx < hv.length) return { i: hv[Pl.idx++], tries: CFG.PLAN_TRIES, hill: 70, again: false }; Pl.stage = 1; Pl.idx = 0; }
+      else if (Pl.stage === 1) { if (Pl.idx < hv.length) return { i: hv[Pl.idx++], tries: CFG.PLAN_TRIES >> 1, hill: 45, again: true }; Pl.stage = 2; Pl.idx = 0; Pl.bad = null; Pl.rs = 0; }
       else if (Pl.stage <= 5) {            // repair rounds: re-score the big pieces against the final layout, then give the unhappy ones (worst first) more tries
         if (!Pl.bad) {
           if (Pl.rs < hv.length) return { score: true, i: hv[Pl.rs++] };       // (one re-score per job, so the slices stay short)
@@ -11591,7 +11892,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
         Pl.stage++; Pl.idx = 0; Pl.bad = null; Pl.rs = 0;
       }
       else if (Pl.stage === 6) {           // the small pieces: a handful of candidates each, against the big ones only (they may overlap each other a little)
-        if (Pl.idx < Pl.lt.length) return { i: Pl.lt[Pl.idx++], tries: CFG.LIGHT_TRIES, hill: 16, again: false };
+        if (Pl.idx < Pl.lt.length) { var li2 = Pl.lt[Pl.idx++], mt = !!items[li2].lead; return { i: li2, tries: mt ? CFG.MATE_TRIES : CFG.LIGHT_TRIES, hill: mt ? 30 : 16, again: false }; }
         Pl.stage = 7;
       }
       else return null;
@@ -12039,9 +12340,10 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     var gen = GEN, seed = o.seed === undefined ? 9 : o.seed, rng = U.rng(seed * 101 + gen * 17 + 1);
     var rxE = clamp(o.rx || min(0.27 * W, 780), 200, 0.47 * W), ryE = clamp(o.ry || 380, 150, 600);
     var vt = o.visTop !== undefined ? o.visTop : S.visTop !== undefined ? S.visTop : -0.14 * H, vb = o.visBottom !== undefined ? o.visBottom : S.visBottom !== undefined ? S.visBottom : 1.34 * H;
+    var tNom0 = isFinite(tHit) ? tHit : tFull + 2.6, actOff = o.tAct0 !== undefined ? tStart - o.tAct0 : ACT_OFF, kScale = max(0.2, (tNom0 - tStart) / (ACT.END - actOff));   // the acts in loop seconds (see ACT / BEAT)
     G = {
       W: W, H: H, cx: cx, cy: cy, groundY: groundY, rx: rxE, ry: ryE, vt: vt, vb: vb, seed: seed, gen: gen,
-      tStart: tStart, tFull: tFull, tHit: tHit, tNom: isFinite(tHit) ? tHit : tFull + 2.6, hx: cx, hy: cy - 0.36 * CFG.GIRL_TOP,
+      tStart: tStart, tFull: tFull, tHit: tHit, tNom: tNom0, actOff: actOff, kScale: kScale, hx: cx, hy: cy - 0.36 * CFG.GIRL_TOP,
       items: [], order: [], dir: -1, lastT: NaN, shockT: Infinity, spawnEnd: -Infinity, tFirst: Infinity, tLast: -Infinity, maxT: -Infinity,
       capC: o.cubes || CFG.CUBE_CAP, capD: o.dots || CFG.DOT_CAP, prepAt: -1e9, plan: null, planned: false, prepared: false, coreReady: false, armed: false, delay: 0, waited: 0, drawT: -Infinity, anIdx: 0, warmN: 0, warmGo: false, lastResult: null, job: null,
       info: { items: 0, names: [], roles: [], heroes: [], cast: '', variant: gen, spawn: [], cubes: 0, dots: 0, lastDeath: 0, missing: [], dir: -1, buildMs: 0 },
@@ -12050,24 +12352,26 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     buildFlow();
     var sel = selectCast(W, gen), cast = sel.seq;
     if (!cast.length) { G.prepared = true; G.armed = true; G.coreReady = true; return; }
-    var times = schedule(cast, tStart + CFG.SPAWN_FIRST, G.tNom - CFG.SPAWN_LAST), sizeK = clamp(pow(W / 2773, 0.5), 0.6, 1.08), i, all = [];
-    for (i = 0; i < cast.length; i++) all.push({ en: cast[i], ts: times[i], o: i });
-    for (i = 0; i < sel.bursts.length; i++) all.push({ en: sel.bursts[i], ts: sel.bursts[i].at, o: 1000 + i });
-    for (i = 4; i < cast.length; i++) {                                                                // CHURN: many small pieces live 3-6 s, fade, and a twin pops up elsewhere
+    var sizeK = clamp(pow(W / 2773, 0.5), 0.6, 1.08), i, all = [], times = [];
+    for (i = 0; i < cast.length; i++) { times.push(tOfK(cast[i].kt)); all.push({ en: cast[i], ts: times[i], o: i }); }
+    for (i = 0; i < sel.bursts.length; i++) all.push({ en: sel.bursts[i], ts: tOfK(sel.bursts[i].kt), o: 1000 + i });
+    for (i = 4; i < cast.length; i++) {                                                                // CHURN: many small pieces live 3-7 s, fade, and a twin pops up elsewhere (a group's satellites a little longer)
       var en2 = cast[i];
-      if (CHURN[en2.k] && (i * 7 + 1) % 3 !== 0) {
-        var Lf = 3.0 + 3.0 * rng.next(), t1 = times[i];
-        if (t1 + Lf < G.tNom - 1.4) { en2.life = Lf; var tw = sel.twin(en2); tw.at = t1 + Lf - 0.1; all.push({ en: tw, ts: tw.at, o: 2000 + i }); }
+      if (CHURN[en2.k] && en2.churn !== false && (i * 7 + 1) % 3 !== 0) {
+        var Lf = (en2.churn === 'mate' ? 4.5 : 3.0) + 2.5 * rng.next(), t1 = times[i];
+        if (t1 + Lf < G.tNom - 1.4) { en2.life = Lf; var tw = sel.twin(en2); tw.kt = kOf(t1 + Lf - 0.1); all.push({ en: tw, ts: t1 + Lf - 0.1, o: 2000 + i }); }
       }
     }
     all.sort(function (a, b) { return a.ts - b.ts || a.o - b.o; });
-    for (i = 0; i < all.length; i++) G.items.push(makeItem(all[i].en, i, all[i].ts, sizeK, rng));
+    for (i = 0; i < all.length; i++) { var it0 = makeItem(all[i].en, i, all[i].ts, sizeK, rng); all[i].en.item = it0; G.items.push(it0); }
     planInit(G.items, o);
     for (i = 0; i < G.items.length; i++) {
       var it = G.items[i]; G.order.push(it);
       G.info.names.push(it.name); G.info.roles.push(it.role); if (it.hero) G.info.heroes.push(it.name); G.info.spawn.push({ name: it.name, t: +it.ts.toFixed(2) });
     }
     G.info.items = G.items.length; G.info.dir = G.dir; G.info.env = { cx: cx, cy: cy, rx: rxE, ry: ryE, visTop: vt, visBottom: vb };
+    G.info.acts = { turnFront1: +tOfK(0).toFixed(3), I: +tOfK(ACT.I).toFixed(3), II: +tOfK(ACT.II).toFixed(3), III: +tOfK(ACT.III).toFixed(3), IV: +tOfK(ACT.IV).toFixed(3), hit: +G.tNom.toFixed(3), kScale: +kScale.toFixed(4) };
+    syncInfo();
     refreshSpan();
     if (isFinite(tHit) && o.autoDissolve !== false) {
       var r = dissolveFrom(tHit, { speed: 1, stagger: CFG.STAGGER });   // (forces the preparation: only used by demos / simple hosts)
@@ -12214,21 +12518,22 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
 
   /** THREADS: taut hairlines that link a few nearby pieces like a mind map or a string model, drawing on, pulsing, a glint running along, then fading */
   function makeLinks() {
-    var rng = U.rng(G.seed * 29 + G.gen * 7 + 3), its = G.items, n = its.length, out = [], tries = 0, pa = {}, pb = {}, k, a, b, tm, span, t0, dur, ok, d, gap, ts2, j;
-    while (out.length < CFG.LINKS && tries++ < 600) {
-      a = its[rng.int(0, n - 1)]; b = its[rng.int(0, n - 1)];
-      if (a === b || a.life < 1e8 || b.life < 1e8 || (a.kind === 'M' && b.kind === 'M')) continue;
-      tm = max(a.tp, b.tp) + 0.7; span = G.tNom - 0.4 - tm; if (span < 1.1) continue;
-      t0 = tm + rng.range(0, span - 1.1); dur = rng.range(1.0, min(3.2, span - (t0 - tm)));
+    var rng = U.rng(G.seed * 29 + G.gen * 7 + 3), its = G.items, n = its.length, out = [], tries = 0, pa = {}, pb = {}, k, a, b, tm, span, t0, dur, ok, d, gap, ts2, j, tether, tIII = tOfK(ACT.III);
+    while (tries++ < 900) {
+      tether = tries <= n;                                                                           // first every group (leader <-> satellite, right after the satellite pops), then random pairs in act III
+      if (tether) { b = its[tries - 1]; a = b.lead; if (!a || b.dead) continue; } else { if (out.length >= CFG.LINKS) break; a = its[rng.int(0, n - 1)]; b = its[rng.int(0, n - 1)]; }
+      if (a === b || a.life < 1e8 || (b.life < 1e8 && !tether) || (a.kind === 'M' && b.kind === 'M')) continue;
+      tm = max(a.tp, b.tp) + (tether ? 0.45 : 0.7); if (!tether) tm = max(tm, tIII); span = min(G.tNom - 0.4, b.tp + b.life - 0.3) - tm; if (span < 1.1) continue;
+      if (tether) { t0 = tm; dur = min(rng.range(2.6, 4.2), span); } else { t0 = tm + rng.range(0, span - 1.1); dur = rng.range(1.0, min(3.2, span - (t0 - tm))); }
       ok = true;
       for (k = 0; k < 3 && ok; k++) {
         ts2 = t0 + dur * k / 2; poseInto(a, ts2, rint(ts2), pa); poseInto(b, ts2, rint(ts2), pb);
         d = hypot(pa.x - pb.x, pa.y - pb.y); gap = d - 0.5 * max(a.bw, a.bh) - 0.5 * max(b.bw, b.bh);
-        if (gap < 16 || gap > 200 || d > 440) ok = false;
+        if (gap < 16 || gap > (tether ? 260 : 200) || d > (tether ? 520 : 440)) ok = false;
         else { for (j = 0; j <= 12 && ok; j++) { var qx = pa.x + (pb.x - pa.x) * j / 12, qy = pa.y + (pb.y - pa.y) * j / 12; if (abs(qx - G.cx) < 200 && qy > G.cy - 240) ok = false; } }       // (the thread never runs near her body or head)
       }
       for (j = 0; j < out.length && ok; j++) if ((out[j].a === a && out[j].b === b) || (out[j].a === b && out[j].b === a)) ok = false;
-      if (ok) out.push({ a: a, b: b, t0: t0, t1: t0 + dur, ph: rng.range(0, TAU), sp: rng.range(0.8, 1.5), ra: 0.5 * min(a.bw, a.bh) * 0.9, rb: 0.5 * min(b.bw, b.bh) * 0.9 });
+      if (ok) out.push({ a: a, b: b, t0: t0, t1: t0 + dur, ph: rng.range(0, TAU), sp: rng.range(0.8, 1.5), ra: 0.5 * min(a.bw, a.bh) * 0.9, rb: 0.5 * min(b.bw, b.bh) * 0.9, tether: tether });
     }
     out.sort(function (p, q) { return p.t0 - q.t0; });
     G.links = out;
@@ -12245,9 +12550,9 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
       ax = a.pose.x + ux * (l.ra * a.pose.sc + 4); ay = a.pose.y + uy * (l.ra * a.pose.sc + 4); bx = b.pose.x - ux * (l.rb * b.pose.sc + 4); by = b.pose.y - uy * (l.rb * b.pose.sc + 4);
       if ((bx - ax) * ux + (by - ay) * uy < 10) continue;
       pulse = 0.62 + 0.38 * sin(t * l.sp * 3.2 + l.ph);
-      ctx.globalAlpha = 0.62 * pulse * env; ctx.strokeStyle = S.GRAY1 || '#555'; ctx.lineWidth = 1.15;
+      ctx.globalAlpha = (l.tether ? 0.8 : 0.62) * pulse * env; ctx.strokeStyle = l.tether ? (S.INK || '#111') : (S.GRAY1 || '#555'); ctx.lineWidth = l.tether ? 1.8 : 1.15;     // (a group's thread is bolder and in ink: the grouping reads at page scale)
       ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(ax + (bx - ax) * p, ay + (by - ay) * p); ctx.stroke();
-      ctx.fillStyle = S.INK || '#111'; ctx.globalAlpha = 0.8 * env; ctx.beginPath(); ctx.arc(ax, ay, 2.3, 0, TAU);
+      ctx.fillStyle = S.INK || '#111'; ctx.globalAlpha = 0.8 * env; ctx.beginPath(); ctx.arc(ax, ay, l.tether ? 3.0 : 2.3, 0, TAU);
       if (p > 0.98) { ctx.moveTo(bx + 2.3, by); ctx.arc(bx, by, 2.3, 0, TAU); }
       ctx.fill();
       if (p > 0.95) { q = (t * 0.5 * l.sp + l.ph) % 1; ctx.globalAlpha = 0.9 * env * pulse; ctx.beginPath(); ctx.arc(ax + (bx - ax) * q, ay + (by - ay) * q, 1.9, 0, TAU); ctx.fill(); }
@@ -12365,7 +12670,20 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
       if (G.armed) compressTail(t);
     } else { planStep(Infinity); prepStep(Infinity); }
   }
-  function syncInfo() { for (var i = 0; i < G.items.length; i++) G.info.spawn[i].t = +G.items[i].tp.toFixed(2); G.info.delay = +G.delay.toFixed(3); }
+  /** info.spawn / info.beats follow the real pop times (after a wait for the preparation or a tail compression).  beats = the SYNC POINTS for the girl's performance:
+      {kind: 'hero' | 'bulb' | 'firework', name, t: loop seconds, k: seconds after turnFront1 (= t - info.acts.turnFront1), sync: a scripted beat (the extra bursts are not)} */
+  function syncInfo() {
+    var i, it, b = [];
+    for (i = 0; i < G.items.length; i++) {
+      it = G.items[i]; G.info.spawn[i].t = +it.tp.toFixed(2);
+      if (it.dead) continue;
+      if (it.hero) b.push({ kind: 'hero', name: it.name, t: +it.tp.toFixed(2), k: +kOf(it.tp).toFixed(2), sync: true });
+      else if (it.kind === 'I') b.push({ kind: 'bulb', name: it.name, t: +it.tp.toFixed(2), k: +kOf(it.tp).toFixed(2), sync: true });
+      else if (it.kind === 'F') b.push({ kind: 'firework', name: it.name, t: +it.tp.toFixed(2), k: +kOf(it.tp).toFixed(2), sync: !!it.sync });
+    }
+    b.sort(function (p, q) { return p.t - q.t; });
+    G.info.beats = b; G.info.delay = +G.delay.toFixed(3);
+  }
   function setDelay(d) {
     G.delay = d; var i;
     for (i = 0; i < G.items.length; i++) G.items[i].tp = G.items[i].ts + d;
@@ -12374,7 +12692,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
   /** after a wait: the pops that are still to come are squeezed (same order, same relative rhythm, at least 0.2 s apart) so the last one is still ~1.5 s before the hit */
   function compressTail(t) {
     var lim = G.tNom - CFG.SPAWN_LAST, list = [], i, it;
-    for (i = 0; i < G.items.length; i++) { it = G.items[i]; if (!it.dead && it.tp > t) list.push(it); }
+    for (i = 0; i < G.items.length; i++) { it = G.items[i]; if (!it.dead && it.tp > t && it.kind !== 'I' && !it.sync) list.push(it); }     // (the sync beats - bulbs, scripted fireworks - keep their time + the uniform delay)
     if (list.length < 2) return;
     list.sort(function (a, b) { return a.tp - b.tp || a.idx - b.idx; });
     var first = max(list[0].tp, t + 0.05), last = list[list.length - 1].tp;
@@ -12577,7 +12895,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
 
 
 /* ===== timeline.js ===== */
-/* Timeline (baseline loop = scenario A) + reaction clips (scenarios B/C/D/E) — all PURE functions of time; the scene integrates them.
+/* Timeline (baseline loop = scenario A; ROUND 10: the thinking phase lasts ~20 s, the loop ~38 s) + reaction clips (scenarios B/C/D/E) — all PURE functions of time; the scene integrates them.
    GA.timeline.build(W, {stride, strideRun}) -> T
      T.duration, T.cues        loop length (s) and named loop-local times
      T.poseAt(tl)              baseline girl pose at loop-local time tl (also valid for tl<0 : hair pre-roll)
@@ -12589,7 +12907,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
   var GA = (window.__landingGirl = window.__landingGirl || {});
   var U = GA.util;
 
-  var V_WALK = 430; // relaxed child's walk ≈ 0.8 body heights per second
+  var V_WALK = 400; // relaxed child's walk = 0.8 body heights per second (round 10 GAIT: 2.1 steps/s with the rig's 380 u stride)
   var V_RUN = 940; // comedic scurry
   var M_RIGHT = 120; // root x beyond the right edge where the nose is just off-screen (she enters at once: no dead time)
   var M_LEFT = 200; // root x beyond the left edge where the ponytail has completely left
@@ -12619,9 +12937,13 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     c.thinkStart = c.turnFront1;
     c.dots = c.turnFront1 + 0.2; // thought dots rise
     c.swirlStart = c.dots + 0.9; // big dot launches the first arc
-    c.swirlFull = c.swirlStart + 6.6;
-    c.tHit = c.turnFront1 + 10.3; // ball bonks her head (≈10 s of thinking)
+    c.swirlFull = c.swirlStart + 16.6; // the cloud is complete here (round 10: the thought process is 10 s LONGER, ~20 s in total)
+    c.tHit = c.turnFront1 + 20.3; // ball bonks her head (≈20 s of thinking; was 10.3)
     c.ballIn = c.tHit - 1.55; // ball enters the screen
+    // round-10 acts of the (now ~20 s) thought process, seconds after turnFront1: I spark 0-5.5, II ideas multiply 5.5-12, III overload 12-17.7, IV funnel tightens + ball 17.7-20.3
+    c.actII = c.turnFront1 + 5.5;
+    c.actIII = c.turnFront1 + 12.0;
+    c.actIV = c.tHit - 2.6;
     // ---- 3. reaction ----
     c.owStart = c.tHit + 0.03;
     c.scratch0 = c.tHit + 0.85; // hand drifts up after the stagger
@@ -12687,8 +13009,65 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
         x: xStop, y: G, yaw: 0,
         gait: { amount: 0, phase: 0, speed: 0, run: 0 },
         headYaw: 0, headPitch: 0, headRoll: 0, lean: 0, peek: 0, flinch: 0, dizzy: 0, bow: 0, twist: 0, chestHand: 0, squash: 0, scratch: 0, scratchT: 0, think: 0, shudder: 0, shudderT: 0, air: 0,
+        startle: 0, spread: 0, poke: 0, clutch: 0, shrug: 0, reach: 0, thinkT: -1,          // round 10: startle ticks, open hands, poke at the air, both hands to the head, sheepish shrug, reach down to the console, thinking-script clock (s since turnFront1, -1 = off)
         wind: { x: 0, y: 0 }, t: t,
       };
+    }
+
+    // ================= ROUND 10: the ~20 s THINKING PERFORMANCE (k = seconds after turnFront1).  Sync points shared with THOUGHTS (R10/tho/BEATS.json):
+    //   bulbs k 2.4 6.2 9.8 13.4 16.2, fireworks 9.5 12.6 14.1 15.6 16.8, acts I 0 / II 5.5 / III 12.0 / IV 17.7, the ball enters at 18.75 (from the top-left), hit 20.3.
+    //   Act I wonder (looks up at the first dot, temple tap, 'aha' bounce at the first bulb, pokes at a floating piece), II curiosity + delight (slow pursuit of an orbiting piece,
+    //   fingertip tapping, happy bounces at the bulbs, eyes-wide shoulder lift at the first firework, a hop), III comic overload (both hands clutch the head, wobbles, the head
+    //   whips after every firework, a dizzy sway, a hop of excitement), IV the funnel tightens (deer freeze, she spots the ball, alarm grows: hand to the chest, shoulders up,
+    //   a cringe just before the hit).  The rig adds its own think-idle script (thinkT: E3 'aha' perk-up 2.4, E1 weight shift 5.8, E2 toe tap 7.3, E4 glance away 10.9) whenever
+    //   her hands are free.  Everything is a smooth envelope on top of a dreamy base look-around; headYaw > 0 = toward screen-right (her left), headPitch > 0 = up. =================
+    var BULBS = [2.4, 6.2, 9.8, 13.4, 16.2], FIRES = [9.5, 12.6, 14.1, 15.6, 16.8];
+    function thinkPerf(p, k) {
+      var K_HIT = c.tHit - c.turnFront1, K_BALL = c.ballIn - c.turnFront1, i, b, f, w, u;
+      var settle = U.smoothstep(0, 1.2, k);
+      var hy = (0.3 * Math.sin(k * 0.62 + 0.4) + 0.1 * U.noise1(k * 1.3, 5)) * settle;
+      var hp = (0.22 + 0.1 * Math.sin(k * 0.7) + 0.1 * U.noise1(k * 0.9, 3)) * settle;
+      var hr = 0.2 * Math.sin(k * 0.47 + 1.3) * settle;
+      var sq = 0, air = 0, y = 0, fl = 0, dz = 0, ch = 0;
+      function hop(k0, hgt) { // a small happy hop: crouch, up with the knees tucking a little, soft landing
+        u = U.clamp((k - k0) / 0.3);
+        y -= hgt * Math.sin(Math.PI * u);
+        air = Math.max(air, 0.6 * bump(k, k0 - 0.02, k0 + 0.06, k0 + 0.22, k0 + 0.32));
+        sq += 0.25 * bump(k, k0 - 0.14, k0 - 0.03, k0, k0 + 0.05) + 0.3 * bump(k, k0 + 0.27, k0 + 0.34, k0 + 0.38, k0 + 0.6);
+      }
+      // ---- ACT I (0-5.5): wonder
+      var dotLook = bump(k, 0.25, 0.9, 1.9, 2.5);                       // the first dot rises up-right of her head: she looks up at it, head cocked
+      hy += 0.35 * dotLook; hp += 0.42 * dotLook; hr += 0.22 * dotLook;
+      p.think = bump(k, 0.95, 1.45, 2.0, 2.4);                            // 'hmm': fingertip at the temple, let go for the aha
+      var aha = bump(k, 2.35, 2.5, 2.8, 3.4);                             // the first bulb (2.4): a happy bounce up on to the toes (+ the rig's E3 perk-up)
+      sq -= 0.16 * aha; hp += 0.22 * aha;
+      p.poke = bump(k, 3.0, 3.6, 4.3, 5.0);                               // a hand rises to poke at a floating piece; the head follows the hand
+      hy += 0.3 * p.poke; hp += 0.25 * p.poke;
+      hr -= 0.22 * bump(k, 4.9, 5.3, 5.7, 6.3);                           // the hand drops, the head cocks the other way
+      // ---- ACT II (5.5-12): curiosity and delight
+      var pursuit = U.smoothstep(5.6, 6.6, k) * (1 - U.smoothstep(11.4, 12.2, k));          // slow pursuit of an orbiting piece (one sweep each way in ~3 s)
+      hy += 0.45 * Math.sin((k - 5.6) * 1.0) * pursuit; hp += 0.18 * Math.cos((k - 5.6) * 1.0) * pursuit;
+      p.think = Math.max(p.think, bump(k, 8.5, 9.0, 10.2, 10.7));         // fingertip tapping the temple (after the rig's E2 toe tap at 7.3)
+      for (i = 1; i < BULBS.length; i++) { b = BULBS[i]; w = bump(k, b - 0.05, b + 0.1, b + 0.3, b + 0.8); sq -= 0.14 * w; hp += 0.14 * w; }   // happy little bounces when the bulbs pop
+      w = bump(k, 9.5, 9.65, 10.2, 10.8); fl += 0.35 * bump(k, 9.5, 9.62, 9.85, 10.3); hp += 0.45 * w; hy -= 0.2 * w;   // the first firework: eyes wide, shoulders up, looking up at it
+      hop(9.85, 24); hop(16.25, 26);                                       // hops of excitement at the bulbs 9.8 / 16.2
+      // ---- ACT III (12-17.7): comic overload
+      p.clutch = U.smoothstep(12.0, 12.6, k) * (1 - U.smoothstep(14.5, 15.1, k));          // 'so many ideas!' both hands to the head
+      w = p.clutch * U.smoothstep(12.6, 13.0, k); hr += 0.25 * Math.sin(Math.PI * 2 * 1.3 * (k - 12.6)) * w; hy += 0.12 * Math.sin(Math.PI * 2 * 0.9 * (k - 12.6)) * w;   // little wobbles
+      dz = Math.max(0.3 * bump(k, 12.9, 13.4, 14.2, 14.8), 0.5 * bump(k, 15.1, 15.5, 15.9, 16.4));   // a dizzy sway
+      for (i = 1; i < FIRES.length; i++) { f = FIRES[i]; w = U.smoothstep(f, f + 0.2, k) * (1 - U.smoothstep(f + 0.8, f + 1.3, k)); hy += (i & 1 ? -0.6 : 0.6) * w; hp += 0.4 * w; }   // the head whips after each firework
+      // ---- ACT IV (17.7-20.3): the funnel tightens
+      p.shudder = 0.55 * U.smoothstep(17.75, 17.95, k) * (1 - U.smoothstep(K_BALL + 0.3, K_BALL + 0.6, k)); p.shudderT = Math.max(0, k - 17.8);   // deer freeze (soft: recoil, blink, stillness, hands half-way up) until she spots the ball
+      hr += 0.18 * U.smoothstep(17.9, 18.4, k) * (1 - U.smoothstep(K_BALL + 0.1, K_BALL + 0.3, k));                 // ... head cocked: curious and a little worried
+      var spot = U.smoothstep(K_BALL + 0.1, K_BALL + 0.3, k) * (1 - U.smoothstep(K_HIT - 0.18, K_HIT - 0.04, k));   // she spots the ball coming from the top-left: the head snaps to it and follows it up
+      hy = U.lerp(hy, -0.6, spot); hp = U.lerp(hp, 0.6 + 0.35 * U.smoothstep(K_BALL + 0.3, K_HIT - 0.3, k), spot); hr = U.lerp(hr, -0.15, spot);
+      ch = 1.4 * U.smoothstep(K_BALL + 0.5, K_BALL + 0.85, k) * (1 - U.smoothstep(K_HIT - 0.12, K_HIT, k));        // 'oh no': the hand flies to the mouth
+      sq -= 0.12 * bump(k, K_BALL + 0.45, K_BALL + 0.6, K_BALL + 0.7, K_BALL + 1.0);                                    // ... with a little jolt up on to the toes
+      fl = Math.max(fl, (0.2 * U.smoothstep(K_BALL + 0.9, K_HIT - 0.35, k) + 0.7 * U.smoothstep(K_HIT - 0.25, K_HIT - 0.05, k)) * (1 - U.smoothstep(K_HIT - 0.02, K_HIT + 0.02, k)));   // growing alarm: shoulders up, then the cringe
+      var cringe = U.smoothstep(K_HIT - 0.18, K_HIT - 0.04, k);           // she shuts her eyes, turns away and ducks a little... BONK
+      hy = U.lerp(hy, 0.35, cringe); hp = U.lerp(hp, -0.2, cringe);
+      p.headYaw = U.clamp(hy, -1, 1); p.headPitch = U.clamp(hp, -1, 1); p.headRoll = U.clamp(hr, -1, 1);
+      p.squash += sq; p.air = air; p.y = G + y; p.flinch = Math.max(p.flinch, fl); p.dizzy = Math.max(p.dizzy, dz); p.chestHand = Math.max(p.chestHand, ch);
     }
 
     /** baseline pose (scenario A) at loop-local time t */
@@ -12713,34 +13092,33 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
         p.headYaw = 0.55 * Math.sin(Math.PI * Math.min(1, u * 1.15)) * (1 - U.smoothstep(0.85, 1, u));
         p.twist = 0.5 * Math.sin(Math.PI * (1 - (1 - u) * (1 - u)));          // overlapping action: the shoulders are ahead of the hips during the turn
 
+        var windX = 0;
         if (t >= c.turnFront1) {
           var k = t - c.turnFront1;
+          p.thinkT = k;          // the rig's think-idle script clock (weight shift, toe tap, 'aha' perk-up, glance away: cfg.ideaT, seconds after turnFront1)
           p.twist = 0.1 * Math.exp(-3.2 * k) * Math.sin(Math.PI * 2.2 * k) * U.smoothstep(0, 0.15, k);          // the shoulders settle with a small damped swing
-          var lookUp = U.smoothstep(0.2, 2.5, k) * 0.55 + 0.1 * Math.sin(k * 0.7);
-          p.headPitch = U.clamp(lookUp + 0.12 * U.noise1(k * 0.9, 3), -1, 1);
-          p.headYaw = 0.42 * Math.sin(k * 0.62 + 0.4) * U.smoothstep(0, 1.2, k) + 0.12 * U.noise1(k * 1.3, 5);
-          p.headRoll = 0.28 * Math.sin(k * 0.47 + 1.3) * U.smoothstep(0, 1.5, k);
-          p.think = bump(t, c.dots + 0.2, c.dots + 1.0, c.swirlStart + 2.2, c.swirlStart + 3.2);
+          thinkPerf(p, k);        // the 20 s performance (acts I-IV, ends with the cringe at the hit)
         }
 
-        // looking away from the ball's side when it hits (it arrives from the top-left)
-        var preHit = U.smoothstep(c.tHit - 2.2, c.tHit - 0.9, t) * (1 - U.smoothstep(c.tHit - 0.15, c.tHit, t));
-        p.headYaw = U.lerp(p.headYaw, 0.45, preHit);
-        p.headPitch = U.lerp(p.headPitch, 0.55, preHit);
-
-        // impact: squash with elastic recovery (the girl module turns this into a comedic body reaction)
+        // impact: squash with hold and elastic recovery (the girl module turns this into a comedic body reaction); round 10: bigger squash and stretch overshoot,
+        // a springy head wobble after the hold, the ponytail whips (wind), then 'seeing stars' = a slow circling of the head while she staggers
         var h = t - c.tHit;
         if (h >= 0) {
           var attack = U.smoothstep(0, 0.07, h);
           var HOLD = 0.2; // the bottom of the squash is held ~3 frames
-          var rel = h < HOLD ? 0 : 1 - Math.exp(-(h - HOLD) * 6.2) * Math.cos((h - HOLD) * 11);
-          p.squash = h < HOLD ? attack : U.clamp(1 - rel, -0.35, 1); // overshoots into a visible stretch before settling
-          p.dizzy = U.smoothstep(0.12, 0.4, h) * (1 - U.smoothstep(0.85, 1.5, h)); // staggering wobble after the bonk
+          var rel = h < HOLD ? 0 : 1 - Math.exp(-(h - HOLD) * 4.2) * Math.cos((h - HOLD) * 12);
+          p.squash = h < HOLD ? 1.15 * attack : U.clamp(1.15 * (1 - rel), -0.4, 1.3); // overshoots into a visible stretch (boing) before settling
+          p.dizzy = U.smoothstep(0.12, 0.4, h) * (1 - U.smoothstep(0.9, 1.6, h)); // staggering wobble after the bonk
           p.shudder = 0.55 * U.smoothstep(0.05, 0.2, h) * (1 - U.smoothstep(0.45, 0.8, h)); // stunned wobble right after the bonk
           p.shudderT = h;
           p.headPitch = U.lerp(p.headPitch, -0.55, U.smoothstep(0, 0.1, h) * (1 - U.smoothstep(0.4, 1.0, h)));
           p.headYaw = U.lerp(p.headYaw, 0, U.smoothstep(0, 0.2, h));
           p.headRoll = U.lerp(p.headRoll, 0.3, U.smoothstep(0, 0.2, h) * (1 - U.smoothstep(0.9, 1.6, h)));
+          var hw = h - HOLD;
+          if (hw > 0) { var wobE = Math.exp(-3.2 * hw); p.headRoll += 0.32 * wobE * Math.sin(Math.PI * 2 * 5.2 * hw); p.headYaw += 0.14 * wobE * Math.sin(Math.PI * 2 * 4.1 * hw); }
+          var stars = bump(h, 0.35, 0.6, 1.25, 1.65), sa = Math.PI * 2 * 1.25 * (h - 0.35);
+          p.headYaw += 0.3 * Math.sin(sa) * stars; p.headRoll += 0.28 * (Math.cos(sa) - 1) * stars; p.headPitch += 0.12 * Math.sin(sa + 1) * stars;
+          windX += 420 * bump(h, 0, 0.05, 0.12, 0.32) - 320 * bump(h, 0.26, 0.36, 0.46, 0.72);
         }
 
         if (t >= c.scratch0 && t < c.scratch1 + 0.45) { // scratching the bonked spot
@@ -12752,20 +13130,24 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
           p.headPitch = U.lerp(p.headPitch, -0.2, 0.7 * p.scratch);
         }
 
-        if (t >= c.shake0 && t < c.shake1) { // shake the head (no!)
-          var s = (t - c.shake0) / (c.shake1 - c.shake0);
+        var SH1 = c.shake0 + 0.75;          // round 10: a shorter head shake, then a sheepish shrug before she turns away
+        if (t >= c.shake0 && t < SH1) { // shake the head (no!)
+          var s = (t - c.shake0) / (SH1 - c.shake0);
           var env = Math.sin(Math.PI * Math.min(1, s * 1.05)) * (1 - 0.25 * s);
           var kS = U.smoothstep(c.shake0, c.shake0 + 0.18, t); // cross-fade from the scratch head pose (no 1-frame pop)
-          p.headYaw = U.lerp(p.headYaw, 0.95 * env * Math.sin(s * Math.PI * 5.0), kS);
-          p.headRoll = U.lerp(p.headRoll, 0.15 * env * Math.sin(s * Math.PI * 5.0 + 1.4), kS);
+          p.headYaw = U.lerp(p.headYaw, 0.95 * env * Math.sin(s * Math.PI * 4.0), kS);
+          p.headRoll = U.lerp(p.headRoll, 0.15 * env * Math.sin(s * Math.PI * 4.0 + 1.4), kS);
           p.headPitch = U.lerp(p.headPitch, -0.1 * env, kS);
         }
+        // sheepish shrug ('oops... well.'): shoulders up, palms out, head cocked; the turn away blends it out
+        var shr = bump(t, SH1 - 0.1, SH1 + 0.22, c.turnLeft0 + 0.15, c.turnLeft0 + 0.55);
+        p.shrug = shr; p.headRoll = U.lerp(p.headRoll, 0.3, shr); p.headPitch = U.lerp(p.headPitch, -0.12, shr); p.headYaw = U.lerp(p.headYaw, 0.15, 0.8 * shr);
 
         if (t >= c.turnLeft0) {
-          var tl = turnLeftAt(t, p.headYaw);
-          p.yaw = tl.yaw; p.headYaw = tl.headYaw; p.twist = tl.twist; p.headPitch = 0; p.headRoll = 0;
+          var tl = turnLeftAt(t, p.headYaw), tb = U.smoothstep(c.turnLeft0, c.turnLeft0 + 0.3, t);
+          p.yaw = tl.yaw; p.headYaw = tl.headYaw; p.twist = tl.twist; p.headPitch = U.lerp(p.headPitch, 0, tb); p.headRoll = U.lerp(p.headRoll, 0, tb);
         }
-        p.wind.x = 260 * I * Math.sin(t * 1.9 + 0.6);
+        p.wind.x = 260 * I * Math.sin(t * 1.9 + 0.6) + windX;
         p.wind.y = -110 * I * (0.6 + 0.4 * Math.sin(t * 1.3));
         return p;
       }
@@ -12780,6 +13162,8 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
         p.yaw = tl2.yaw; p.headYaw = tl2.headYaw; p.twist = tl2.twist;
         p.headPitch = 0.03 * Math.sin(t * 5.2);
         p.headYaw = U.clamp(p.headYaw + 0.75 * bump(t, c.walkOut0 + 0.75, c.walkOut0 + 1.05, c.walkOut0 + 1.5, c.walkOut0 + 1.85), -1, 1); // glance back at the rubble
+        p.shrug = 0.5 * bump(t, c.walkOut0 + 0.95, c.walkOut0 + 1.2, c.walkOut0 + 1.42, c.walkOut0 + 1.8);          // ... with a tiny comic shrug ('well, that happened')
+        p.headRoll = 0.2 * p.shrug;
         return p;
       }
 
@@ -12821,6 +13205,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
       P.dizzy = (p0.dizzy || 0) * (1 - U.smoothstep(0, 0.4, rt));
       P.think = (p0.think || 0) * (1 - U.smoothstep(0, 0.25, rt));
       P.twist = (p0.twist || 0) * (1 - U.smoothstep(0, 0.3, rt));
+      P.clutch = (p0.clutch || 0) * (1 - U.smoothstep(0, 0.25, rt)); P.poke = (p0.poke || 0) * (1 - U.smoothstep(0, 0.25, rt)); P.shrug = (p0.shrug || 0) * rel0; P.reach = (p0.reach || 0) * rel0;
       P.wind.x = (p0.wind && p0.wind.x || 0) * rel0; P.wind.y = (p0.wind && p0.wind.y || 0) * rel0;
 
       if (kind === 'duck') { // startled peek: a visible flinch, then she slips back out (no cut)
@@ -12837,66 +13222,99 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
         return o;
       }
 
-      var standing = kind === 'stand';
-      var hop = kind === 'walkHop';
+      // ================= ROUND 10: the '+' reaction as four overlapping beats (B standing / C walking in / D walking away) =================
+      //   1 LOOK DOWN at the console (0 .. T0, held to TH with a 'huh?' head wobble): the head turns toward the plus and the chin drops, the upper body bows after it,
+      //     one hand rises to the mouth (gasp), the ponytail swings forward (wind pulse).  B: the body turns three-quarter (so the chin-down reads in silhouette).
+      //   2 STARTLED JUMP (TH .. TL): anticipation crouch (TC), take-off stretch, HJ units up with the legs tucked, arms flung up with open spread hands, head snapped
+      //     back, startle ticks over the crown; a soft landing squash with a wobble.  B: she turns to face us while in the air (the flung pose reads frontally).
+      //   3 TURN BACK (TT0 .. TT1): to the escape direction (screen left): head leads, shoulders, hips; a quick glance back over the shoulder at the plus as she goes.
+      //   4 RUN (from TR): coil (lean back + crouch), burst with a comic lean overshoot that settles into the run lean; the head snaps forward after the glance.
+      var standing = kind === 'stand', hop = kind === 'walkHop', away = kind === 'walk';
+      var sm = function (a, b) { return U.smoothstep(a, b, rt); };
+      var bm = function (a, b, c1, d) { return bump(rt, a, b, c1, d); };
+      var T0 = standing ? 0.40 : 0.36;            // the look is complete
+      var TH = standing ? 0.84 : 0.64;            // the hold ends: the anticipation crouch starts (B: the hold has the reach-down beat)
+      var TC = 0.11, TJ = TH + TC;                // crouch length, take-off
+      var TA = standing ? 0.42 : 0.38, TL = TJ + TA, HJ = standing ? 58 : 48;   // air time, landing, jump height
+      var TT0 = TL + 0.04, TT1 = TT0 + (standing ? 0.40 : 0.20);   // the turn back (B: front -> profile)
+      var TR = standing ? TT1 - 0.06 : TL + 0.22;  // the run starts (speed ramps from here)
+      var TG = standing ? TT1 - 0.12 : TL + 0.1;   // the glance back over the shoulder starts (while she coils; it lasts into the burst: running while looking back)
 
-      // ---- look at the PLUS (the nav '+' is below her / behind her when she walks away), then freeze like a deer in headlights ----
-      var ld = ease(0, 0.2), bowK = ease(0, 0.2);
-      var TF = 1.12; // standing: the moment she decides to flee (turn starts here)
-      var tSh0 = standing ? 0.62 : 0.32;          // standing: the bow (chin down on the plus) is held a beat longer (until ~0.56 s) before the freeze
-      var tSh1 = standing ? 1.1 : 1.15;
-      P.headPitch = U.lerp(p0.headPitch, -1, ld);
-      if (standing) { // B: she BOWS forward from the waist, chin down, shoulders up, one hand to the chest, head tilted: held ~0.3 s, then straightens into the freeze
-        P.yaw = U.lerp(p0.yaw, 1, ease(0, 0.25)); P.headYaw = U.lerp(p0.headYaw, 0.0, ease(0, 0.25)); P.headRoll = U.lerp(p0.headRoll, 0.2, ld);
-        P.bow = 0.95 * bowK * (1 - 0.7 * U.smoothstep(tSh0 - 0.06, tSh0 + 0.2, rt));
-        P.chestHand = U.smoothstep(0.02, 0.3, rt) * (1 - U.smoothstep(tSh0 + 0.1, tSh0 + 0.4, rt));
-      } else if (kind === 'walk') { // D (walking away, the plus is behind her): an over-the-shoulder look back: the upper body twists toward us, the head turns back and down
-        P.yaw = p0.yaw; P.twist = U.lerp(p0.twist || 0, 0.95, ease(0, 0.32)) * (1 - 0.35 * U.smoothstep(tSh0 + 0.2, tSh1, rt)); P.headYaw = U.lerp(p0.headYaw, 0.9, ld); P.headRoll = U.lerp(p0.headRoll, 0.18, ld);
-        P.headPitch = U.lerp(p0.headPitch, -0.65, ld); P.bow = 0.4 * bowK;
-      } else { // C (walking in toward the centre): the head dips and turns toward the viewer / down, the upper body leans in, a hand drifts to the chest
-        P.yaw = p0.yaw; P.headYaw = U.lerp(p0.headYaw, 1.0, ld); P.headRoll = U.lerp(p0.headRoll, 0.22, ld);
-        P.bow = 0.6 * bowK; P.chestHand = 0.8 * U.smoothstep(0.05, 0.3, rt) * (1 - U.smoothstep(tSh0 + 0.2, tSh0 + 0.5, rt));
-      }
-      var hitch = standing ? 0 : bump(rt, 0.1, 0.18, 0.24, 0.38); // the hitch / stumble in the step (walking only)
-      var sh = shudderEnv(tSh0, tSh0 + 0.12, tSh1 - 0.3, tSh1);
-      P.shudder = Math.max(sh, (p0.shudder || 0) * rel0); P.shudderT = Math.max(0, rt - tSh0);
-      P.headPitch = U.lerp(P.headPitch, 0.1, U.smoothstep(tSh0, tSh0 + 0.22, rt)); // the freeze: she stares up at the headlights (chin a little up)
-      P.squash += 0.3 * hitch;
+      var look = ease(0, T0);
+      var holdW = sm(T0 - 0.06, T0 + 0.1) * (1 - sm(TH - 0.08, TH + 0.02)), tw = rt - T0;
+      var wobR = 0.32 * holdW * Math.sin(Math.PI * 2 * 1.9 * tw) * Math.exp(-1.2 * Math.max(0, tw)), wobY = 0.1 * holdW * Math.sin(Math.PI * 2 * 1.4 * tw + 0.5);   // 'huh? what's that?' (a visible head tilt, then a smaller one)
+      var lookRel = 1 - sm(TJ - 0.05, TJ + 0.07);          // the look pose lets go at the take-off
+      var headUp = sm(TJ - 0.03, TJ + 0.1);                 // the head snaps back / up in the jump
+      var landW = sm(TL - 0.05, TL + 0.14);
+      var uA = U.clamp((rt - TJ) / TA), inAir = sm(TJ, TJ + 0.1) * (1 - sm(TL - 0.14, TL - 0.02));
+      var glance = bm(TG, TG + 0.14, TG + 0.26, TG + 0.46);
+      var ut = U.clamp((rt - TT0) / (TT1 - TT0)), turnK = U.easeInOutCubic(ut);
 
-      // head comes back up as she decides to flee
-      var tFlee = standing ? TF : (hop ? 1.32 : 1.0);
-      var up = ease(tFlee, tFlee + 0.3);
-      P.headPitch = U.lerp(P.headPitch, 0.05, up);
-      if (!standing) P.headYaw = U.lerp(P.headYaw, 0, up);
-
+      // ---- beat 1 + 2: look / jump (per scenario, blended from the captured pose)
       if (standing) {
-        // turn left (head leads) with a coiled anticipation crouch, then burst into a scurry: cadence starts at once
-        var ut = U.clamp((rt - TF) / 0.38);
-        P.yaw = U.lerp(P.yaw, 0, U.easeInOutCubic(ut));
-        P.headYaw = U.lerp(P.headYaw, -0.55 * Math.sin(Math.PI * Math.min(1, ut * 1.1)), U.smoothstep(TF - 0.02, TF + 0.08, rt));
-        P.lean = -0.25 * bump(rt, TF - 0.12, TF + 0.03, TF + 0.1, TF + 0.22) + 0.6 * U.smoothstep(TF + 0.18, TF + 0.48, rt);
-        P.squash += 0.4 * bump(rt, TF - 0.04, TF + 0.08, TF + 0.14, TF + 0.24); // coil before the dash
-        var tRun0 = TF + 0.2; // the first step starts once she is already turned a good way (no sliding foot)
-        o.speed = V_RUN * U.easeOutQuad(U.clamp((rt - tRun0) / 0.55)); // quick start: ~60 % speed within 0.15 s
-        o.run = U.smoothstep(0.35, 0.8, o.speed / V_RUN);
-      } else {
-        var tRun = hop ? 1.5 : 1.0;
-        var v0 = V_WALK;
-        var uRun = U.clamp((rt - tRun) / 0.55);
-        o.speed = (rt < tRun ? U.lerp(cap.speed, Math.max(v0, cap.speed), U.smoothstep(0, 0.25, rt)) : U.lerp(v0, V_RUN, U.easeOutQuad(uRun))) * (1 - 0.55 * hitch) * (hop ? 1 - 0.45 * bump(rt, 0.66, 0.74, 0.8, 0.88) : 1);          // (hop: she slows for ~0.1 s right before the crouch)
-        o.run = U.smoothstep(0.35, 0.8, o.speed / V_RUN);
-        P.lean = 0.55 * o.run;
-        if (hop) { // tiny hop: crouch, spring up with tucked legs, land and absorb, then scurry
-          var tH0 = 0.88, tCr = 0.14, tAir = 0.4;
-          P.squash += 0.5 * bump(rt, tH0, tH0 + tCr * 0.8, tH0 + tCr, tH0 + tCr + 0.05);
-          var uh = U.clamp((rt - (tH0 + tCr)) / tAir);
-          P.air = U.smoothstep(0, 0.46, uh) * (1 - U.smoothstep(0.54, 1, uh)); // ~0.18 s blends
-          P.y = G - 42 * Math.sin(Math.PI * uh);
-          P.squash += 0.45 * bump(rt, tH0 + tCr + tAir - 0.03, tH0 + tCr + tAir + 0.05, tH0 + tCr + tAir + 0.12, tH0 + tCr + tAir + 0.3);
-        }
+        P.yaw = U.lerp(U.lerp(p0.yaw, 0.45, look), 0.9, sm(TJ, TL - 0.06));   // three-quarter for the look (the head sits forward of the shoulders, chin and neck notch visible), back to (nearly) front in the air
+        P.headYaw = U.lerp(p0.headYaw, -0.5, ease(0, 0.32)) + wobY;
+        P.headYaw = U.lerp(P.headYaw, 0, headUp);
+        P.headPitch = U.lerp(p0.headPitch, -0.85, ease(0.04, 0.36)) - 0.15 * bm(T0 + 0.2, T0 + 0.3, T0 + 0.36, T0 + 0.48);   // (+ a second small double-take nod as the hand reaches)
+        P.headRoll = U.lerp(p0.headRoll, 0.22, look) + wobR;
+        P.bow = (0.8 + 0.1 * sm(T0, TH)) * look * lookRel;
+        P.chestHand = 1.45 * sm(0.06, 0.34) * lookRel;
+        P.reach = sm(T0 + 0.06, T0 + 0.34) * (1 - sm(TH - 0.05, TH + 0.05));   // 'what is THAT?': the free hand reaches down toward the console, then snatches back at the startle
+      } else if (hop) { // C: walking in (profile), the plus is ahead of her, down-left: the head turns toward the viewer and down, the upper body leans in
+        P.yaw = p0.yaw;
+        P.headYaw = U.lerp(p0.headYaw, 0.8, ease(0, 0.3)) + wobY;
+        P.headYaw = U.lerp(P.headYaw, 0, headUp);
+        P.headPitch = U.lerp(p0.headPitch, -1, ease(0.04, 0.34));
+        P.headRoll = U.lerp(p0.headRoll, 0.2, look) + wobR;
+        P.bow = 0.6 * look * lookRel;
+        P.chestHand = 1.35 * sm(0.06, 0.32) * lookRel;
+      } else { // D: walking away (profile), the plus is behind her, down-right: an over-the-shoulder look back (the upper body twists toward the viewer), chin down
+        P.yaw = p0.yaw;
+        P.twist = U.lerp(P.twist, 0.95, ease(0, 0.34));
+        P.twist = U.lerp(P.twist, 0.22, sm(TJ, TL - 0.04));          // she 'jumps out of her skin' and lands nearly straight again
+        P.headYaw = U.lerp(p0.headYaw, 0.95, ease(0, 0.3)) + wobY;
+        P.headYaw = U.lerp(P.headYaw, 0.1, headUp);
+        P.headPitch = U.lerp(p0.headPitch, -0.85, ease(0.04, 0.34));
+        P.headRoll = U.lerp(p0.headRoll, 0.18, look) + wobR;
+        P.bow = 0.35 * look * lookRel;
+        P.chestHand = 1.3 * sm(0.06, 0.32) * lookRel;
       }
-      var spdN = o.speed / V_WALK;
-      P.gait.amount = U.smoothstep(0.01, 0.3, spdN);
+      P.headPitch = U.lerp(P.headPitch, 0.55, headUp);              // head snapped back in the air
+      P.headPitch = U.lerp(P.headPitch, 0.08, landW);
+      P.headRoll = U.lerp(P.headRoll, 0, headUp);
+      // the jump: crouch, stretch at the take-off, flight (parabola), landing squash + wobble, open hands + startle ticks
+      P.squash += 0.55 * bm(TH, TJ - 0.02, TJ, TJ + 0.06) - 0.32 * bm(TJ, TJ + 0.06, TJ + 0.2, TJ + 0.34) + 0.6 * bm(TL - 0.03, TL + 0.06, TL + 0.1, TL + 0.3);
+      if (rt > TL + 0.3) P.squash += 0.16 * Math.exp(-6 * (rt - TL - 0.3)) * Math.sin(Math.PI * 2 * 4 * (rt - TL - 0.3));          // the landing wobble
+      P.air = inAir;
+      P.y = G - HJ * 4 * uA * (1 - uA);
+      P.spread = sm(TJ, TJ + 0.12) * (1 - sm(TL, TL + 0.2));
+      P.startle = sm(TJ - 0.02, TJ + 0.06) * (1 - sm(TJ + 0.24, TJ + 0.36));
+      P.flinch = Math.max(P.flinch, 0.7 * bm(TL - 0.02, TL + 0.1, TL + 0.2, TL + 0.5));          // landed: shoulders up, hands drawn in as little paws (the startled stare)
+      P.wind.x += -(standing ? 130 : 110) * bm(0.04, 0.2, 0.3, 0.6) + 160 * bm(TJ, TJ + 0.1, TJ + 0.2, TJ + 0.5);    // the ponytail swings forward and hangs over the shoulder, then whips in the jump
+      P.wind.y += (standing ? 170 : 60) * bm(0.1, 0.3, 0.55, 0.85);
+
+      // ---- beat 3: turn back (B: body front -> profile with the head leading and the shoulders ahead of the hips); the glance back over the shoulder (all)
+      if (standing) {
+        P.yaw = U.lerp(P.yaw, 0, turnK);
+        P.headYaw = U.lerp(P.headYaw, -0.55 * Math.sin(Math.PI * Math.min(1, ut * 1.1)), sm(TT0 - 0.02, TT0 + 0.08));
+        P.twist += -0.5 * Math.sin(Math.PI * (1 - (1 - ut) * (1 - ut))) * sm(TT0 - 0.02, TT0 + 0.05);
+      }
+      P.headYaw = U.lerp(P.headYaw, 0.9, glance);
+      P.headPitch = U.lerp(P.headPitch, -0.45, glance);
+      P.twist += (standing ? 0.3 : 0.45) * glance;
+
+      // ---- beat 4: coil and burst into the run (comic lean overshoot), head snaps forward
+      P.lean = -0.28 * bm(TR - 0.12, TR - 0.02, TR + 0.04, TR + 0.16) + 0.6 * sm(TR + 0.08, TR + 0.4) + 0.32 * bm(TR + 0.15, TR + 0.35, TR + 0.5, TR + 0.95);
+      P.squash += 0.35 * bm(TR - 0.1, TR, TR + 0.06, TR + 0.18);
+      var vRun = V_RUN * U.easeOutQuad(U.clamp((rt - TR) / 0.45)), vLow = 0;
+      if (standing) o.speed = vRun;
+      else { // walking: she slows to a near-stop for the look + hop (the hop is on the spot), then the run
+        vLow = U.lerp(cap.speed, 0.42 * V_WALK, sm(0, 0.3)) * (1 - 0.78 * sm(TH - 0.05, TJ));
+        o.speed = Math.max(vLow, vRun);
+      }
+      o.run = U.smoothstep(0.35, 0.8, o.speed / V_RUN);
+      var spdN = o.speed / V_WALK, amtRun = U.smoothstep(0.01, 0.3, spdN) * sm(TR - 0.02, TR + 0.26);          // the stride builds up over ~0.25 s at the burst (no one-frame leg pop; the rig lifts the swing foot while the amount ramps)
+      P.gait.amount = standing ? amtRun : Math.max(amtRun, U.smoothstep(0.01, 0.3, vLow / V_WALK));
       P.gait.run = o.run;
       P.gait.speed = o.speed;
       P.wind.x += 140 * o.run; P.wind.y += -40 * o.run;
@@ -12946,7 +13364,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
   var GA = (window.__landingGirl = window.__landingGirl || {});
   var U = GA.util, S = GA.stage;
   var DT = 1 / 120;
-  var HEAVY_AT = 1.5; // loop time at which the heavy modules start building (idle slices, during the walk-in cruise)
+  var HEAVY_AT = 1.0; // loop time at which the heavy modules start building (idle slices, during the walk-in cruise)
 
   var sc = (GA.scene = {
     mode: 'loop', tl: 0, T: null, girl: null, pose: null, R: null, trig: {}, navOpen: false, canvas: null, visible: true, live: true,
@@ -12978,7 +13396,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     var hit = girl.anchors(T.poseAt(c.tHit - 0.001));
     sc.anch = { think: a, hit: hit };
     // the VORTEX ENVELOPE: everything she thinks revolves around her inside this ellipse (centre = her head/neck height); nothing drifts out to the page edges
-    sc.geom = { cx: T.xStop, cy: a.neck.y + 12, rx: Math.min(0.27 * S.W, 780), ry: 380 };
+    sc.geom = { cx: T.xStop, cy: a.neck.y + 12, rx: Math.min(0.35 * S.W, 1000), ry: 460 }; // round 10 (THOUGHTS): ~30 % larger than the approved cloud (was min(0.27 W, 780) x 380)
     return { a: a, hit: hit };
   }
   var STEP = {
@@ -13027,7 +13445,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
         (function pump() {
           var more = false;
           safe('swirl.prepare', function () { more = GA.swirl.prepare(4) === true || !GA.swirl.isReady(); });
-          if (more) later(pump, 60); else later(next, 120);
+          if (more) later(pump, 40); else later(next, 80);
         })();
         return;
       }
@@ -13122,9 +13540,11 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
         if (o.done) { sc.mode = 'away'; sc.awayAt = sc.tl; sc.resumeTl = c.peekOut1 + 0.05; sc.pose.x = S.W + T.M_PARK; }
       } else {
         var stride = U.lerp(T.STRIDE, T.STRIDE_RUN, o.run);
+        // a dash from standing: quick small digging steps that grow with the speed (the rig scales its foot travel by p.gait.stride, so no sliding)
+        if (R.kind === 'stand') stride *= U.lerp(0.45, 1, U.smoothstep(0, 0.75, o.speed / T.V_RUN));
         R.x -= o.speed * h;
         R.phase += (o.speed / stride) * h;
-        p.x = R.x; p.gait.phase = R.phase;
+        p.x = R.x; p.gait.phase = R.phase; if (R.kind === 'stand') p.gait.stride = stride;
         sc.pose = p;
         if (R.x <= -T.M_LEFT) { sc.mode = 'away'; sc.awayAt = sc.tl; sc.resumeTl = c.teleport; sc.pose.x = S.W + T.M_PARK; }
       }
@@ -13349,8 +13769,9 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
         var c = sc.T.cues;
         if (sc.heavyReady && sc.live && sc.mode === 'loop' && sc.tl > 0.9 && sc.tl < c.tHit - 1.0) {
           safe('prepare', function () {
-            if (GA.thoughts && GA.thoughts.prepare && !(GA.thoughts.isReady && GA.thoughts.isReady())) GA.thoughts.prepare(3);
-            else if (GA.swirl && GA.swirl.prepare && !(GA.swirl.isReady && GA.swirl.isReady())) GA.swirl.prepare(3);
+            var pb = sc.tl < c.turnFront0 ? 4.5 : 3; // walk-in frames are cheap (girl only): spend a little more on the cloud plan so it is ready before the first thought pops
+            if (GA.thoughts && GA.thoughts.prepare && !(GA.thoughts.isReady && GA.thoughts.isReady())) GA.thoughts.prepare(pb);
+            else if (GA.swirl && GA.swirl.prepare && !(GA.swirl.isReady && GA.swirl.isReady())) GA.swirl.prepare(pb);
           });
         }
         sc.render();
@@ -13543,4 +13964,3 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
 })();
 
 })();
- 
