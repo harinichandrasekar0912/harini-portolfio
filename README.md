@@ -40,20 +40,27 @@ assets/
 
 ## Image Optimisation Notes
 
-Work overview images should use thumbnails, not full project renders.
+Every project image ships twice, as AVIF (small) and WebP (fallback), with the same file name. Source renders and boards are never used directly: they are resized and compressed first (a 25 MB render becomes roughly 80 to 150 KB).
 
-Recommended project image paths:
+Project image paths (one folder per project):
 
 ```text
-assets/images/work/project-id/thumb-1200.webp
-assets/images/work/project-id/thumb-1600.webp
-assets/images/work/project-id/hero-2200.webp
-assets/images/work/project-id/process-01.webp
+assets/images/work/project-id/thumb-800.avif   thumb-800.webp     overview tile, 800 px wide, 7:5
+assets/images/work/project-id/thumb-1200.avif  thumb-1200.webp    overview tile, 1200 px wide, 7:5 (default)
+assets/images/work/project-id/hero-1600.avif   hero-1600.webp     viewer hero and first panel, 1600 x 1143, 7:5
+assets/images/work/project-id/panel-2.avif     panel-2.webp       panels 2 to 5, 1600 x 1400 (8:7), one per panel
 ```
 
-Use `thumb-1200.webp` as the default overview image and add `srcset` with `thumb-1600.webp` once real assets exist. Keep `width`, `height`, and CSS `aspect-ratio` values to prevent layout shift.
+Size budgets (AVIF): thumb-800 about 45 KB, thumb-1200 about 85 KB, hero about 150 KB, each panel about 170 KB.
 
-Project detail images should be loaded only when project focus mode opens. The current prototype already sets the focus image from JavaScript on demand.
+How they are loaded:
+
+- The overview tiles in `index.html` should use `<picture>` (AVIF first, WebP fallback), `srcset`/`sizes`, `loading="lazy"` and fixed `width`/`height`, so nothing shifts and nothing below the fold is fetched early.
+- The project viewer (`scripts/project-viewer.js`) only requests images when a project is opened. `project-data.js` lists the `.webp` path; the script asks for the `.avif` sibling when the browser can decode it.
+- Hovering, focusing or touching a tile warms the cache with the hero and panel 2, so the viewer opens quickly. Panels 3 to 5 load lazily and are fetched in the background once the first panel is on screen.
+- Every image is shown in greyscale by CSS, so choose crops with strong tonal contrast, and keep the subject in the central 80 % (images are cover-cropped into frames from 0.94:1 to 1.25:1, and 1:1 on phones).
+
+To add a project: create its image set in the same sizes, add an entry to `scripts/project-data.js` (title, summary, optional `meta`, five panels with `heading`, `body`, `image`, `alt`) and a tile in `index.html`.
 
 ## Deployment
 
@@ -76,6 +83,6 @@ When the final domain is ready, add a `CNAME` file at the repository root contai
 ## Current Placeholders
 
 - Landing video placeholder lives in the HTML/CSS only.
-- Work and About images are local SVG placeholders.
+- Work and About images are local SVG placeholders (real project content for the first five works is being added).
 - Resume should be placed at `assets/documents/harini-chandrasekar-resume.pdf`.
 - Contact form is static and shows a placeholder response.

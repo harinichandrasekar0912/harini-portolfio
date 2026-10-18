@@ -16,6 +16,31 @@
       .replace(/'/g, "&#039;");
   }
 
+  /*
+    Images ship as AVIF with a WebP fallback (same file name, different extension). Project data lists the
+    .webp path; when the browser can decode AVIF the smaller .avif sibling is requested instead.
+  */
+  var supportsAvif = false;
+  (function detectAvif() {
+    var probe = new Image();
+    probe.onload = function () {
+      supportsAvif = probe.width > 0 && probe.height > 0;
+    };
+    probe.onerror = function () {
+      supportsAvif = false;
+    };
+    probe.src =
+      "data:image/avif;base64,AAAAHGZ0eXBhdmlmAAAAAG1pZjFhdmlmbWlhZgAAANZtZXRhAAAAAAAAACFoZGxyAAAAAAAAAABwaWN0AAAAAAAAAAAAAAAAAAAAACJpbG9jAAAAAERAAAEAAQAAAAAA+gABAAAAAAAAAB4AAAAjaWluZgAAAAAAAQAAABVpbmZlAgAAAAABAABhdjAxAAAAAA5waXRtAAAAAAABAAAAVmlwcnAAAAA4aXBjbwAAAAxhdjFDgQAMAAAAABRpc3BlAAAAAAAAAAIAAAACAAAAEHBpeGkAAAAAAwgICAAAABZpcG1hAAAAAAAAAAEAAQOBAgMAAAAmbWRhdBIACggYADaICGg0IDIQHEeHhd3TTTTCxsAAkDWX8A==";
+  })();
+
+  function imageUrl(path) {
+    if (!path) {
+      return path;
+    }
+
+    return supportsAvif && /\.webp$/i.test(path) ? path.replace(/\.webp$/i, ".avif") : path;
+  }
+
   function init() {
     var projects = window.HariniProjectData || [];
     var triggers = Array.prototype.slice.call(document.querySelectorAll("[data-project-trigger]"));
@@ -286,6 +311,11 @@
       viewer.classList.remove("is-preparing");
       viewer.classList.add("is-ready");
       viewer.focus({ preventScroll: true });
+      window.setTimeout(function () {
+        if (token === openToken && viewer.classList.contains("is-active")) {
+          loadRemainingPanelImages();
+        }
+      }, 400);
     }
 
     function updateMaxShift() {
@@ -426,8 +456,9 @@
 
     function fillProject(project) {
       var initialImageClass = viewer.dataset.projectSide === "left" ? "project-panel-image is-initial-left-edge" : "project-panel-image";
+      var stepTotal = String(project.panels.length).padStart(2, "0");
 
-      hero.src = project.image;
+      hero.src = imageUrl(project.image);
       hero.alt = project.alt || "";
 
       track.innerHTML = project.panels.map(function (panel, index) {
@@ -438,37 +469,42 @@
             initialImageClass,
             '">',
             '<img src="',
-            escapeHtml(project.image),
+            escapeHtml(imageUrl(project.image)),
             '" alt="',
             escapeHtml(project.alt || ""),
-            '">',
+            '" decoding="async">',
             "</figure>",
             '<div class="project-panel-copy">',
-            '<p class="project-step">01 / 05</p>',
+            '<p class="project-step">01 / ',
+            stepTotal,
+            "</p>",
             "<h3>",
             escapeHtml(project.title),
             "</h3>",
             "<p>",
             escapeHtml(project.summary),
             "</p>",
+            project.meta ? '<p class="project-meta">' + escapeHtml(project.meta) + "</p>" : "",
             "</div>",
             "</article>"
           ].join("");
         }
 
+        /* panels after the first load lazily; revealProjectContent() asks for the rest once the first panel is on screen */
         return [
           '<article class="project-panel">',
           '<figure class="project-panel-image project-panel-placeholder">',
           '<img src="',
-          escapeHtml(panel.image || project.image),
+          escapeHtml(imageUrl(panel.image || project.image)),
           '" alt="',
           escapeHtml(panel.alt || project.alt || ""),
-          '">',
+          '" loading="lazy" decoding="async">',
           "</figure>",
           '<div class="project-panel-copy">',
           '<p class="project-step">',
           String(index + 1).padStart(2, "0"),
-          " / 05",
+          " / ",
+          stepTotal,
           "</p>",
           "<h3>",
           escapeHtml(panel.heading),
@@ -480,6 +516,32 @@
           "</article>"
         ].join("");
       }).join("");
+    }
+
+    /* the project panels are still lazy when the viewer opens: once the first panel is showing, fetch the others in the background */
+    function loadRemainingPanelImages() {
+      Array.prototype.forEach.call(track.querySelectorAll('img[loading="lazy"]'), function (img) {
+        img.loading = "eager";
+      });
+    }
+
+    /* warm the cache with the two images a project needs first, as soon as someone shows interest in its tile */
+    var warmedProjects = {};
+
+    function warmProject(project) {
+      if (!project || warmedProjects[project.id]) {
+        return;
+      }
+
+      warmedProjects[project.id] = true;
+
+      [project.image, project.panels && project.panels[1] && project.panels[1].image].forEach(function (path) {
+        if (path) {
+          var image = new Image();
+          image.decoding = "async";
+          image.src = imageUrl(path);
+        }
+      });
     }
 
     async function openProject(trigger) {
@@ -619,6 +681,13 @@
     }
 
     triggers.forEach(function (trigger) {
+      var warm = function () {
+        warmProject(findProject(trigger.getAttribute("data-project-trigger")));
+      };
+
+      trigger.addEventListener("pointerenter", warm, { passive: true });
+      trigger.addEventListener("focus", warm);
+      trigger.addEventListener("touchstart", warm, { passive: true });
       trigger.addEventListener("click", function () {
         openProject(trigger).catch(function (error) {
           console.error("Project open failed", error);

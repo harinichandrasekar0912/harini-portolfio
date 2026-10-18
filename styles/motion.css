@@ -1194,12 +1194,22 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
   line-height: 1.16;
 }
 
-.project-panel p:last-child {
+.project-panel p:not(.project-step):not(.project-meta) {
   max-width: 26rem;
   margin: 0;
   color: var(--project-text-soft);
   font-size: var(--text-sm);
   line-height: 1.55;
+}
+
+.project-panel .project-meta {
+  max-width: 26rem;
+  margin: var(--space-5) 0 0;
+  color: var(--project-text-soft);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+  opacity: 0.78;
 }
 
 .project-panel:not(.project-panel-intro)::before {
