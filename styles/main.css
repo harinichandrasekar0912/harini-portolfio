@@ -66,6 +66,23 @@ html {
   color: var(--color-ink);
   scroll-behavior: smooth;
   text-size-adjust: 100%;
+  /* No classic scrollbar: it used to vanish whenever a project opened (and come back when it closed), which shifted the whole
+     page and the navigation ball sideways by half a scrollbar. Scrolling itself (wheel, touch, keys, the nav) is unchanged. */
+  scrollbar-width: none;
+  /* no grey flash over a tile / button when it is tapped on a phone */
+  -webkit-tap-highlight-color: transparent;
+}
+
+html::-webkit-scrollbar {
+  display: none;
+}
+
+a,
+button,
+input,
+textarea,
+[data-project-trigger] {
+  touch-action: manipulation;
 }
 
 body {
@@ -176,6 +193,11 @@ textarea:focus-visible {
   text-transform: lowercase;
 }
 
+/*
+  Soft edges at the top and bottom of the window while the page is scrolling. These are plain gradients that fade the content into the
+  paper colour. (They used to be blurred glass; a blurred backdrop over a scrolling page froze the first scroll for ~100 ms and cost
+  frames on slower graphics cards, for an effect that is hard to tell apart from a fade.)
+*/
 .viewport-edge-blur {
   position: fixed;
   left: 0;
@@ -183,87 +205,45 @@ textarea:focus-visible {
   width: 100%;
   pointer-events: none;
   opacity: 0;
-  background: rgba(250, 248, 243, 0.36);
-  backdrop-filter: blur(14px) saturate(1.03);
-  -webkit-backdrop-filter: blur(14px) saturate(1.03);
   transition: opacity 440ms var(--ease-standard);
-  will-change: opacity;
 }
 
 .viewport-edge-blur-top {
   top: 0;
   height: clamp(72px, 12vh, 150px);
-  mask-image: linear-gradient(
+  background: linear-gradient(
     to bottom,
-    rgba(0, 0, 0, 1) 0%,
-    rgba(0, 0, 0, 0.82) 35%,
-    rgba(0, 0, 0, 0.35) 72%,
-    rgba(0, 0, 0, 0) 100%
-  );
-  -webkit-mask-image: linear-gradient(
-    to bottom,
-    rgba(0, 0, 0, 1) 0%,
-    rgba(0, 0, 0, 0.82) 35%,
-    rgba(0, 0, 0, 0.35) 72%,
-    rgba(0, 0, 0, 0) 100%
+    rgba(250, 248, 243, 0.9) 0%,
+    rgba(250, 248, 243, 0.72) 30%,
+    rgba(250, 248, 243, 0.3) 66%,
+    rgba(250, 248, 243, 0) 100%
   );
 }
 
 .viewport-edge-blur-bottom {
   bottom: 0;
   height: clamp(84px, 14vh, 170px);
-  mask-image: linear-gradient(
+  background: linear-gradient(
     to top,
-    rgba(0, 0, 0, 1) 0%,
-    rgba(0, 0, 0, 0.82) 35%,
-    rgba(0, 0, 0, 0.35) 72%,
-    rgba(0, 0, 0, 0) 100%
-  );
-  -webkit-mask-image: linear-gradient(
-    to top,
-    rgba(0, 0, 0, 1) 0%,
-    rgba(0, 0, 0, 0.82) 35%,
-    rgba(0, 0, 0, 0.35) 72%,
-    rgba(0, 0, 0, 0) 100%
+    rgba(250, 248, 243, 0.9) 0%,
+    rgba(250, 248, 243, 0.72) 30%,
+    rgba(250, 248, 243, 0.3) 66%,
+    rgba(250, 248, 243, 0) 100%
   );
 }
 
 body.is-scroll-middle .viewport-edge-blur {
-  opacity: 0.88;
+  opacity: 1;
 }
 
 body.is-scroll-bottom .viewport-edge-blur-top {
-  opacity: 0.78;
+  opacity: 0.9;
 }
 
 body.is-scroll-top .viewport-edge-blur,
 body.is-scroll-bottom .viewport-edge-blur-bottom,
 body.is-project-open .viewport-edge-blur {
   opacity: 0;
-}
-
-body.is-project-open .viewport-edge-blur {
-  background: rgba(5, 5, 5, 0.34);
-}
-
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .viewport-edge-blur {
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    background: linear-gradient(
-      to bottom,
-      rgba(250, 248, 243, 0.58),
-      rgba(250, 248, 243, 0)
-    );
-  }
-
-  .viewport-edge-blur-bottom {
-    background: linear-gradient(
-      to top,
-      rgba(250, 248, 243, 0.58),
-      rgba(250, 248, 243, 0)
-    );
-  }
 }
 
 .section-inner {
@@ -463,6 +443,8 @@ body.is-project-open .viewport-edge-blur {
   background: var(--color-paper-warm);
   cursor: pointer;
   overflow: hidden;
+  /* its own compositor layer: the greyscale + rounded clip of the picture is painted once, not again as the tile scrolls into view */
+  will-change: transform;
 }
 
 .work-row-left .work-tile {
@@ -527,6 +509,9 @@ body.is-project-open .viewport-edge-blur {
   display: grid;
   gap: clamp(1rem, 2vh, 1.6rem);
   justify-items: end;
+  /* min-width 0: the long bars must not stretch their grid column (that pushed the whole stack past the right edge of the screen);
+     they reach out to the left from the right edge instead */
+  min-width: 0;
   width: 100%;
   padding: 0;
   margin: 0;
@@ -536,6 +521,7 @@ body.is-project-open .viewport-edge-blur {
 .archive-bars li {
   display: flex;
   justify-content: flex-end;
+  min-width: 0;
   width: 100%;
 }
 
@@ -543,6 +529,7 @@ body.is-project-open .viewport-edge-blur {
   --bar-width: clamp(520px, 64vw, 980px);
   position: relative;
   display: block;
+  flex-shrink: 0;
   width: var(--bar-width);
   height: clamp(124px, 16vh, 210px);
   padding: 0;
@@ -554,6 +541,7 @@ body.is-project-open .viewport-edge-blur {
   text-align: left;
   cursor: pointer;
   overflow: hidden;
+  will-change: transform;
 }
 
 .archive-bar-long {

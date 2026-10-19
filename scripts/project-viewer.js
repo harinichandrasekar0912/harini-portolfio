@@ -16,6 +16,14 @@
       .replace(/'/g, "&#039;");
   }
 
+  function noop() {}
+
+  function wait(ms) {
+    return new Promise(function (resolve) {
+      window.setTimeout(resolve, ms);
+    });
+  }
+
   /*
     Images ship as AVIF with a WebP fallback (same file name, different extension). Project data lists the
     .webp path; when the browser can decode AVIF the smaller .avif sibling is requested instead.
@@ -32,6 +40,12 @@
     probe.src =
       "data:image/avif;base64,AAAAHGZ0eXBhdmlmAAAAAG1pZjFhdmlmbWlhZgAAANZtZXRhAAAAAAAAACFoZGxyAAAAAAAAAABwaWN0AAAAAAAAAAAAAAAAAAAAACJpbG9jAAAAAERAAAEAAQAAAAAA+gABAAAAAAAAAB4AAAAjaWluZgAAAAAAAQAAABVpbmZlAgAAAAABAABhdjAxAAAAAA5waXRtAAAAAAABAAAAVmlwcnAAAAA4aXBjbwAAAAxhdjFDgQAMAAAAABRpc3BlAAAAAAAAAAIAAAACAAAAEHBpeGkAAAAAAwgICAAAABZpcG1hAAAAAAAAAAEAAQOBAgMAAAAmbWRhdBIACggYADaICGg0IDIQHEeHhd3TTTTCxsAAkDWX8A==";
   })();
+
+  /* 1 x 1 transparent placeholder for panel images that have not been requested yet */
+  var BLANK_IMAGE = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
+
+  /* same curve as --ease-standard in the style sheets */
+  var FLIGHT_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
 
   function imageUrl(path) {
     if (!path) {
@@ -66,21 +80,31 @@
     var currentShift = 0;
     var maxShift = 0;
     var touchY = 0;
-    var closeTimer = 0;
-    var readyTimer = 0;
-    var contentReadyTimer = 0;
+    var revealTimer = 0;
+    var clearTrackTimer = 0;
     var pendingShift = 0;
     var shiftFrame = 0;
     var openToken = 0;
     var activeClone = null;
     var isClosingProject = false;
+    var viewportWidth = window.innerWidth;
+    var viewportHeight = window.innerHeight;
+
+    /* window.innerWidth / innerHeight make the browser finish any pending layout first, so they are read while the layout is clean
+       (at the start of an open, and on resize) and used from here on */
+    function readViewport() {
+      viewportWidth = window.innerWidth;
+      viewportHeight = window.innerHeight;
+    }
+
+    window.addEventListener("resize", readViewport, { passive: true });
 
     function notifyProjectState(name) {
       document.dispatchEvent(new CustomEvent(name));
     }
 
     function isStackedMode() {
-      return window.innerWidth <= 767;
+      return viewportWidth <= 767;
     }
 
     function isTabletLandscapeTouchViewport() {
@@ -100,10 +124,16 @@
       progressBar.style.transform = "scaleX(" + clamp(amount, 0, 1) + ")";
     }
 
+    /* the track is moved with a transform set straight on it (not through a custom property on the viewer, which would
+       restyle every panel on every wheel step) */
+    function applyShift(value) {
+      track.style.transform = value ? "translate3d(" + -value + "px, 0, 0)" : "";
+    }
+
     function setViewerVars(trigger, measuredRect) {
       var rect = measuredRect || trigger.getBoundingClientRect();
-      var vw = window.innerWidth;
-      var vh = window.innerHeight;
+      var vw = viewportWidth;
+      var vh = viewportHeight;
       var stacked = isStackedMode();
       var side = rect.left + rect.width / 2 > vw / 2 ? "right" : "left";
       var topBuffer = stacked ? Math.max(88, vh * 0.12) : clamp(vh * 0.07, 48, 88);
@@ -178,31 +208,30 @@
       });
     }
 
+    /* resolves when the picture is loaded and decoded (so painting it costs nothing); never rejects */
     function ensureImageReady(img) {
       if (!img) {
         return Promise.resolve();
       }
 
-      if (img.complete) {
-        return img.decode ? img.decode().catch(function () {}) : Promise.resolve();
-      }
-
-      if (!isStackedMode() && !isTabletLandscapeTouchViewport()) {
-        return img.decode ? img.decode().catch(function () {}) : waitForImageLoad(img);
-      }
-
       if (img.decode) {
         return img.decode().catch(function () {
-          return waitForImageLoad(img);
+          return img.complete ? undefined : waitForImageLoad(img);
         });
       }
 
-      return waitForImageLoad(img);
+      return img.complete ? Promise.resolve() : waitForImageLoad(img);
     }
 
     function removeActiveClone() {
-      if (activeClone && activeClone.parentElement) {
-        activeClone.parentElement.removeChild(activeClone);
+      if (activeClone) {
+        if (typeof activeClone._stopFlight === "function") {
+          activeClone._stopFlight();
+        }
+
+        if (activeClone.parentElement) {
+          activeClone.parentElement.removeChild(activeClone);
+        }
       }
 
       activeClone = null;
@@ -213,11 +242,9 @@
       var clone = document.createElement("div");
       var cloneImage = document.createElement("img");
 
-      clone.className = "project-open-clone" + (isStackedMode() ? "" : " " + (rect.left + rect.width / 2 > window.innerWidth / 2 ? "is-right-attached" : "is-left-attached"));
-      clone.style.left = rect.left + "px";
-      clone.style.top = rect.top + "px";
-      clone.style.width = rect.width + "px";
-      clone.style.height = rect.height + "px";
+      clone.className = "project-open-clone";
+      clone.style.borderRadius = cornerRadius(trigger);
+      applyBox(clone, rect);
       cloneImage.src = sourceImage ? sourceImage.currentSrc || sourceImage.src : project.image;
       cloneImage.alt = "";
       cloneImage.decoding = "async";
@@ -231,48 +258,155 @@
       };
     }
 
-    function measureProjectTargetRect() {
-      return frame.getBoundingClientRect();
+    function applyBox(element, rect) {
+      element.style.left = rect.left + "px";
+      element.style.top = rect.top + "px";
+      element.style.width = rect.width + "px";
+      element.style.height = rect.height + "px";
     }
 
-    function firstPanelImage() {
-      return track.querySelector(".project-panel-image img");
+    /* an element's corner radii as one string, e.g. "0px 28px 28px 0px" (a tile that sits flush against the page edge has square corners on that side) */
+    function cornerRadius(element) {
+      var style = window.getComputedStyle(element);
+
+      /* the four corners one by one (the border-radius shorthand comes back empty in some older Safari versions) */
+      return [style.borderTopLeftRadius, style.borderTopRightRadius, style.borderBottomRightRadius, style.borderBottomLeftRadius]
+        .map(function (value) {
+          return String(value || "0px").split(" ")[0];
+        })
+        .join(" ");
     }
 
-    function animateCloneTo(clone, targetRect) {
-      if (!clone || reducedMotion.matches) {
-        return Promise.resolve();
+    function boxKeyframe(rect, radius) {
+      var keyframe = {
+        left: rect.left + "px",
+        top: rect.top + "px",
+        width: rect.width + "px",
+        height: rect.height + "px"
+      };
+
+      if (radius) {
+        keyframe.borderRadius = radius;
+      }
+
+      return keyframe;
+    }
+
+    /*
+      Moves a fixed element from one rectangle to another. Resolves true when it arrived and false when the flight was
+      stopped (see stopFlight). A timer is the fallback for browsers that hold animation events back (hidden tab).
+    */
+    function sameBox(a, b) {
+      return Math.abs(a.left - b.left) < 0.5 && Math.abs(a.top - b.top) < 0.5 && Math.abs(a.width - b.width) < 0.5 && Math.abs(a.height - b.height) < 0.5;
+    }
+
+    function flyBetween(element, from, to, duration, radiusFrom, radiusTo) {
+      applyBox(element, from);
+
+      if (radiusFrom) {
+        element.style.borderRadius = radiusFrom;
+      }
+
+      /* nothing to travel (closed before the picture had moved): no animation to wait for */
+      if (!element.animate || reducedMotion.matches || (sameBox(from, to) && (!radiusTo || radiusFrom === radiusTo))) {
+        applyBox(element, to);
+
+        if (radiusTo) {
+          element.style.borderRadius = radiusTo;
+        }
+
+        return Promise.resolve(true);
       }
 
       return new Promise(function (resolve) {
-        var finished = false;
+        var settled = false;
+        var timer = 0;
+        var animation = element.animate([boxKeyframe(from, radiusFrom), boxKeyframe(to, radiusTo)], {
+          duration: duration,
+          easing: FLIGHT_EASE,
+          fill: "both"
+        });
 
-        function finish() {
-          if (finished) {
+        function settle(arrived) {
+          if (settled) {
             return;
           }
 
-          finished = true;
-          clone.removeEventListener("transitionend", handleTransitionEnd);
-          resolve();
-        }
+          settled = true;
+          window.clearTimeout(timer);
+          element._stopFlight = null;
 
-        function handleTransitionEnd(event) {
-          if (event.target === clone) {
-            finish();
+          if (arrived) {
+            applyBox(element, to);
+
+            if (radiusTo) {
+              element.style.borderRadius = radiusTo;
+            }
           }
+
+          animation.cancel();
+          resolve(arrived);
         }
 
-        clone.addEventListener("transitionend", handleTransitionEnd);
-        window.setTimeout(finish, isTabletLandscapeTouchViewport() ? 1440 : isStackedMode() ? 1480 : 1280);
-        window.requestAnimationFrame(function () {
-          clone.classList.add("is-moving");
-          clone.style.left = targetRect.left + "px";
-          clone.style.top = targetRect.top + "px";
-          clone.style.width = targetRect.width + "px";
-          clone.style.height = targetRect.height + "px";
-        });
+        element._stopFlight = function () {
+          settle(false);
+        };
+        animation.onfinish = function () {
+          settle(true);
+        };
+        animation.oncancel = function () {
+          settle(false);
+        };
+        timer = window.setTimeout(function () {
+          settle(true);
+        }, duration + 600);
       });
+    }
+
+    /* freezes a flying element where it is and returns that rectangle */
+    function stopFlight(element) {
+      var rect = element.getBoundingClientRect();
+      var radius = cornerRadius(element);
+
+      if (typeof element._stopFlight === "function") {
+        element._stopFlight();
+      }
+
+      applyBox(element, rect);
+      element.style.borderRadius = radius;
+
+      return rect;
+    }
+
+    function openFlightDuration() {
+      if (reducedMotion.matches) {
+        return 1;
+      }
+
+      return isTabletLandscapeTouchViewport() || isStackedMode() ? 1100 : 1000;
+    }
+
+    function closeFlightDuration() {
+      if (reducedMotion.matches) {
+        return 1;
+      }
+
+      return isTabletLandscapeTouchViewport() || isStackedMode() ? 1000 : 940;
+    }
+
+    function introFigure() {
+      return track.querySelector(".project-panel-intro .project-panel-image");
+    }
+
+    function introImage() {
+      return track.querySelector(".project-panel-intro .project-panel-image img");
+    }
+
+    /* where the first frame sits (or will sit) on screen: the flying picture lands exactly there */
+    function introFigureRect() {
+      var figure = introFigure();
+
+      return figure ? figure.getBoundingClientRect() : frame.getBoundingClientRect();
     }
 
     function prepareProjectOpen(trigger, project, rect) {
@@ -280,9 +414,8 @@
       activeProject = project;
       currentShift = 0;
       pendingShift = 0;
-      window.clearTimeout(closeTimer);
-      window.clearTimeout(readyTimer);
-      window.clearTimeout(contentReadyTimer);
+      window.clearTimeout(revealTimer);
+      window.clearTimeout(clearTrackTimer);
       closeButton.disabled = false;
       isClosingProject = false;
 
@@ -291,45 +424,43 @@
         shiftFrame = 0;
       }
 
-      setViewerVars(trigger, rect);
-      fillProject(project);
-      viewer.style.setProperty("--project-shift", "0px");
-      story.scrollTop = 0;
       viewer.classList.add("is-active", "is-preparing");
-      viewer.classList.remove("is-ready", "is-closing", "is-expanded");
+      viewer.classList.remove("is-ready", "is-closing", "is-expanded", "is-landed", "is-shrinking");
       viewer.setAttribute("aria-hidden", "false");
       document.body.classList.add("is-project-open", "is-project-dark");
       document.body.classList.remove("is-project-closing");
+      /* told before the panels are built: whatever the listeners measure is then measured on the small, clean layout */
       notifyProjectState("harini:project-open");
+      setViewerVars(trigger, rect);
+      fillProject(project);
+      observePanelImages();
+      applyShift(0);
+      track.style.transition = "";
+      frame.style.cssText = "";
     }
 
     function revealProjectContent(token) {
-      if (token !== openToken || !viewer.classList.contains("is-active")) {
+      if (token !== openToken || !viewer.classList.contains("is-active") || viewer.classList.contains("is-ready")) {
         return;
       }
 
       viewer.classList.remove("is-preparing");
       viewer.classList.add("is-ready");
       viewer.focus({ preventScroll: true });
-      window.setTimeout(function () {
-        if (token === openToken && viewer.classList.contains("is-active")) {
-          loadRemainingPanelImages();
-        }
-      }, 400);
     }
 
     function updateMaxShift() {
       if (isStackedMode()) {
         maxShift = 0;
         currentShift = 0;
-        viewer.style.setProperty("--project-shift", "0px");
+        applyShift(0);
         setProgress();
         return;
       }
 
       maxShift = Math.max(0, track.scrollWidth - story.clientWidth);
       currentShift = clamp(currentShift, 0, maxShift);
-      viewer.style.setProperty("--project-shift", currentShift + "px");
+      applyShift(currentShift);
       setProgress();
     }
 
@@ -340,7 +471,7 @@
 
       currentShift = clamp(value, 0, maxShift);
       track.classList.toggle("is-dragging", Boolean(quick));
-      viewer.style.setProperty("--project-shift", currentShift + "px");
+      applyShift(currentShift);
       setProgress();
 
       if (quick) {
@@ -368,14 +499,6 @@
       });
     }
 
-    function closeTransitionDuration() {
-      if (reducedMotion.matches) {
-        return 1;
-      }
-
-      return isTabletLandscapeTouchViewport() || isStackedMode() ? 1200 : 1160;
-    }
-
     function animateScrollToTop(element) {
       var startTop = element.scrollTop;
       var duration = reducedMotion.matches ? 1 : clamp(Math.abs(startTop) * 0.45, 500, 1200);
@@ -388,14 +511,14 @@
       return new Promise(function (resolve) {
         var startTime = performance.now();
 
-        function frame(now) {
+        function step(now) {
           var raw = clamp((now - startTime) / duration, 0, 1);
           var eased = easeInOutCubic(raw);
 
           element.scrollTop = startTop * (1 - eased);
 
           if (raw < 1) {
-            window.requestAnimationFrame(frame);
+            window.requestAnimationFrame(step);
             return;
           }
 
@@ -403,7 +526,7 @@
           resolve();
         }
 
-        window.requestAnimationFrame(frame);
+        window.requestAnimationFrame(step);
       });
     }
 
@@ -422,27 +545,27 @@
 
         track.style.transition = "none";
 
-        function frame(now) {
+        function step(now) {
           var raw = clamp((now - startTime) / duration, 0, 1);
           var eased = easeInOutCubic(raw);
 
           currentShift = startShift * (1 - eased);
-          viewer.style.setProperty("--project-shift", currentShift + "px");
+          applyShift(currentShift);
           setProgress();
 
           if (raw < 1) {
-            window.requestAnimationFrame(frame);
+            window.requestAnimationFrame(step);
             return;
           }
 
           currentShift = 0;
-          viewer.style.setProperty("--project-shift", "0px");
+          applyShift(0);
           setProgress();
           track.style.transition = previousTransition;
           resolve();
         }
 
-        window.requestAnimationFrame(frame);
+        window.requestAnimationFrame(step);
       });
     }
 
@@ -459,7 +582,7 @@
       var stepTotal = String(project.panels.length).padStart(2, "0");
 
       hero.src = imageUrl(project.image);
-      hero.alt = project.alt || "";
+      hero.alt = "";
 
       track.innerHTML = project.panels.map(function (panel, index) {
         if (index === 0) {
@@ -490,15 +613,26 @@
           ].join("");
         }
 
-        /* panels after the first load lazily; revealProjectContent() asks for the rest once the first panel is on screen */
+        /*
+          Panels after the first size their frame from the image's own aspect ratio (panel.ratio = width / height), so plans,
+          sections and diagrams are shown whole, never cropped. Very wide drawings get a wide frame the viewer pans across.
+          panel.colour = true keeps the original colours (for images where colour carries the meaning, such as heat maps).
+          Images are requested as the panel nears the screen (see observePanelImages): only the second panel is loaded straight away.
+          A frame is "is-loading" until its picture has arrived, so the picture fades in instead of popping in.
+        */
+        var ratio = panel.ratio > 0 ? panel.ratio : 8 / 7;
+        var shape = ratio > 2.2 ? " is-wide" : ratio > 1.45 ? " is-landscape" : "";
+        var imageSrc = imageUrl(panel.image || project.image);
+
         return [
-          '<article class="project-panel">',
-          '<figure class="project-panel-image project-panel-placeholder">',
-          '<img src="',
-          escapeHtml(imageUrl(panel.image || project.image)),
-          '" alt="',
+          '<article class="project-panel' + shape + (panel.colour ? " is-colour" : "") + '" style="--ratio:' + ratio.toFixed(3) + '">',
+          '<figure class="project-panel-image project-panel-placeholder is-loading">',
+          index === 1
+            ? '<img src="' + escapeHtml(imageSrc) + '"'
+            : '<img src="' + BLANK_IMAGE + '" data-src="' + escapeHtml(imageSrc) + '"',
+          ' alt="',
           escapeHtml(panel.alt || project.alt || ""),
-          '" loading="lazy" decoding="async">',
+          '" decoding="async">',
           "</figure>",
           '<div class="project-panel-copy">',
           '<p class="project-step">',
@@ -516,12 +650,88 @@
           "</article>"
         ].join("");
       }).join("");
+
+      watchPanelImages();
     }
 
-    /* the project panels are still lazy when the viewer opens: once the first panel is showing, fetch the others in the background */
-    function loadRemainingPanelImages() {
-      Array.prototype.forEach.call(track.querySelectorAll('img[loading="lazy"]'), function (img) {
-        img.loading = "eager";
+    /* take the "is-loading" mark off a frame as soon as its real picture (not the placeholder) has loaded */
+    function watchPanelImages() {
+      Array.prototype.forEach.call(track.querySelectorAll(".project-panel-image.is-loading img"), function (img) {
+        var figure = img.parentElement;
+
+        function settle() {
+          if (!img.hasAttribute("data-src")) {
+            figure.classList.remove("is-loading");
+          }
+        }
+
+        img.addEventListener("load", settle);
+        img.addEventListener("error", function () {
+          figure.classList.remove("is-loading");
+        });
+
+        if (img.complete && img.naturalWidth > 1) {
+          settle();
+        }
+      });
+    }
+
+    /*
+      Panel images (after the second) carry their address in data-src. They are requested when their panel comes within a
+      couple of screens of the visible area, so a long project opens fast and only fetches what is about to be seen.
+    */
+    var panelObserver = null;
+
+    function loadPanelImage(img) {
+      var src = img.getAttribute("data-src");
+
+      if (src) {
+        img.removeAttribute("data-src");
+        img.src = src;
+
+        /* decode ahead of time, off screen, so the picture is ready to paint the moment its panel slides in */
+        if (img.decode) {
+          img.decode().catch(noop);
+        }
+      }
+    }
+
+    function disconnectPanelObserver() {
+      if (panelObserver) {
+        panelObserver.disconnect();
+        panelObserver = null;
+      }
+    }
+
+    function observePanelImages() {
+      var pending = Array.prototype.slice.call(track.querySelectorAll(".project-panel")).filter(function (panel) {
+        return panel.querySelector("img[data-src]");
+      });
+
+      disconnectPanelObserver();
+
+      if (!("IntersectionObserver" in window)) {
+        Array.prototype.forEach.call(track.querySelectorAll("img[data-src]"), loadPanelImage);
+        return;
+      }
+
+      /* the panels themselves are observed: far-away panels keep their layout box (see content-visibility in motion.css) while their contents are skipped */
+      panelObserver = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (entry.isIntersecting) {
+            var img = entry.target.querySelector("img[data-src]");
+
+            if (img) {
+              loadPanelImage(img);
+            }
+
+            panelObserver.unobserve(entry.target);
+          }
+        });
+      }, { root: story, rootMargin: isStackedMode() ? "1400px 0px" : "0px 1600px" });
+
+      pending.forEach(function (panel) {
+        panelObserver.observe(panel);
       });
     }
 
@@ -540,10 +750,19 @@
           var image = new Image();
           image.decoding = "async";
           image.src = imageUrl(path);
+
+          if (image.decode) {
+            image.decode().catch(noop);
+          }
         }
       });
     }
 
+    /*
+      Opening: the tile's picture is lifted into a clone that flies to the first frame (the flight starts at once, it never waits for
+      the big picture), the page fades to black and the text fades in on the way. On landing, the first frame is shown and the clone
+      removed in the same step.
+    */
     async function openProject(trigger) {
       if (viewer.classList.contains("is-active")) {
         return;
@@ -556,81 +775,107 @@
       }
 
       var token = openToken + 1;
+      readViewport();
       var tileRect = trigger.getBoundingClientRect();
       var cloneParts;
-      var targetRect;
-      var cloneMotion;
       openToken = token;
       removeActiveClone();
       cloneParts = createOpenClone(trigger, project, tileRect);
       prepareProjectOpen(trigger, project, tileRect);
-      await waitForProjectMeasurementLayout();
 
+      /* the clone has to be painted before the tile underneath is hidden: wait for its picture to be decoded and for two frames
+         (phones and tablets also let the layout settle for a few more) */
       await Promise.all([
-        ensureImageReady(cloneParts.image),
-        ensureImageReady(hero),
-        ensureImageReady(firstPanelImage()),
+        Promise.race([ensureImageReady(cloneParts.image), wait(300)]),
         waitForLayout()
       ]);
+      await waitForProjectMeasurementLayout();
 
       if (token !== openToken) {
-        removeActiveClone();
         return;
       }
 
+      var targetRect = introFigureRect();
+      trigger.classList.add("is-project-source");
       viewer.classList.add("is-expanded");
       updateMaxShift();
-      setProgress();
-      await waitForProjectMeasurementLayout();
+      cloneParts.element.classList.add("is-moving");
 
-      await Promise.all([
-        ensureImageReady(hero),
-        ensureImageReady(firstPanelImage()),
-        waitForLayout()
-      ]);
+      var flight = flyBetween(cloneParts.element, tileRect, targetRect, openFlightDuration(), cornerRadius(trigger), cornerRadius(introFigure()));
 
-      if (token !== openToken) {
-        removeActiveClone();
-        return;
-      }
-
-      targetRect = measureProjectTargetRect();
-      cloneMotion = animateCloneTo(cloneParts.element, targetRect);
-      contentReadyTimer = window.setTimeout(function () {
+      revealTimer = window.setTimeout(function () {
         revealProjectContent(token);
-      }, reducedMotion.matches ? 1 : isStackedMode() ? 560 : isTabletLandscapeTouchViewport() ? 520 : 420);
+      }, reducedMotion.matches ? 1 : isStackedMode() ? 520 : 440);
 
-      await cloneMotion;
+      await flight;
 
       if (token !== openToken) {
-        removeActiveClone();
         return;
       }
 
-      window.clearTimeout(contentReadyTimer);
+      /* landed. Only if the full-size picture is not decoded yet does the clone (the same picture, smaller) wait for it. */
+      await Promise.race([ensureImageReady(introImage()), wait(4000)]);
+
+      if (token !== openToken) {
+        return;
+      }
+
+      window.clearTimeout(revealTimer);
       revealProjectContent(token);
-      readyTimer = window.setTimeout(removeActiveClone, reducedMotion.matches ? 1 : 180);
+      viewer.classList.add("is-landed");
+      await waitForLayoutFrames(2);
+
+      if (token !== openToken) {
+        return;
+      }
+
+      removeActiveClone();
     }
 
+    function clearTrack() {
+      if (!viewer.classList.contains("is-active")) {
+        track.innerHTML = "";
+        story.scrollTop = 0;
+      }
+    }
+
+    /* the viewer disappears and the tile comes back in the same step: the hero frame is exactly on the tile, so nothing changes on screen */
     function finishClose() {
-      viewer.classList.remove("is-active", "is-expanded", "is-ready", "is-closing", "is-preparing");
+      var trigger = activeTrigger;
+
+      viewer.classList.remove("is-active", "is-expanded", "is-ready", "is-closing", "is-preparing", "is-landed", "is-shrinking");
       viewer.setAttribute("aria-hidden", "true");
       document.body.classList.remove("is-project-open", "is-project-dark", "is-project-closing");
-      track.innerHTML = "";
-      hero.removeAttribute("src");
+      disconnectPanelObserver();
+      frame.style.cssText = "";
+      applyShift(0);
       activeProject = null;
       closeButton.disabled = false;
       isClosingProject = false;
       removeActiveClone();
+
+      if (trigger) {
+        trigger.classList.remove("is-project-source");
+      }
+
       notifyProjectState("harini:project-closed");
 
-      if (activeTrigger) {
-        activeTrigger.focus({ preventScroll: true });
+      if (trigger) {
+        trigger.focus({ preventScroll: true });
       }
 
       activeTrigger = null;
+
+      /* emptying the (long) track is left for after the swap frame */
+      window.clearTimeout(clearTrackTimer);
+      clearTrackTimer = window.setTimeout(clearTrack, 80);
     }
 
+    /*
+      Closing: the track slides back to the first panel, the first frame is swapped for the hero frame (same place, same picture, one
+      frame apart so nothing flashes) and that flies back onto the tile while the page comes back. If the project is closed while its
+      picture is still flying in, that same picture simply turns around.
+    */
     async function closeProject() {
       if (!viewer.classList.contains("is-active") || isClosingProject) {
         return;
@@ -640,9 +885,11 @@
       pendingShift = 0;
       openToken += 1;
       var token = openToken;
-      removeActiveClone();
-      window.clearTimeout(readyTimer);
-      window.clearTimeout(contentReadyTimer);
+      var flying = activeClone;
+      var shrinker = flying || frame;
+      var from;
+      var fromRadius;
+      window.clearTimeout(revealTimer);
 
       if (shiftFrame) {
         window.cancelAnimationFrame(shiftFrame);
@@ -652,32 +899,46 @@
       closeButton.disabled = true;
       document.body.classList.add("is-project-closing");
       notifyProjectState("harini:project-closing");
-      window.clearTimeout(closeTimer);
 
-      await animateProjectReturnToStart();
+      if (flying) {
+        from = stopFlight(flying);
+        fromRadius = flying.style.borderRadius;
+      } else {
+        await animateProjectReturnToStart();
 
-      if (token !== openToken || !viewer.classList.contains("is-active")) {
+        if (token !== openToken || !viewer.classList.contains("is-active")) {
+          return;
+        }
+
+        from = introFigureRect();
+        fromRadius = cornerRadius(introFigure());
+        applyBox(frame, from);
+        frame.style.borderRadius = fromRadius;
+      }
+
+      viewer.classList.remove("is-ready");
+      viewer.classList.add("is-closing");
+
+      if (!flying) {
+        /* let the hero frame paint underneath the first frame before the first frame is taken away */
+        await waitForLayoutFrames(2);
+
+        if (token !== openToken) {
+          return;
+        }
+      }
+
+      var tileRect = activeTrigger ? activeTrigger.getBoundingClientRect() : from;
+
+      viewer.classList.add("is-shrinking");
+      viewer.classList.remove("is-expanded");
+      await flyBetween(shrinker, from, tileRect, closeFlightDuration(), fromRadius, activeTrigger ? cornerRadius(activeTrigger) : fromRadius);
+
+      if (token !== openToken) {
         return;
       }
 
-      viewer.classList.add("is-closing");
-      viewer.classList.remove("is-ready");
-      setShift(0, false);
-      story.scrollTop = 0;
-
-      if (activeTrigger) {
-        setViewerVars(activeTrigger);
-      }
-
-      window.requestAnimationFrame(function () {
-        viewer.classList.remove("is-expanded");
-      });
-
-      closeTimer = window.setTimeout(function () {
-        if (token === openToken) {
-          finishClose();
-        }
-      }, closeTransitionDuration());
+      finishClose();
     }
 
     triggers.forEach(function (trigger) {
@@ -691,6 +952,9 @@
       trigger.addEventListener("click", function () {
         openProject(trigger).catch(function (error) {
           console.error("Project open failed", error);
+          viewer.classList.add("is-landed");
+          removeActiveClone();
+          revealProjectContent(openToken);
         });
       });
     });
@@ -709,7 +973,10 @@
       }
 
       event.preventDefault();
-      queueShift(event.deltaY * 1.15);
+
+      if (!isClosingProject) {
+        queueShift(event.deltaY * 1.15);
+      }
     }, { passive: false });
 
     viewer.addEventListener("touchstart", function (event) {
@@ -731,7 +998,10 @@
       var delta = touchY - nextY;
       touchY = nextY;
       event.preventDefault();
-      queueShift(delta * 1.25);
+
+      if (!isClosingProject) {
+        queueShift(delta * 1.25);
+      }
     }, { passive: false });
 
     document.addEventListener("keydown", function (event) {
@@ -749,7 +1019,10 @@
         }
 
         event.preventDefault();
-        setShift(currentShift + window.innerWidth * 0.72, false);
+
+        if (!isClosingProject) {
+          setShift(currentShift + viewportWidth * 0.72, false);
+        }
       }
 
       if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
@@ -758,7 +1031,10 @@
         }
 
         event.preventDefault();
-        setShift(currentShift - window.innerWidth * 0.72, false);
+
+        if (!isClosingProject) {
+          setShift(currentShift - viewportWidth * 0.72, false);
+        }
       }
     });
 

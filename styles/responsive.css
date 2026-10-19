@@ -348,40 +348,8 @@
     display: none;
   }
 
-  .project-open-clone {
-    transition:
-      left 1240ms var(--ease-standard),
-      top 1240ms var(--ease-standard),
-      width 1240ms var(--ease-standard),
-      height 1240ms var(--ease-standard),
-      opacity 780ms var(--ease-standard);
-  }
-
-  .project-open-clone,
-  .project-open-clone.is-left-attached,
-  .project-open-clone.is-right-attached {
-    border-radius: var(--image-radius);
-  }
-
-  .project-glass {
-    transition:
-      opacity 1250ms var(--ease-standard),
-      background-color 1250ms var(--ease-standard),
-      backdrop-filter 1250ms var(--ease-standard),
-      -webkit-backdrop-filter 1250ms var(--ease-standard);
-  }
-
-  .project-viewer[data-project-mode="stacked"] .project-panel-image,
-  .project-viewer[data-project-mode="stacked"] .project-panel-copy {
-    transition:
-      opacity 720ms var(--ease-standard),
-      transform 720ms var(--ease-standard),
-      border-color 900ms var(--ease-standard),
-      background-color 900ms var(--ease-standard);
-  }
-
   .project-viewer.is-ready[data-project-mode="stacked"] .project-panel-copy {
-    transition-delay: 320ms;
+    transition-delay: 240ms;
   }
 }
 
@@ -507,41 +475,7 @@
     animation: radialPop 440ms var(--ease-standard) var(--pop-delay, 0ms) both;
   }
 
-  .project-open-clone {
-    transition:
-      left 1240ms var(--ease-standard),
-      top 1240ms var(--ease-standard),
-      width 1240ms var(--ease-standard),
-      height 1240ms var(--ease-standard),
-      opacity 780ms var(--ease-standard);
-  }
-
-  .project-glass {
-    transition:
-      opacity 1250ms var(--ease-standard),
-      background-color 1250ms var(--ease-standard),
-      backdrop-filter 1250ms var(--ease-standard),
-      -webkit-backdrop-filter 1250ms var(--ease-standard);
-  }
-
-  .project-viewer.is-expanded.is-preparing .project-glass {
-    opacity: 0.96;
-    backdrop-filter: blur(18px) saturate(0.78);
-    -webkit-backdrop-filter: blur(18px) saturate(0.78);
-  }
-
-  .project-viewer.is-ready .project-panel-image,
-  .project-viewer.is-ready .project-panel-copy,
-  .project-viewer.is-closing .project-panel-image,
-  .project-viewer.is-closing .project-panel-copy {
-    transition:
-      opacity 760ms var(--ease-standard),
-      transform 760ms var(--ease-standard),
-      border-color 900ms var(--ease-standard),
-      background-color 900ms var(--ease-standard);
-  }
-
   .project-viewer.is-ready .project-panel-copy {
-    transition-delay: 340ms;
+    transition-delay: 240ms;
   }
 }

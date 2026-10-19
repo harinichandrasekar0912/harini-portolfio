@@ -13434,15 +13434,18 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
   };
   /** the same, spread over idle slices so the walk-in at page load never hitches */
   sc.buildHeavyStaged = function (done) {
-    var g = geometry();
+    var g = null; // measured when the first slice runs (the layout may change while the build waits for the landing to be on screen)
     if (GA.fx) { GA.fx.cubes.reset(); GA.fx.dots.reset(); }
     var names = ['swirl', 'thoughts', 'fx'], i = 0;
     (function next() {
+      if (!sc.visible) { window.setTimeout(next, 500); return; } // nothing is built while the landing is scrolled out of view (it would only steal frames from whatever the visitor is doing)
+      if (!g) g = geometry();
       if (i >= names.length) { sc.heavyReady = true; sc.fresh = true; if (done) done(); return; }
       var n = names[i++];
       if (n === 'swirl' && GA.swirl && GA.swirl.isReady) { // sliced build: returns at once, the work is done in small idle slices
         safe('swirl.build', function () { STEP.swirl(g, true); });
         (function pump() {
+          if (!sc.visible) { window.setTimeout(pump, 500); return; }
           var more = false;
           safe('swirl.prepare', function () { more = GA.swirl.prepare(4) === true || !GA.swirl.isReady(); });
           if (more) later(pump, 40); else later(next, 80);
@@ -13477,7 +13480,13 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
   };
   /** called while the landing is scrolled out of view: do the expensive reset now so restart() on the way back is nearly free */
   sc.prepareRestart = function () {
-    if (sc.heavyReady && !sc.fresh) sc.rebuildModules();
+    if (sc.heavyReady && !sc.fresh) {
+      // the same sliced build as at page load (a few ms per idle slice) instead of one 60-90 ms task: heavyReady is false until it is done, so
+      // restart() leaves it alone and the loop draws the girl alone while the modules finish (they are not needed before ~5 s into the loop)
+      if (GA.fx) { GA.fx.cubes.reset(); GA.fx.dots.reset(); if (GA.fx.ball && GA.fx.ball.reset) GA.fx.ball.reset(); }
+      sc.heavyReady = false;
+      sc.buildHeavyStaged();
+    }
     if (sc.girl && sc.T && !sc._snaps.walk) { var keep = sc.pose; resetHair(false); sc.pose = keep; }
   };
 
@@ -13902,12 +13911,23 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     if (mq.addEventListener) mq.addEventListener('change', fn, { once: true }); else if (mq.addListener) mq.addListener(fn);
   }
 
+  /* runs fn once the page has been still for a moment (no scroll for ~350 ms) and the browser is idle: heavy resets must never land in the middle of a scroll */
+  var lastScrollAt = 0;
+  window.addEventListener('scroll', function () { lastScrollAt = window.performance.now(); }, { passive: true });
+  function whenScrollIdle(fn) {
+    (function check() {
+      var still = window.performance.now() - lastScrollAt;
+      if (still < 350) { window.setTimeout(check, 370 - still); return; }
+      if (window.requestIdleCallback) window.requestIdleCallback(function () { fn(); }, { timeout: 800 }); else fn();
+    })();
+  }
+
   function setVisible(v) {
     if (!booted || v === scene.visible) return;
     scene.visible = v;
     if (reduced.matches) { scene.render(); return; }
     if (v) { scene.restart(); syncNav(); scene.play(); }
-    else { scene.pause(); window.setTimeout(function () { if (!scene.visible) scene.prepareRestart(); }, 120); } // do the expensive reset while it is off-screen
+    else { scene.pause(); whenScrollIdle(function () { if (!scene.visible) scene.prepareRestart(); }); } // do the expensive reset while it is off-screen, once the page has stopped scrolling (a 60-90 ms task must not land in the middle of a scroll)
   }
 
   function boot() {

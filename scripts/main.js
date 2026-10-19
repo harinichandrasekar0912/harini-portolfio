@@ -413,6 +413,23 @@
     window.addEventListener("load", queueUpdate, { once: true });
   }
 
+  /* A work tile whose picture has not arrived yet shows its empty frame; the picture fades in when it does (no pop-in while scrolling). */
+  function initTileImageFade() {
+    Array.prototype.forEach.call(document.querySelectorAll(".work-tile img"), function (img) {
+      if (img.complete && img.naturalWidth > 0) {
+        return;
+      }
+
+      function settle() {
+        img.classList.remove("is-loading");
+      }
+
+      img.classList.add("is-loading");
+      img.addEventListener("load", settle, { once: true });
+      img.addEventListener("error", settle, { once: true });
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     if (window.HariniNavigationBall) {
       window.HariniNavigationBall.init();
@@ -426,5 +443,6 @@
     initArchivePlaceholders();
     initPlaceholderLinks();
     initViewportEdgeBlur();
+    initTileImageFade();
   });
 })();

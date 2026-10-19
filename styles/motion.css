@@ -764,7 +764,14 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
 }
 
 .work-tile img {
-  transition: transform var(--duration-slow) var(--ease-standard);
+  transition:
+    transform var(--duration-slow) var(--ease-standard),
+    opacity 520ms var(--ease-standard);
+}
+
+/* a tile whose picture is still arriving shows its quiet empty frame; the picture then fades in instead of popping in (scripts/main.js) */
+.work-tile img.is-loading {
+  opacity: 0;
 }
 
 .work-tile:hover,
@@ -964,6 +971,17 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
   }
 }
 
+/*
+  Project viewer. The choreography lives in scripts/project-viewer.js; this file only holds the states.
+
+  open  : the tile's picture is lifted into a fixed clone that flies to the first frame while the page fades to black. The text
+          and the other frames fade in during the flight. When the clone lands, the first frame is shown in the same step the
+          clone is removed, so the picture never overlaps itself and nothing cross-fades.
+  close : the first frame is swapped for the hero frame, which flies back onto the tile; the tile is shown again in the same step
+          the viewer is hidden.
+
+  Only opacity and transform are transitioned on the content (no blur, no filter or layout transitions): cheap on every device.
+*/
 .project-viewer {
   --project-bg: var(--color-paper);
   --project-text: var(--color-ink);
@@ -988,13 +1006,9 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
   inset: 0;
   z-index: var(--z-project);
   visibility: hidden;
-  opacity: 0;
   pointer-events: none;
   color: var(--project-text);
-  transition:
-    opacity 1120ms var(--ease-standard),
-    visibility 0ms linear 1120ms,
-    color 980ms var(--ease-standard);
+  outline: none;
 }
 
 .project-viewer.is-active {
@@ -1005,28 +1019,25 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
   --project-line-strong: rgba(255, 255, 255, 0.86);
   --project-grey: #1c1c1c;
   visibility: visible;
-  opacity: 1;
   pointer-events: auto;
-  transition-delay: 0ms;
 }
 
+/* the tile's picture, lifted off the page: it flies to the first frame (position and size are driven by the script) */
 .project-open-clone {
   position: fixed;
   z-index: 940;
   margin: 0;
-  border: var(--line-thin) solid rgba(255, 255, 255, 0.72);
+  border: var(--line-thin) solid var(--color-line);
   border-radius: var(--image-radius);
   background: #050505;
   overflow: hidden;
   pointer-events: none;
-  transform: translate3d(0, 0, 0);
-  will-change: left, top, width, height;
-  transition:
-    left 1100ms var(--ease-standard),
-    top 1100ms var(--ease-standard),
-    width 1100ms var(--ease-standard),
-    height 1100ms var(--ease-standard),
-    opacity 720ms var(--ease-standard);
+  contain: layout paint style;
+  transition: border-color 700ms var(--ease-standard);
+}
+
+.project-open-clone.is-moving {
+  border-color: rgba(255, 255, 255, 0.28);
 }
 
 .project-open-clone img {
@@ -1037,24 +1048,20 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
   filter: grayscale(1);
 }
 
-.project-open-clone.is-left-attached {
-  border-radius: 0 var(--image-radius) var(--image-radius) 0;
-}
-
-.project-open-clone.is-right-attached {
-  border-radius: var(--image-radius);
-}
-
+/* the page goes to black with a plain fade (a blurred backdrop here made the first open stutter and was invisible anyway) */
 .project-glass {
   position: absolute;
   inset: 0;
   background: #050505;
   opacity: 0;
-  backdrop-filter: blur(0);
-  -webkit-backdrop-filter: blur(0);
-  box-shadow: inset 0 0 0 100vmax rgba(0, 0, 0, 0.2);
+  transition: opacity 820ms var(--ease-standard);
 }
 
+.project-viewer.is-expanded .project-glass {
+  opacity: 1;
+}
+
+/* used when closing: sits exactly under the first frame, then flies back onto the tile */
 .project-hero-frame {
   position: fixed;
   left: var(--tile-left);
@@ -1062,14 +1069,15 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
   z-index: 2;
   width: var(--tile-width);
   height: var(--tile-height);
-  max-height: calc(100vh - var(--project-top-buffer) - var(--project-bottom-ui-zone));
   margin: 0;
-  border: var(--line-thin) solid var(--project-line-strong);
+  border: var(--line-thin) solid var(--project-line);
   border-radius: var(--image-radius);
   background: var(--project-bg);
   overflow: hidden;
-  transform: translate3d(0, 0, 0);
-  will-change: left, top, width, height, transform;
+  visibility: hidden;
+  pointer-events: none;
+  contain: layout paint style;
+  transition: border-color 900ms var(--ease-standard);
 }
 
 .project-hero-frame img {
@@ -1080,16 +1088,19 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
   filter: grayscale(1);
 }
 
+.project-viewer.is-closing .project-hero-frame {
+  visibility: visible;
+}
+
+.project-viewer.is-shrinking .project-hero-frame {
+  border-color: var(--color-line);
+}
+
 .project-story {
   position: fixed;
   inset: 0;
   z-index: 3;
-  width: 100vw;
-  height: 100vh;
   overflow: hidden;
-  opacity: 0;
-  transform: translateY(10px);
-  will-change: transform, opacity;
 }
 
 .project-track {
@@ -1097,7 +1108,12 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
   width: max-content;
   height: 100%;
   transform: translate3d(calc(var(--project-shift) * -1), 0, 0);
+  transition: transform 980ms var(--ease-standard);
   will-change: transform;
+}
+
+.project-track.is-dragging {
+  transition-duration: 110ms;
 }
 
 .project-panel {
@@ -1120,6 +1136,20 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
   align-items: start;
 }
 
+/*
+  Panels beyond the second are only laid out and painted when they come near the screen (a long project opens with the work of two
+  panels instead of twenty-nine). The panel keeps its box: its width and height are set above on a desktop; on a phone, where the
+  height depends on the text, the browser remembers the real height once a panel has been seen ("auto" below) and uses 600px until then.
+*/
+.project-panel:nth-child(n + 3) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 1000px auto 100vh;
+}
+
+.project-viewer[data-project-mode="stacked"] .project-panel:nth-child(n + 3) {
+  contain-intrinsic-size: auto 390px auto 600px;
+}
+
 .project-panel-image {
   width: var(--focus-width);
   height: var(--focus-height);
@@ -1131,6 +1161,9 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
   overflow: hidden;
   opacity: 0;
   transform: translateY(8px);
+  transition:
+    opacity 700ms var(--ease-standard),
+    transform 700ms var(--ease-standard);
 }
 
 .project-panel-image img {
@@ -1139,6 +1172,69 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
   object-fit: cover;
   border-radius: inherit;
   filter: grayscale(1);
+  transition: opacity 600ms var(--ease-standard);
+}
+
+/* a frame whose picture is still arriving shows its empty dark frame; the picture then fades in instead of popping in */
+.project-panel-image.is-loading img {
+  opacity: 0;
+}
+
+/* the first frame has no fade of its own: it is shown in the same step the flying clone is removed (is-landed) and hidden again
+   in the same step the closing hero frame takes over (is-shrinking) */
+.project-panel-intro .project-panel-image {
+  opacity: 1;
+  transform: none;
+  transition: none;
+  visibility: hidden;
+}
+
+.project-viewer.is-landed .project-panel-intro .project-panel-image {
+  visibility: visible;
+}
+
+.project-viewer.is-shrinking .project-panel-intro .project-panel-image {
+  visibility: hidden;
+}
+
+/*
+  Panels after the first: the frame follows the image's own aspect ratio (--ratio = width / height, set per panel from the
+  project data), so plans, sections and diagrams are shown whole and never cropped. Landscape images may use a wider frame;
+  very wide drawings (.is-wide) get a frame wider than the screen that the story pans across.
+*/
+.project-panel:not(.project-panel-intro) {
+  --fw: min(calc(var(--focus-height) * var(--ratio, 1.143)), var(--focus-width));
+  --fh: calc(var(--fw) / var(--ratio, 1.143));
+  --copy-col: clamp(18rem, 30vw, 32rem);
+  flex-basis: max(var(--panel-width), calc(var(--fw) + var(--copy-col)));
+  width: max(var(--panel-width), calc(var(--fw) + var(--copy-col)));
+  grid-template-columns: var(--fw) minmax(260px, 1fr);
+}
+
+.project-panel.is-landscape:not(.project-panel-intro) {
+  --fw: min(calc(var(--focus-height) * var(--ratio, 1.143)), max(var(--focus-width), min(62vw, 1100px)));
+}
+
+.project-panel.is-wide:not(.project-panel-intro) {
+  --fw: min(calc(var(--focus-height) * var(--ratio, 1.143)), min(160vw, 2200px));
+}
+
+.project-panel:not(.project-panel-intro) .project-panel-image {
+  width: var(--fw);
+  height: var(--fh);
+  margin-top: calc((var(--focus-height) - var(--fh)) / 2);
+}
+
+.project-panel:not(.project-panel-intro) .project-panel-image img {
+  object-fit: contain;
+}
+
+.project-panel.is-colour .project-panel-image img {
+  filter: none;
+}
+
+.project-viewer[data-project-side="right"] .project-panel:not(.project-panel-intro) {
+  grid-template-columns: minmax(260px, 1fr) var(--fw);
 }
 
 .project-viewer[data-project-side="left"] .project-hero-frame,
@@ -1159,6 +1255,9 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
   margin-inline: 0;
   opacity: 0;
   transform: translateY(10px);
+  transition:
+    opacity 700ms var(--ease-standard),
+    transform 700ms var(--ease-standard);
 }
 
 .project-panel-intro .project-panel-copy {
@@ -1252,60 +1351,35 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
   transform: translate(-50%, -50%) rotate(-45deg);
 }
 
-.project-viewer.is-expanded .project-glass {
-  opacity: 0.96;
-  backdrop-filter: blur(18px) saturate(0.78);
-  -webkit-backdrop-filter: blur(18px) saturate(0.78);
-}
-
-.project-viewer.is-expanded .project-hero-frame {
-  left: var(--focus-left);
-  top: var(--focus-top);
-  width: var(--focus-width);
-  height: var(--focus-height);
-  transform: translate3d(0, 0, 0);
-}
-
-.project-viewer.is-expanded .project-story {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.project-viewer.is-expanded .project-close {
+.project-progress {
+  position: fixed;
+  left: 50%;
+  bottom: clamp(10px, 1.8vh, 20px);
+  z-index: 4;
+  width: clamp(200px, 28vw, 420px);
+  height: 2px;
+  background: rgba(255, 255, 255, 0.28);
   opacity: 0;
-  transform: translate(-50%, 0);
+  transform: translate(-50%, 8px);
+  transition:
+    opacity 700ms var(--ease-standard),
+    transform 700ms var(--ease-standard);
 }
 
+.project-progress span {
+  display: block;
+  width: 100%;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.92);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 980ms var(--ease-standard);
+}
+
+/* ---- states ---- */
 .project-viewer.is-expanded .project-progress {
   opacity: 1;
   transform: translate(-50%, 0);
-}
-
-.project-viewer.is-preparing .project-hero-frame,
-.project-viewer.is-preparing .project-story,
-.project-viewer.is-preparing .project-panel-image,
-.project-viewer.is-preparing .project-panel-copy {
-  transition-duration: 1ms;
-}
-
-.project-viewer.is-preparing .project-hero-frame,
-.project-viewer.is-preparing .project-panel-image,
-.project-viewer.is-preparing .project-panel-copy {
-  opacity: 0;
-}
-
-.project-viewer.is-preparing .project-glass {
-  opacity: 0;
-}
-
-.project-viewer.is-expanded.is-preparing .project-glass {
-  opacity: 0.96;
-  backdrop-filter: blur(18px) saturate(0.78);
-  -webkit-backdrop-filter: blur(18px) saturate(0.78);
-}
-
-.project-viewer.is-ready .project-hero-frame {
-  opacity: 0;
 }
 
 .project-viewer.is-ready .project-panel-image,
@@ -1315,32 +1389,43 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
 }
 
 .project-viewer.is-ready .project-panel-copy {
-  transition-delay: 280ms;
+  transition-delay: 160ms;
 }
 
-.project-viewer.is-closing .project-panel-image,
+/* the first frame stays out of the fade (see above) */
+.project-viewer.is-ready .project-panel-intro .project-panel-image {
+  transform: none;
+}
+
+.project-viewer.is-closing .project-panel:not(.project-panel-intro) .project-panel-image,
 .project-viewer.is-closing .project-panel-copy {
   opacity: 0;
   transform: translateY(8px);
+  transition-duration: 260ms;
   transition-delay: 0ms;
 }
 
 .project-viewer.is-closing .project-progress {
   opacity: 0;
   transform: translate(-50%, 8px);
+  transition-duration: 260ms;
   transition-delay: 0ms;
 }
 
-.project-viewer.is-closing .project-close {
-  opacity: 0;
-  transform: translate(-50%, 8px);
-  transition-delay: 0ms;
+/* the page's own tile is hidden while its picture is up in the viewer (the clone / hero frame stands in for it) */
+.is-project-source {
+  visibility: hidden;
 }
 
 .project-viewer[data-project-mode="stacked"] .project-story {
   overflow-y: auto;
   overscroll-behavior: contain;
   padding-bottom: var(--space-8);
+  scrollbar-width: none;
+}
+
+.project-viewer[data-project-mode="stacked"] .project-story::-webkit-scrollbar {
+  display: none;
 }
 
 .project-viewer[data-project-mode="stacked"] .project-track {
@@ -1371,79 +1456,42 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
   border-radius: var(--image-radius);
 }
 
+/* phones: panels after the first keep their own aspect ratio (nothing cropped); very wide drawings can be swiped sideways inside the frame */
+.project-viewer[data-project-mode="stacked"] .project-panel:not(.project-panel-intro) {
+  flex-basis: auto;
+  width: 100%;
+  grid-template-columns: 1fr;
+}
+
+.project-viewer[data-project-mode="stacked"] .project-panel:not(.project-panel-intro) .project-panel-image {
+  width: min(90vw, 520px);
+  height: auto;
+  margin-top: 0;
+  aspect-ratio: var(--ratio, 1.143);
+  max-height: none;
+}
+
+.project-viewer[data-project-mode="stacked"] .project-panel.is-wide:not(.project-panel-intro) .project-panel-image {
+  height: calc(min(90vw, 520px) / min(var(--ratio, 2.6), 2.6));
+  aspect-ratio: auto;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+}
+
+.project-viewer[data-project-mode="stacked"] .project-panel.is-wide:not(.project-panel-intro) .project-panel-image img {
+  width: auto;
+  max-width: none;
+  height: 100%;
+  aspect-ratio: var(--ratio, 4);
+}
+
 .project-viewer[data-project-mode="stacked"] .project-hero-frame {
   border-radius: var(--image-radius);
 }
 
 .project-viewer[data-project-mode="stacked"] .project-panel:not(.project-panel-intro)::before {
   width: min(100%, 420px);
-}
-
-.project-progress {
-  position: fixed;
-  left: 50%;
-  bottom: clamp(10px, 1.8vh, 20px);
-  z-index: 4;
-  width: clamp(200px, 28vw, 420px);
-  height: 2px;
-  background: rgba(255, 255, 255, 0.28);
-  opacity: 0;
-  transform: translate(-50%, 8px);
-}
-
-.project-progress span {
-  display: block;
-  width: 100%;
-  height: 2px;
-  background: rgba(255, 255, 255, 0.92);
-  transform: scaleX(0);
-  transform-origin: left center;
-}
-
-.project-glass,
-.project-hero-frame,
-.project-story,
-.project-track,
-.project-panel-image,
-.project-panel-copy,
-.project-close,
-.project-progress,
-.project-progress span {
-  transition:
-    opacity 980ms var(--ease-standard),
-    transform 980ms var(--ease-standard),
-    left 1100ms var(--ease-standard),
-    top 1100ms var(--ease-standard),
-    width 1100ms var(--ease-standard),
-    height 1100ms var(--ease-standard),
-    color 980ms var(--ease-standard),
-    background-color 980ms var(--ease-standard),
-    border-color 980ms var(--ease-standard),
-    backdrop-filter 1120ms var(--ease-standard);
-}
-
-.project-glass {
-  transition:
-    opacity 1120ms var(--ease-standard),
-    background-color 1120ms var(--ease-standard),
-    backdrop-filter 1120ms var(--ease-standard),
-    -webkit-backdrop-filter 1120ms var(--ease-standard);
-}
-
-.project-step,
-.project-panel h3,
-.project-panel p,
-.project-panel::before {
-  transition:
-    color 780ms var(--ease-standard),
-    background-color 780ms var(--ease-standard),
-    border-color 780ms var(--ease-standard),
-    opacity var(--duration-slow) var(--ease-standard),
-    transform var(--duration-slow) var(--ease-standard);
-}
-
-.project-track.is-dragging {
-  transition-duration: 110ms;
 }
 
 @media (prefers-reduced-motion: reduce) {
