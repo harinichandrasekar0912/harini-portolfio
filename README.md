@@ -48,19 +48,30 @@ Project image paths (one folder per project):
 assets/images/work/project-id/thumb-800.avif   thumb-800.webp     overview tile, 800 px wide, 7:5
 assets/images/work/project-id/thumb-1200.avif  thumb-1200.webp    overview tile, 1200 px wide, 7:5 (default)
 assets/images/work/project-id/hero-1600.avif   hero-1600.webp     viewer hero and first panel, 1600 x 1143, 7:5
-assets/images/work/project-id/panel-2.avif     panel-2.webp       panels 2 to 5, 1600 x 1400 (8:7), one per panel
+assets/images/work/project-id/panel-02.avif    panel-02.webp      one image per later panel (panel-02 ... panel-NN), at the drawing's own aspect ratio
 ```
 
-Size budgets (AVIF): thumb-800 about 45 KB, thumb-1200 about 85 KB, hero about 150 KB, each panel about 170 KB.
+Size budgets (AVIF): thumb-800 about 45 KB, thumb-1200 about 85 KB, hero about 150 KB, each panel about 40 to 220 KB.
 
 How they are loaded:
 
-- The overview tiles in `index.html` use `<picture>` (AVIF first, WebP fallback), `srcset`/`sizes`, `loading="lazy"` and fixed `width`/`height`, so nothing shifts and nothing below the fold is fetched early.
+- The overview tiles in `index.html` use `<picture>` (AVIF first, WebP fallback), `srcset`/`sizes`, `loading="lazy"` and fixed `width`/`height`, so nothing shifts and nothing below the fold is fetched early. A tile whose picture has not arrived yet shows its empty frame and the picture fades in (`initTileImageFade` in `scripts/main.js`).
 - The project viewer (`scripts/project-viewer.js`) only requests images when a project is opened. `project-data.js` lists the `.webp` path; the script asks for the `.avif` sibling when the browser can decode it.
-- Hovering, focusing or touching a tile warms the cache with the hero and panel 2, so the viewer opens quickly. Panels 3 to 5 load lazily and are fetched in the background once the first panel is on screen.
-- Every image is shown in greyscale by CSS, so choose crops with strong tonal contrast, and keep the subject in the central 80 % (images are cover-cropped into frames from 0.94:1 to 1.25:1, and 1:1 on phones).
+- Hovering, focusing or touching a tile warms the cache with the hero and panel 2, so the viewer opens quickly. Panels from the third on are requested as they come within about two screens of the visible area (`IntersectionObserver`), so a long project opens fast and only fetches what is about to be seen. A frame whose picture is still arriving shows its empty dark frame and the picture fades in.
+- Panels from the third on are laid out and painted only when they come near the screen (`content-visibility: auto` in `styles/motion.css`), so a project with thirty panels opens as quickly as one with five.
+- Plans, sections and diagrams are never cropped: every panel after the first gets a frame with the picture's own aspect ratio (`ratio` = width / height in `project-data.js`). Very wide drawings (ratio over 2.2) get a frame wider than the screen that the story pans across; on a phone they can be swiped sideways inside their frame.
+- Every image is shown in greyscale by CSS (`filter: grayscale(1)`), so choose crops with strong tonal contrast. A panel that needs its colours (a heat map, a colour-coded diagram) sets `colour: true` in `project-data.js` and keeps them.
+- The first frame of every project is cover-cropped (about 1.1:1 on a laptop, 1:1 on phones): keep the hero's subject in the central 80 %.
 
-To add a project: create its image set in the same sizes, add an entry to `scripts/project-data.js` (title, summary, optional `meta`, five panels with `heading`, `body`, `image`, `alt`) and a tile in `index.html`.
+To add a project: create its image set in the same sizes, add an entry to `scripts/project-data.js` (title, summary, optional `meta`, then panels: the first has only `heading` and `body`; every later one has `heading`, `body`, `image`, `alt`, `ratio` and optionally `colour: true`) and a tile in `index.html`.
+
+## Smoothness Notes
+
+- The page's own scrollbar is hidden (`scrollbar-width: none` in `styles/main.css`). It used to disappear whenever a project opened and come back when it closed, which nudged the whole page and the navigation ball sideways by half a scrollbar. Scrolling (wheel, touch, keys, the navigation ball) is unchanged.
+- The viewer opens and closes with one moving picture: the tile's picture flies to the first frame (the flight starts at once, it never waits for the big picture to download), the first frame is shown and the flying copy removed in the same step, and closing flies the picture back onto the tile, which is shown again in the same step the viewer is hidden. Only opacity and transform are transitioned on the content; there is no blurred backdrop.
+- The soft top and bottom edges while scrolling are plain gradients (a blurred backdrop over a scrolling page froze the first scroll and cost frames on slower graphics cards).
+- Overview tiles and archive bars are promoted to their own compositor layers (`will-change: transform`) so their greyscale and rounded clip are painted once instead of every time they scroll into view.
+- The landing animation's heavy reset waits until the page has stopped scrolling, and its background build waits while the landing is off screen.
 
 ## Deployment
 
@@ -83,6 +94,6 @@ When the final domain is ready, add a `CNAME` file at the repository root contai
 ## Current Placeholders
 
 - Landing video placeholder lives in the HTML/CSS only.
-- The About image and the archive items are local SVG placeholders. The first five works (pause, spatial archive, rainy madras, shade, staircase) carry real project content and images.
+- The About image and the archive items are local SVG placeholders. The first five works (pause, spatial archive, rainy madras, shade, staircase) carry real project content and images (between 12 and 29 panels each).
 - Resume should be placed at `assets/documents/harini-chandrasekar-resume.pdf`.
 - Contact form is static and shows a placeholder response.
