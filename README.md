@@ -55,7 +55,7 @@ Size budgets (AVIF): thumb-800 about 45 KB, thumb-1200 about 85 KB, hero about 1
 
 How they are loaded:
 
-- The overview tiles in `index.html` should use `<picture>` (AVIF first, WebP fallback), `srcset`/`sizes`, `loading="lazy"` and fixed `width`/`height`, so nothing shifts and nothing below the fold is fetched early.
+- The overview tiles in `index.html` use `<picture>` (AVIF first, WebP fallback), `srcset`/`sizes`, `loading="lazy"` and fixed `width`/`height`, so nothing shifts and nothing below the fold is fetched early.
 - The project viewer (`scripts/project-viewer.js`) only requests images when a project is opened. `project-data.js` lists the `.webp` path; the script asks for the `.avif` sibling when the browser can decode it.
 - Hovering, focusing or touching a tile warms the cache with the hero and panel 2, so the viewer opens quickly. Panels 3 to 5 load lazily and are fetched in the background once the first panel is on screen.
 - Every image is shown in greyscale by CSS, so choose crops with strong tonal contrast, and keep the subject in the central 80 % (images are cover-cropped into frames from 0.94:1 to 1.25:1, and 1:1 on phones).
@@ -83,6 +83,6 @@ When the final domain is ready, add a `CNAME` file at the repository root contai
 ## Current Placeholders
 
 - Landing video placeholder lives in the HTML/CSS only.
-- Work and About images are local SVG placeholders (real project content for the first five works is being added).
+- The About image and the archive items are local SVG placeholders. The first five works (pause, spatial archive, rainy madras, shade, staircase) carry real project content and images.
 - Resume should be placed at `assets/documents/harini-chandrasekar-resume.pdf`.
 - Contact form is static and shows a placeholder response.
