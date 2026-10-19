@@ -16,7 +16,7 @@
       image: "assets/images/work/project-01/hero-1600.webp",
       alt: "Render of the Buckingham Canal edge: a stone arched bridge crosses still water beside a planted two-storey framework, with two people walking along the bank.",
       summary: "Can a station slow us down? An adaptive reuse proposal for the Thiruvanmiyur MRTS station and the Buckingham Canal edge, Chennai. Students, workers and travellers move between obligations, with little reason to notice the spaces they pass through. In the midst of chaos, can you be courageous enough to be calm?",
-      meta: "adaptive reuse, public realm · 2025 · revit, d5 render, photoshop · academic project, in a pair",
+      meta: "adaptive reuse, public realm · 2025 · revit, d5 render, photoshop · academic group project, team of 2",
       panels: [
         {
           heading: "pause",
@@ -129,8 +129,8 @@
       title: "shade",
       image: "assets/images/work/project-04/hero-1600.webp",
       alt: "Close view of a courtyard façade with rows of white vertical blades turned at an angle in front of dark glass, beside a pale vertical pier.",
-      summary: "A façade study grown out of an IT office campus on Chennai's OMR, which I co-designed with a studio partner in the sixth semester, 2025. Its courtyard façades used vertical fins that responded to the changing floor heights. In 2026, I returned to the project independently to test whether those fins could perform better environmentally, without losing the logic of the original design. First, I needed to understand the rule that placed them there.",
-      meta: "façade study, climate-responsive design · 2025 to 2026 · revit, rhino, grasshopper, radiance, blender · individual study of a co-designed studio building",
+      summary: "A façade study grown out of an IT office campus on Chennai's OMR, a group project by a team of 2 in the sixth-semester studio, 2025. Its courtyard façades used vertical fins that responded to the changing floor heights. In 2026, I returned to the project independently to test whether those fins could perform better environmentally, without losing the logic of the original design. First, I needed to understand the rule that placed them there.",
+      meta: "façade study, climate-responsive design · 2025 to 2026 · revit, rhino, grasshopper, radiance, blender · individual study built on a group studio project, team of 2",
       panels: [
         {
           heading: "shade",
