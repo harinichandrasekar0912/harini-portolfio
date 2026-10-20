@@ -51,6 +51,7 @@
   --nav-size: var(--plus-circle-size);
   --ball-size: 44px;
   --contact-icon-size: 32px;
+  --section-gap-half: clamp(3rem, 6.2vh, 4.75rem); /* half the space between two sections' contents */
   --landing-media-width: min(92vw, 1180px);
   --landing-media-mobile-width: min(90vw, 560px);
 }
@@ -232,6 +233,52 @@ textarea:focus-visible {
   );
 }
 
+/*
+  Pictures (the overview tiles, the archive bars, the portrait) sit ABOVE the paper-coloured edge fades, so the white fade only acts on the page
+  itself (text, paper). Where a picture crosses the top or bottom edge of the screen it fades to black instead: a vignette painted on the picture
+  itself (scripts/main.js, initImageVignette, sets --vig-top / --vig-bottom = the picture's distance from the top / bottom of the screen).
+*/
+:root {
+  --z-edge-pictures: 510;
+  --vig-top: 99999px;
+  --vig-bottom: 99999px;
+  --vig-top-h: 108px;
+  --vig-bottom-h: 126px;
+}
+
+.work-tile::before,
+.archive-bar::before,
+.about-portrait::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  background:
+    linear-gradient(
+      to bottom,
+      rgba(0, 0, 0, 0.9) calc(var(--vig-top-h) * 0 - var(--vig-top)),
+      rgba(0, 0, 0, 0.68) calc(var(--vig-top-h) * 0.3 - var(--vig-top)),
+      rgba(0, 0, 0, 0.28) calc(var(--vig-top-h) * 0.66 - var(--vig-top)),
+      rgba(0, 0, 0, 0) calc(var(--vig-top-h) - var(--vig-top))
+    ),
+    linear-gradient(
+      to top,
+      rgba(0, 0, 0, 0.9) calc(var(--vig-bottom-h) * 0 - var(--vig-bottom)),
+      rgba(0, 0, 0, 0.68) calc(var(--vig-bottom-h) * 0.3 - var(--vig-bottom)),
+      rgba(0, 0, 0, 0.28) calc(var(--vig-bottom-h) * 0.66 - var(--vig-bottom)),
+      rgba(0, 0, 0, 0) calc(var(--vig-bottom-h) - var(--vig-bottom))
+    );
+}
+
+.work-tile.has-edge-vignette::before,
+.archive-bar.has-edge-vignette::before,
+.about-portrait.has-edge-vignette::before {
+  opacity: 1;
+}
+
 body.is-scroll-middle .viewport-edge-blur {
   opacity: 1;
 }
@@ -363,7 +410,10 @@ body.is-project-open .viewport-edge-blur {
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  padding-block: clamp(6.25rem, 9.5vw, 9.5rem);
+  /* the space between one section's content and the next section's title is the bottom padding of one plus the top padding of the other:
+     kept to roughly one and a half rows of tiles (it used to be four) */
+  min-height: 0;
+  padding-block: var(--section-gap-half);
 }
 
 .about-layout {
@@ -376,6 +426,8 @@ body.is-project-open .viewport-edge-blur {
 }
 
 .about-portrait {
+  position: relative;
+  z-index: var(--z-edge-pictures);
   width: min(48vw, 660px);
   margin: 0;
   justify-self: start;
@@ -408,7 +460,8 @@ body.is-project-open .viewport-edge-blur {
 }
 
 .work-section {
-  padding-block: clamp(6.25rem, 10vw, 10.5rem);
+  min-height: 0;
+  padding-block: var(--section-gap-half);
 }
 
 .work-list {
@@ -443,6 +496,7 @@ body.is-project-open .viewport-edge-blur {
   background: var(--color-paper-warm);
   cursor: pointer;
   overflow: hidden;
+  z-index: var(--z-edge-pictures);
   /* its own compositor layer: the greyscale + rounded clip of the picture is painted once, not again as the tile scrolls into view */
   will-change: transform;
 }
@@ -489,7 +543,8 @@ body.is-project-open .viewport-edge-blur {
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  padding-block: clamp(6.25rem, 9.5vw, 10rem);
+  min-height: 0;
+  padding-block: var(--section-gap-half);
 }
 
 .archive-layout {
@@ -541,6 +596,7 @@ body.is-project-open .viewport-edge-blur {
   text-align: left;
   cursor: pointer;
   overflow: hidden;
+  z-index: var(--z-edge-pictures);
   will-change: transform;
 }
 
@@ -600,10 +656,12 @@ body.is-project-open .viewport-edge-blur {
 .contact-layout {
   position: relative;
   display: grid;
-  place-items: center;
+  /* the form sits in the upper part of the screen (not dead centre), so the gap to the archive above it stays small */
+  place-items: start center;
   width: min(88vw, 560px);
   min-height: 100vh;
   min-height: 100svh;
+  padding-top: clamp(4.5rem, 16vh, 8.5rem);
   justify-self: center;
   align-self: center;
   margin-inline: auto;

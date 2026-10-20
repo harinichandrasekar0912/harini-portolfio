@@ -28,11 +28,11 @@
 
   .section {
     min-height: auto;
-    padding-block: clamp(5.5rem, 16vw, 8rem);
+    padding-block: clamp(2.75rem, 11vw, 4rem);
   }
 
   .section-title {
-    margin-bottom: clamp(2rem, 8vw, 3.5rem);
+    margin-bottom: clamp(2rem, 8vw, 3rem);
   }
 
   .landing-section {
@@ -65,13 +65,13 @@
   }
 
   .work-list {
-    gap: clamp(4.5rem, 18vw, 7rem);
+    gap: clamp(1.5rem, 7vw, 2.5rem);
   }
 
   .work-row,
   .work-row-right {
     grid-template-columns: 1fr;
-    gap: var(--space-6);
+    gap: var(--space-4);
     min-height: auto;
   }
 
@@ -80,7 +80,7 @@
   }
 
   .work-space {
-    min-height: clamp(4rem, 18vw, 7rem);
+    min-height: clamp(0.5rem, 3vw, 1.25rem);
   }
 
   .work-tile {
@@ -174,7 +174,6 @@
 @media (max-height: 760px) {
   .contact-form {
     gap: clamp(1rem, 2.8vh, 1.75rem);
-    transform: translateY(-2vh);
   }
 
   .contact-links {
@@ -219,27 +218,27 @@
   }
 
   .section {
-    padding-block: clamp(4rem, 10vh, 6.5rem);
+    padding-block: clamp(2.75rem, 6vh, 4rem);
   }
 
   .about-section,
   .work-section,
   .archive-section {
-    padding-top: clamp(4rem, 9vh, 6rem);
-    padding-bottom: clamp(4rem, 9.5vh, 6.5rem);
+    padding-top: clamp(2.75rem, 6vh, 4rem);
+    padding-bottom: clamp(2.75rem, 6vh, 4rem);
   }
 
   .section-title {
-    margin-bottom: clamp(3.25rem, 9vh, 5.25rem);
+    margin-bottom: clamp(2rem, 5vh, 3rem);
     transform: translateY(-0.75rem);
   }
 
   .work-list {
-    gap: clamp(2.25rem, 6vh, 3.5rem);
+    gap: clamp(1.25rem, 3vh, 2rem);
   }
 
   .work-space {
-    min-height: clamp(2.5rem, 10vw, 4.5rem);
+    min-height: clamp(0.5rem, 2vw, 1rem);
   }
 
   .about-portrait {
@@ -415,8 +414,8 @@
   .work-section,
   .archive-section {
     min-height: auto;
-    padding-top: clamp(4rem, 8vh, 5.75rem);
-    padding-bottom: clamp(4.25rem, 8.5vh, 6.25rem);
+    padding-top: clamp(2.5rem, 5.5vh, 4rem);
+    padding-bottom: clamp(2.5rem, 5.5vh, 4rem);
   }
 
   .section-title {

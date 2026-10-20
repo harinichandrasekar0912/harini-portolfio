@@ -413,6 +413,77 @@
     window.addEventListener("load", queueUpdate, { once: true });
   }
 
+  /*
+    Dark vignette on pictures at the top and bottom edge of the screen (the CSS is in styles/main.css, next to the edge fades): for every picture
+    that reaches into one of the two edge zones, its distance from the top / bottom of the screen is handed to the CSS (--vig-top, --vig-bottom),
+    which paints the black gradient inside the picture, so it follows the picture as it scrolls. The rest of the page keeps the paper-coloured fade.
+  */
+  function initImageVignette() {
+    var holders = Array.prototype.slice.call(document.querySelectorAll(".work-tile, .archive-bar, .about-portrait"));
+    var topEdge = document.querySelector(".viewport-edge-blur-top");
+    var bottomEdge = document.querySelector(".viewport-edge-blur-bottom");
+    var rootStyle = document.documentElement.style;
+    var frame = 0;
+    var topHeight = 0;
+    var bottomHeight = 0;
+
+    if (holders.length === 0 || !topEdge || !bottomEdge) {
+      return;
+    }
+
+    function measureEdges() {
+      topHeight = topEdge.getBoundingClientRect().height;
+      bottomHeight = bottomEdge.getBoundingClientRect().height;
+      rootStyle.setProperty("--vig-top-h", topHeight + "px");
+      rootStyle.setProperty("--vig-bottom-h", bottomHeight + "px");
+    }
+
+    function update() {
+      var viewHeight = window.innerHeight;
+      var body = document.body;
+      var topOn = !body.classList.contains("is-scroll-top");
+      var bottomOn = !body.classList.contains("is-scroll-bottom");
+
+      frame = 0;
+
+      if (body.classList.contains("is-project-open")) {
+        return;
+      }
+
+      holders.forEach(function (holder) {
+        var rect = holder.getBoundingClientRect();
+        var reachesTop = topOn && rect.top < topHeight && rect.bottom > 0;
+        var reachesBottom = bottomOn && rect.bottom > viewHeight - bottomHeight && rect.top < viewHeight;
+
+        if (reachesTop || reachesBottom) {
+          holder.style.setProperty("--vig-top", reachesTop ? rect.top.toFixed(1) + "px" : "99999px");
+          holder.style.setProperty("--vig-bottom", reachesBottom ? (viewHeight - rect.bottom).toFixed(1) + "px" : "99999px");
+          holder.classList.add("has-edge-vignette");
+        } else if (holder.classList.contains("has-edge-vignette")) {
+          holder.classList.remove("has-edge-vignette");
+        }
+      });
+    }
+
+    function queueUpdate() {
+      if (!frame) {
+        frame = window.requestAnimationFrame(update);
+      }
+    }
+
+    measureEdges();
+    update();
+    window.addEventListener("scroll", queueUpdate, { passive: true });
+    window.addEventListener("resize", function () {
+      measureEdges();
+      queueUpdate();
+    }, { passive: true });
+    window.addEventListener("load", function () {
+      measureEdges();
+      queueUpdate();
+    }, { once: true });
+  }
+
   /* A work tile whose picture has not arrived yet shows its empty frame; the picture fades in when it does (no pop-in while scrolling). */
   function initTileImageFade() {
     Array.prototype.forEach.call(document.querySelectorAll(".work-tile img"), function (img) {
@@ -444,5 +515,6 @@
     initPlaceholderLinks();
     initViewportEdgeBlur();
     initTileImageFade();
+    initImageVignette();
   });
 })();

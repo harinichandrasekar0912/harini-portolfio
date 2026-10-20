@@ -1085,7 +1085,6 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
   height: 100%;
   object-fit: cover;
   border-radius: inherit;
-  filter: grayscale(1);
 }
 
 .project-viewer.is-closing .project-hero-frame {
@@ -1171,7 +1170,6 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
   height: 100%;
   object-fit: cover;
   border-radius: inherit;
-  filter: grayscale(1);
   transition: opacity 600ms var(--ease-standard);
 }
 
@@ -1203,16 +1201,13 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
   very wide drawings (.is-wide) get a frame wider than the screen that the story pans across.
 */
 .project-panel:not(.project-panel-intro) {
-  --fw: min(calc(var(--focus-height) * var(--ratio, 1.143)), var(--focus-width));
+  --board-max-width: min(66vw, 1240px);
+  --fw: min(calc(var(--focus-height) * var(--ratio, 1.143)), var(--board-max-width));
   --fh: calc(var(--fw) / var(--ratio, 1.143));
   --copy-col: clamp(18rem, 30vw, 32rem);
   flex-basis: max(var(--panel-width), calc(var(--fw) + var(--copy-col)));
   width: max(var(--panel-width), calc(var(--fw) + var(--copy-col)));
   grid-template-columns: var(--fw) minmax(260px, 1fr);
-}
-
-.project-panel.is-landscape:not(.project-panel-intro) {
-  --fw: min(calc(var(--focus-height) * var(--ratio, 1.143)), max(var(--focus-width), min(62vw, 1100px)));
 }
 
 .project-panel.is-wide:not(.project-panel-intro) {
@@ -1227,10 +1222,6 @@ html:not([data-debug-nav-geometry="true"]) .debug-label {
 
 .project-panel:not(.project-panel-intro) .project-panel-image img {
   object-fit: contain;
-}
-
-.project-panel.is-colour .project-panel-image img {
-  filter: none;
 }
 
 .project-viewer[data-project-side="right"] .project-panel:not(.project-panel-intro) {

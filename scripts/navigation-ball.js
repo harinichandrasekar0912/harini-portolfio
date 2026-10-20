@@ -40,6 +40,11 @@
   const TRAJECTORY_MIN_DURATION = 0.9; // seconds
   const TRAJECTORY_MAX_DURATION = 9; // seconds - a safety net only: the average speed (not a time cap) decides how long a flight lasts, also on very large screens
   const LANDING_EDGE_BUFFER = 6; // px: extra room between the ball and the rounded image corner it lands near
+  // Where the ball comes to rest, as a fraction of the screen height measured from the top (the page is scrolled so that the platform it lands on
+  // is there). Small = the section title sits near the top and the first tile is whole with a good part of the second below it; it is never
+  // smaller than what the bounces and the arc need to stay on screen (see resolveScrollTarget).
+  const LANDING_SCREEN_FRACTION = 0.2;
+  const LANDING_SCREEN_FRACTION_MAX = 0.34;
   const SCROLL_PROGRESS_MODE = "smootherstep"; // easing of the page scroll over the flight time ("linear" = scroll progress equals flight progress)
 
   // "home" trips (the circle of the section you are in turns into "home"): true = the previous behaviour (prep bounces, arc up and over to the plus,
@@ -1211,7 +1216,7 @@
     }
 
     function visiblePathTopMargin(bounds) {
-      return Math.max(ballRadius() + 24, bounds && Number.isFinite(bounds.minY) ? bounds.minY : 0);
+      return Math.max(ballRadius() + 44, bounds && Number.isFinite(bounds.minY) ? bounds.minY : 0); // the ball's top edge stays at least ~44 px below the top of the screen
     }
 
     function tripBounceHeight(isPhone) {
@@ -1228,8 +1233,10 @@
       const z = tripBounceHeight(false);
       const overshoot = clamp(z * 0.65, 36, 84);
       const minLandingY = safeTop + overshoot + 8;
-      const preferredLandingY = Math.max(window.innerHeight * 0.58, minLandingY);
-      const desiredLandingY = clamp(preferredLandingY, bounds.minY, bounds.maxY);
+      // high on the screen (title near the top, first tile whole, a good part of the second visible), but with room above for the three landing
+      // bounces and the arc: the ball never leaves the page
+      const preferredLandingY = Math.max(window.innerHeight * LANDING_SCREEN_FRACTION, minLandingY + 16);
+      const desiredLandingY = clamp(preferredLandingY, bounds.minY, Math.min(bounds.maxY, Math.max(window.innerHeight * LANDING_SCREEN_FRACTION_MAX, minLandingY + 16)));
 
       if (endPoint.kind === "floor" && endPoint.section === "contact") {
         return sectionTopScroll("contact");

@@ -46,6 +46,8 @@
 
   /* same curve as --ease-standard in the style sheets */
   var FLIGHT_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
+  /* the colour comes in more slowly than the picture grows, so it is still gaining colour as it settles */
+  var COLOUR_EASE = "cubic-bezier(0.3, 0.2, 0.4, 1)";
 
   function imageUrl(path) {
     if (!path) {
@@ -300,19 +302,35 @@
       return Math.abs(a.left - b.left) < 0.5 && Math.abs(a.top - b.top) < 0.5 && Math.abs(a.width - b.width) < 0.5 && Math.abs(a.height - b.height) < 0.5;
     }
 
-    function flyBetween(element, from, to, duration, radiusFrom, radiusTo) {
+    /*
+      extra = { radiusFrom, radiusTo, filterFrom, filterTo }: the corner radii the element moves between, and the filter of the picture inside it
+      (the tile is grey, the picture inside the popup is in colour: it gains its colour as it grows and loses it as it shrinks back).
+    */
+    function flyBetween(element, from, to, duration, extra) {
+      var options = extra || {};
+      var image = element.querySelector("img");
+      var hasFilter = Boolean(image && options.filterFrom && options.filterTo);
+
       applyBox(element, from);
 
-      if (radiusFrom) {
-        element.style.borderRadius = radiusFrom;
+      if (options.radiusFrom) {
+        element.style.borderRadius = options.radiusFrom;
+      }
+
+      if (hasFilter) {
+        image.style.filter = options.filterFrom;
       }
 
       /* nothing to travel (closed before the picture had moved): no animation to wait for */
-      if (!element.animate || reducedMotion.matches || (sameBox(from, to) && (!radiusTo || radiusFrom === radiusTo))) {
+      if (!element.animate || reducedMotion.matches || (sameBox(from, to) && (!options.radiusTo || options.radiusFrom === options.radiusTo))) {
         applyBox(element, to);
 
-        if (radiusTo) {
-          element.style.borderRadius = radiusTo;
+        if (options.radiusTo) {
+          element.style.borderRadius = options.radiusTo;
+        }
+
+        if (hasFilter) {
+          image.style.filter = options.filterTo;
         }
 
         return Promise.resolve(true);
@@ -321,11 +339,14 @@
       return new Promise(function (resolve) {
         var settled = false;
         var timer = 0;
-        var animation = element.animate([boxKeyframe(from, radiusFrom), boxKeyframe(to, radiusTo)], {
+        var animation = element.animate([boxKeyframe(from, options.radiusFrom), boxKeyframe(to, options.radiusTo)], {
           duration: duration,
           easing: FLIGHT_EASE,
           fill: "both"
         });
+        var colourAnimation = hasFilter
+          ? image.animate([{ filter: options.filterFrom }, { filter: options.filterTo }], { duration: duration, easing: COLOUR_EASE, fill: "both" })
+          : null;
 
         function settle(arrived) {
           if (settled) {
@@ -339,12 +360,21 @@
           if (arrived) {
             applyBox(element, to);
 
-            if (radiusTo) {
-              element.style.borderRadius = radiusTo;
+            if (options.radiusTo) {
+              element.style.borderRadius = options.radiusTo;
+            }
+
+            if (hasFilter) {
+              image.style.filter = options.filterTo;
             }
           }
 
           animation.cancel();
+
+          if (colourAnimation) {
+            colourAnimation.cancel();
+          }
+
           resolve(arrived);
         }
 
@@ -367,6 +397,8 @@
     function stopFlight(element) {
       var rect = element.getBoundingClientRect();
       var radius = cornerRadius(element);
+      var image = element.querySelector("img");
+      var filter = image ? window.getComputedStyle(image).filter : "none";
 
       if (typeof element._stopFlight === "function") {
         element._stopFlight();
@@ -374,6 +406,10 @@
 
       applyBox(element, rect);
       element.style.borderRadius = radius;
+
+      if (image) {
+        image.style.filter = filter === "none" ? "grayscale(0)" : filter;
+      }
 
       return rect;
     }
@@ -437,6 +473,7 @@
       applyShift(0);
       track.style.transition = "";
       frame.style.cssText = "";
+      hero.style.filter = "";
     }
 
     function revealProjectContent(token) {
@@ -479,6 +516,32 @@
           track.classList.remove("is-dragging");
         }, 120);
       }
+    }
+
+    /* the arrow keys move panel by panel: the shift that puts the next (or the previous) panel at the left edge */
+    function stepPanel(direction) {
+      var panels = track.children;
+      var target = currentShift;
+      var index;
+
+      for (index = 0; index < panels.length; index += 1) {
+        var left = panels[index].offsetLeft;
+
+        if (direction > 0 && left > currentShift + 8) {
+          target = left;
+          break;
+        }
+
+        if (direction < 0 && left < currentShift - 8) {
+          target = left;
+        }
+      }
+
+      if (direction > 0 && target === currentShift) {
+        target = maxShift;
+      }
+
+      setShift(target, false);
     }
 
     function queueShift(delta) {
@@ -801,7 +864,12 @@
       updateMaxShift();
       cloneParts.element.classList.add("is-moving");
 
-      var flight = flyBetween(cloneParts.element, tileRect, targetRect, openFlightDuration(), cornerRadius(trigger), cornerRadius(introFigure()));
+      var flight = flyBetween(cloneParts.element, tileRect, targetRect, openFlightDuration(), {
+        radiusFrom: cornerRadius(trigger),
+        radiusTo: cornerRadius(introFigure()),
+        filterFrom: "grayscale(1)",
+        filterTo: "grayscale(0)"
+      });
 
       revealTimer = window.setTimeout(function () {
         revealProjectContent(token);
@@ -848,6 +916,7 @@
       document.body.classList.remove("is-project-open", "is-project-dark", "is-project-closing");
       disconnectPanelObserver();
       frame.style.cssText = "";
+      hero.style.filter = "";
       applyShift(0);
       activeProject = null;
       closeButton.disabled = false;
@@ -889,6 +958,7 @@
       var shrinker = flying || frame;
       var from;
       var fromRadius;
+      var fromFilter = "grayscale(0)";
       window.clearTimeout(revealTimer);
 
       if (shiftFrame) {
@@ -903,6 +973,7 @@
       if (flying) {
         from = stopFlight(flying);
         fromRadius = flying.style.borderRadius;
+        fromFilter = flying.querySelector("img").style.filter || fromFilter;
       } else {
         await animateProjectReturnToStart();
 
@@ -932,7 +1003,12 @@
 
       viewer.classList.add("is-shrinking");
       viewer.classList.remove("is-expanded");
-      await flyBetween(shrinker, from, tileRect, closeFlightDuration(), fromRadius, activeTrigger ? cornerRadius(activeTrigger) : fromRadius);
+      await flyBetween(shrinker, from, tileRect, closeFlightDuration(), {
+        radiusFrom: fromRadius,
+        radiusTo: activeTrigger ? cornerRadius(activeTrigger) : fromRadius,
+        filterFrom: fromFilter,
+        filterTo: "grayscale(1)"
+      });
 
       if (token !== openToken) {
         return;
@@ -1021,7 +1097,7 @@
         event.preventDefault();
 
         if (!isClosingProject) {
-          setShift(currentShift + viewportWidth * 0.72, false);
+          stepPanel(1);
         }
       }
 
@@ -1033,7 +1109,7 @@
         event.preventDefault();
 
         if (!isClosingProject) {
-          setShift(currentShift - viewportWidth * 0.72, false);
+          stepPanel(-1);
         }
       }
     });
