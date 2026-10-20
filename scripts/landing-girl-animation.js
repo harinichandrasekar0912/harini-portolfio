@@ -6979,6 +6979,9 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
       ux /= ul; uy /= ul; uz /= ul;
       var hx = R[4], hy = -R[1], hl = sqrt(hx * hx + hy * hy);          // heading = c x up (horizontal; unaffected by head pitch / roll)
       if (hl > 1e-6) { hx /= hl; hy /= hl; } else { hx = fx; hy = fy; hl = sqrt(hx * hx + hy * hy) || 1; hx /= hl; hy /= hl; }
+      // round 11: a look back over the shoulder while running must not swing the tail round to the front: the air streams it along the BODY's heading, not the head's
+      var lookBack = rw * sstep(0.45, 1.5, abs(atan2(R[3], R[0])));
+      if (lookBack > 0) { hx += (1 - hx) * lookBack; hy -= hy * lookBack; hl = sqrt(hx * hx + hy * hy) || 1; hx /= hl; hy /= hl; }
       var tu = HC.knotU, pf = R[0] * tieF + R[2] * tu + O[0], pc = R[3] * tieF + R[5] * tu + O[1], ph = R[6] * tieF + R[8] * tu + O[2];
       var ds = HC.pLen / (PN - 1) * (1 + 0.05 * rw) * (1 - 0.75 * fhide);          // facing us: the tail retracts behind her head (no tail in the front view)
       var bowK = sstep(0.35, 1.1, Math.acos(uz > 1 ? 1 : uz < -1 ? -1 : uz)) * (1 - 0.85 * rw);   // head tilted far from upright (look-down bow, peek): the root hangs too (no bun / plume on top); not in the run (it streams)
@@ -7948,7 +7951,9 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
       var beta = rad(side < 0 ? C.armBetaL : C.armBetaR) + sq * rad(18) + rad(C.armOut) * S.yawS * (1 - run) * (1 - a);          // front view: the arms hang a little away from the body (clear gap at the waist)
       if (S.femK > 0 && side < 0) { var fk2 = S.femK * S.yawS; beta = lerp(beta, rad(15), fk2); gamma += rad(12) * fk2; alpha += rad(4) * fk2; }          // feminine stance: the free arm hangs softly, close to the body, elbow slightly bent
       if (run > 0) {                                   // pumping run arms: role A (forward, elbow bent) / role B (swung back) of the traced pose, smooth in between
-        var wF = sstep(-C.keyFw, C.keyFw, fw), alphaR = rad(lerp(C.runArmB[0], C.runArmA[0], wF)), gammaR = rad(lerp(C.runArmB[1], C.runArmA[1], wF));
+        // run arms (round 11): a continuous pump - the swing is a plain sinusoid of the gait phase (the old saturating role weight held each arm still for ~40 % of the cycle and snapped it across),
+        // the forearm lags the upper arm a little (overlapping action)
+        var wFa = 0.5 + 0.5 * fwU, wFg = 0.5 + 0.5 * fwF, alphaR = rad(lerp(C.runArmB[0], C.runArmA[0], wFa)), gammaR = rad(lerp(C.runArmB[1], C.runArmA[1], wFg));
         alpha = lerp(alpha, alphaR, run); gamma = lerp(gamma, gammaR, run); beta = lerp(beta, rad(8), run);
       }
       gamma += rad(24) * min(1, max(sq, 0)) * (1 - air) * (1 - run);
@@ -7967,7 +7972,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
         var sg = sstep(0, 1, S.shrugX); alpha = lerp(alpha, rad(6), sg); beta = lerp(beta, rad(30), sg); gamma = lerp(gamma, rad(108), sg);
       }
       var Ssh = K.fApply(Fsh, -1.0, side * C.shoulderC, 0);
-      if (run > 0) { var wFs = sstep(-C.keyFw, C.keyFw, fw); Ssh[0] += run * (C.runShoulderFwd * wFs - C.runShoulderBack * (1 - wFs)); }   // run: the arm that swings back also has its shoulder twisted back (far shoulder)
+      if (run > 0) { var wFs = 0.5 + 0.5 * fw; Ssh[0] += run * (C.runShoulderFwd * wFs - C.runShoulderBack * (1 - wFs)); }   // run: the arm that swings back also has its shoulder twisted back (far shoulder)
       if (side === -1) Ssh[2] += 21 * sstep(0, 1, min(1, P.scratch));          // the scratching shoulder is hiked up
       Ssh[2] += C.shDrop * S.yawS + 7 * S.hunchS + 5 * max(sq, 0) + 4 * P.scratch + C.shrugAmp * S.b3 * (side === S.s3 ? 1 : 0.15) + 2 * S.b1 + 2.5 * S.e1 * (side === 1 ? 1 : 0.3) + 3 * S.e3 + 3 * S.shrugX + 2 * S.startle;
       var ca = cos(alpha), sa = sin(alpha), cb = cos(beta), sb = sin(beta);
@@ -8453,8 +8458,8 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
   for (k in walkGrace) A.cfg[k] = walkGrace[k];
   // ---- ELEGANT CARTOON RUN (round 10, GAIT; replaces the fitted scurry crouch): stride 620 (3 steps/s at V_RUN 940), stance 34 % (flight 32 %), ball-of-foot landing, heel kicked
   //      up to hip height behind, knee driving through high, bouncy pelvis (226 at mid-stance -> 257 in flight), torso lean ~17-20 deg from the hips, head LEVEL, arms pumping at ~90 deg.
-  var runGrace = {"strideRun":700,"runRho":0.325,"runQ1":0.06,"runQ2":0.16,"runXoff":0,"runHsF":75,"runBhs":-12,"runPelvis":240,"runBob":14,
-    "runBobK":[[0,-0.65],[0.3,-0.2],[0.65,-0.3],[0.78,0.7],[0.86,1.15],[0.95,0.1]],"runLean":16,"runLeanDeg":8,"runLean0":0.4,"runBendH":45,"runHead":3,"runHeadLevel":1,"runPelvisPitch":-4,
+  var runGrace = {"strideRun":580,"runRho":0.325,"runQ1":0.06,"runQ2":0.16,"runXoff":0,"runHsF":75,"runBhs":-12,"runPelvis":240,"runBob":14,
+    "runBobK":[[0,-0.65],[0.3,-0.2],[0.65,-0.3],[0.78,0.7],[0.86,1.15],[0.95,0.1]],"runLean":17,"runLeanDeg":14,"runLean0":0.4,"runBendH":45,"runHead":3,"runHeadLevel":1,"runPelvisPitch":-4,
     "runArmA":[44,95],"runArmB":[-40,85],"runShoulderBack":20,"runShoulderFwd":8,"runHemLift":1.2,"runLegK":0.02};
   for (k in runGrace) A.cfg[k] = runGrace[k];
 
@@ -13299,14 +13304,17 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
         P.headYaw = U.lerp(P.headYaw, -0.55 * Math.sin(Math.PI * Math.min(1, ut * 1.1)), sm(TT0 - 0.02, TT0 + 0.08));
         P.twist += -0.5 * Math.sin(Math.PI * (1 - (1 - ut) * (1 - ut))) * sm(TT0 - 0.02, TT0 + 0.05);
       }
-      P.headYaw = U.lerp(P.headYaw, 0.9, glance);
-      P.headPitch = U.lerp(P.headPitch, -0.45, glance);
-      P.twist += (standing ? 0.3 : 0.45) * glance;
+      P.headYaw = U.lerp(P.headYaw, 1.3, glance);          // round 11: a real look back over the shoulder (head ~70 deg + the shoulders ~25 deg), not a half turn
+      P.headPitch = U.lerp(P.headPitch, -0.3, glance);
+      P.twist += (standing ? 0.5 : 0.6) * glance;
 
       // ---- beat 4: coil and burst into the run (comic lean overshoot), head snaps forward
-      P.lean = -0.28 * bm(TR - 0.12, TR - 0.02, TR + 0.04, TR + 0.16) + 0.6 * sm(TR + 0.08, TR + 0.4) + 0.32 * bm(TR + 0.15, TR + 0.35, TR + 0.5, TR + 0.95);
-      P.squash += 0.35 * bm(TR - 0.1, TR, TR + 0.06, TR + 0.18);
-      var vRun = V_RUN * U.easeOutQuad(U.clamp((rt - TR) / 0.45)), vLow = 0;
+      // round 11: the wind-up leans her back, the burst throws her far forward (~27 deg) and the lean settles (~23 deg) once the speed is there
+      var g2 = bm(TR + 0.8, TR + 0.98, TR + 1.2, TR + 1.42);          // the second look back, over the shoulder, while running flat out
+      P.lean = -0.4 * bm(TR - 0.14, TR - 0.03, TR + 0.03, TR + 0.15) + 0.9 * sm(TR + 0.03, TR + 0.36) + 0.4 * bm(TR + 0.12, TR + 0.3, TR + 0.5, TR + 1.1) - 0.5 * g2;
+      P.headYaw = U.lerp(P.headYaw, 1.45, g2); P.headPitch = U.lerp(P.headPitch, 0.05, g2); P.twist += 0.85 * g2; P.headRoll = U.lerp(P.headRoll, -0.2, g2);
+      P.squash += 0.4 * bm(TR - 0.1, TR, TR + 0.06, TR + 0.18);
+      var vRun = V_RUN * U.easeOutQuad(U.clamp((rt - TR) / 0.62)), vLow = 0;          // round 11: 0.62 s to top speed (was 0.45): the first steps are really short and quick before she is up to speed
       if (standing) o.speed = vRun;
       else { // walking: she slows to a near-stop for the look + hop (the hop is on the spot), then the run
         vLow = U.lerp(cap.speed, 0.42 * V_WALK, sm(0, 0.3)) * (1 - 0.78 * sm(TH - 0.05, TJ));
@@ -13318,6 +13326,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
       P.gait.run = o.run;
       P.gait.speed = o.speed;
       P.wind.x += 140 * o.run; P.wind.y += -40 * o.run;
+      o.TR = TR;
       return o;
     }
 
@@ -13351,6 +13360,70 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
 })();
 
 
+/* ===== dust.js ===== */
+/* Round 11: ground dust for the dash (soft grey puffs kicked up by the feet, a cloud at the take-off) and a few thin speed strokes.
+   GA.dust.reset()  GA.dust.puff(x, y, {n, r0, r1, vx, vy, life, a, spread})  GA.dust.streak(x, y, len, life, a)  GA.dust.step(dt)  GA.dust.draw(ctx)  GA.dust.live()
+   World units (y down).  Everything is drawn as plain filled circles / lines in the page's greys (no blur, no gradient: nothing for the GPU to compile). */
+(function () {
+  var GA = (window.__landingGirl = window.__landingGirl || {});
+  var U = GA.util;
+  var puffs = [], streaks = [], seed = 7, D = (GA.dust = {});
+  function rnd() { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }
+  D.reset = function () { puffs.length = 0; streaks.length = 0; seed = 7; };
+  D.live = function () { return puffs.length + streaks.length; };
+  /** a cluster of n soft discs that grow, drift (vx, vy in units/s, decaying) and fade over `life` seconds */
+  D.puff = function (x, y, o) {
+    o = o || {};
+    var n = o.n || 3, i, c = [];
+    if (puffs.length > 40) puffs.shift();
+    for (i = 0; i < n; i++) {
+      var a = rnd() * 6.2832, d = rnd() * (o.spread === undefined ? 8 : o.spread);
+      c.push({ ox: Math.cos(a) * d, oy: Math.sin(a) * d * 0.5 - rnd() * 6, r: (o.r0 || 6) * (0.7 + 0.6 * rnd()), g: (o.r1 || 18) * (0.7 + 0.6 * rnd()), dx: (rnd() - 0.5) * 40, dy: -rnd() * 26 });
+    }
+    puffs.push({ x: x, y: y, vx: o.vx || 0, vy: o.vy || 0, age: 0, life: o.life || 0.7, a: o.a === undefined ? 0.5 : o.a, c: c });
+  };
+  /** a thin horizontal speed stroke: it starts at x and trails `len` units behind (dir = +1: the trail lies to the right of x) */
+  D.streak = function (x, y, len, life, a, dir) {
+    if (streaks.length > 24) streaks.shift();
+    streaks.push({ x: x, y: y, len: len, age: 0, life: life || 0.28, a: a === undefined ? 0.55 : a, dir: dir || 1 });
+  };
+  D.step = function (dt) {
+    var i, p, k;
+    for (i = puffs.length - 1; i >= 0; i--) {
+      p = puffs[i]; p.age += dt;
+      if (p.age >= p.life) { puffs.splice(i, 1); continue; }
+      k = Math.exp(-2.4 * dt); p.vx *= k; p.vy *= k; p.x += p.vx * dt; p.y += p.vy * dt;
+    }
+    for (i = streaks.length - 1; i >= 0; i--) { streaks[i].age += dt; if (streaks[i].age >= streaks[i].life) streaks.splice(i, 1); }
+  };
+  D.draw = function (ctx) {
+    var i, j, p, c, u, e, st = GA.style, r;
+    if (!puffs.length && !streaks.length) return;
+    ctx.save();
+    ctx.fillStyle = st.GRAY3;
+    for (i = 0; i < puffs.length; i++) {
+      p = puffs[i]; u = p.age / p.life; e = 1 - Math.pow(1 - u, 3);
+      ctx.globalAlpha = p.a * Math.pow(1 - u, 1.3) * Math.min(1, p.age / 0.04);
+      ctx.beginPath();
+      for (j = 0; j < p.c.length; j++) {
+        c = p.c[j]; r = c.r + (c.g - c.r) * e;
+        ctx.moveTo(p.x + c.ox + c.dx * e + r, p.y + c.oy + c.dy * e);
+        ctx.arc(p.x + c.ox + c.dx * e, p.y + c.oy + c.dy * e, r, 0, 6.2832, false);
+      }
+      ctx.fill();
+    }
+    ctx.strokeStyle = st.INK; ctx.lineCap = 'round'; ctx.lineWidth = 1.6;
+    for (i = 0; i < streaks.length; i++) {
+      p = streaks[i]; u = p.age / p.life;
+      ctx.globalAlpha = p.a * (1 - u) * Math.min(1, p.age / 0.03);
+      var l = p.len * (0.35 + 0.65 * Math.min(1, u * 3));
+      ctx.beginPath(); ctx.moveTo(p.x + p.dir * u * 40, p.y); ctx.lineTo(p.x + p.dir * (u * 40 + l), p.y); ctx.stroke();
+    }
+    ctx.restore();
+  };
+})();
+
+
 /* ===== scene.js ===== */
 /* Scene = forward-stepping director + renderer for the interactive landing animation.
    Fixed-step logic (1/120 s) so hair physics and reactions are deterministic; the render loop just feeds real dt.
@@ -13364,7 +13437,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
   var GA = (window.__landingGirl = window.__landingGirl || {});
   var U = GA.util, S = GA.stage;
   var DT = 1 / 120;
-  var HEAVY_AT = 1.0; // loop time at which the heavy modules start building (idle slices, during the walk-in cruise)
+  var HEAVY_AT = 1.6; // loop time at which the heavy modules start building (idle slices, during the walk-in cruise; the very first loop starts 0.8 s in)
 
   var sc = (GA.scene = {
     mode: 'loop', tl: 0, T: null, girl: null, pose: null, R: null, trig: {}, navOpen: false, canvas: null, visible: true, live: true,
@@ -13458,24 +13531,28 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
   };
 
   // ---------------------------------------------------------------- hair
-  function resetHair(still) {
-    var girl = sc.girl, T = sc.T, i, key = still ? 'still' : 'walk';
-    if (girl.snapshot && girl.restore && sc._snaps[key]) { safe('hair.restore', function () { girl.restore(sc._snaps[key]); }); return; }
+  function resetHair(still, t0) {
+    var girl = sc.girl, T = sc.T, i, key = still ? 'still' : 'walk', early = !still && t0 > 0;
+    t0 = early ? t0 : 0;
+    if (!early && girl.snapshot && girl.restore && sc._snaps[key]) { safe('hair.restore', function () { girl.restore(sc._snaps[key]); }); return; }
     girl.reset(still ? 77 : 1);
     if (girl.settle) { // one-step settle (hair API) instead of a 100-120 step pre-roll
-      girl.settle(still ? sc.pose : T.poseAt(0));
-      for (i = 0; i < 24; i++) girl.step(DT, still ? sc.pose : T.poseAt(-(24 - i) * DT));
-    } else if (!still) { for (i = 120; i > 0; i--) girl.step(DT, T.poseAt(-i * DT)); }
+      girl.settle(still ? sc.pose : T.poseAt(t0));
+      for (i = 0; i < 24; i++) girl.step(DT, still ? sc.pose : T.poseAt(t0 - (24 - i) * DT));
+    } else if (!still) { for (i = 120; i > 0; i--) girl.step(DT, T.poseAt(t0 - i * DT)); }
     else { var p = sc.pose; for (i = 0; i < 100; i++) girl.step(DT, p); }
-    if (girl.snapshot) safe('hair.snapshot', function () { sc._snaps[key] = girl.snapshot(); });
+    if (!early && girl.snapshot) safe('hair.snapshot', function () { sc._snaps[key] = girl.snapshot(); });
   }
 
   // ---------------------------------------------------------------- lifecycle
-  sc.restart = function () {
+  /** t0 (optional): start the loop that many seconds in (the page load starts her already on screen: she is mid-stride at the right edge in the very first frame) */
+  sc.restart = function (t0) {
     if (!sc.T) sc.buildCore();
-    sc.mode = 'loop'; sc.tl = 0; sc.R = null; sc.trig = { hit: false, rebuilt: false }; sc.acc = 0; sc._errs = {}; sc.live = true; sc.navOpen = false;
-    sc.pose = sc.T.poseAt(0);
-    resetHair(false);
+    t0 = t0 > 0 ? t0 : 0;
+    sc.mode = 'loop'; sc.tl = t0; sc.R = null; sc.trig = { hit: false, rebuilt: false }; sc.acc = 0; sc._errs = {}; sc.live = true; sc.navOpen = false;
+    sc.pose = sc.T.poseAt(t0);
+    if (GA.dust) GA.dust.reset();
+    resetHair(false, t0);
     if (sc.heavyReady && !sc.fresh) sc.rebuildModules();
   };
   /** called while the landing is scrolled out of view: do the expensive reset now so restart() on the way back is nearly free */
@@ -13504,11 +13581,32 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
   };
 
   // ---------------------------------------------------------------- one fixed tick
+  /** dust and speed strokes of the dash (all of it is dust-coloured decoration: it never touches the pose) */
+  function runDust(R, o, p, h) {
+    var D = GA.dust, T = sc.T, G = S.groundY, sp = o.speed / T.V_RUN, s2 = (p.gait.phase + 0.1) * 2, fresh = 1.7 - 1.0 * U.smoothstep(0.05, 0.85, sp);
+    if (!D) return;
+    if (o.TR !== undefined && !R.launched && R.rt >= o.TR) { // the take-off: a cloud kicked up behind her heels
+      R.launched = true;
+      D.puff(R.x + 40, G - 4, { n: 6, r0: 12, r1: 40, vx: 230, vy: -34, life: 0.95, a: 0.6, spread: 22 });
+      D.puff(R.x + 90, G - 2, { n: 4, r0: 8, r1: 28, vx: 360, vy: -20, life: 0.8, a: 0.45, spread: 16 });
+    }
+    if (R.s2 !== undefined && Math.floor(s2) > Math.floor(R.s2) && (R.kind === 'stand' ? o.speed > 90 : o.run > 0.03)) { // a foot strike: a small puff behind the planted foot
+      var an = sc.girl.anchors(p), f = an.footL.y > an.footR.y ? an.footL : an.footR;
+      D.puff(f.x + 26, G - 2, { n: 2 + (fresh > 1.2 ? 1 : 0), r0: 5 * fresh, r1: 17 * fresh, vx: 90 + 160 * sp, vy: -34, life: 0.5 + 0.15 * fresh, a: 0.42 * Math.min(1, fresh), spread: 6 });
+    }
+    R.s2 = s2;
+    if (o.TR !== undefined && R.rt > o.TR + 0.12 && R.rt < o.TR + 1.0 && sp > 0.4) { // a few thin speed strokes while she gathers pace
+      R.sk = (R.sk || 0) + h;
+      if (R.sk > 0.07) { R.sk = 0; D.streak(R.x + 120 + 40 * Math.random(), G - 120 - 330 * Math.random(), 70 + 90 * Math.random(), 0.3, 0.5, 1); }
+    }
+  }
+
   /** one simulation step of h seconds (the render loop uses h = the real frame time split in <= 1/120 s steps, tests use exactly DT) */
   function tick(h) {
     h = h || DT;
     var T = sc.T, c = T.cues, girl = sc.girl;
     sc.ticks++;
+    if (GA.dust && GA.dust.live()) GA.dust.step(h);
 
     if (sc.mode === 'loop') {
       var empty = (sc.tl >= c.walkOutEnd + 0.08 && sc.tl < c.peek0 + 0.25) || sc.tl >= c.peekOut1 + 0.05;
@@ -13549,12 +13647,15 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
         if (o.done) { sc.mode = 'away'; sc.awayAt = sc.tl; sc.resumeTl = c.peekOut1 + 0.05; sc.pose.x = S.W + T.M_PARK; }
       } else {
         var stride = U.lerp(T.STRIDE, T.STRIDE_RUN, o.run);
-        // a dash from standing: quick small digging steps that grow with the speed (the rig scales its foot travel by p.gait.stride, so no sliding)
-        if (R.kind === 'stand') stride *= U.lerp(0.45, 1, U.smoothstep(0, 0.75, o.speed / T.V_RUN));
+        // a dash: quick small digging steps that grow with the speed (the rig scales its foot travel by p.gait.stride, so no sliding).  From standing the steps are short from the very first one;
+        // from a walk the short steps blend in with the run weight (the walking steps themselves are not touched)
+        var kRun = U.lerp(0.38, 1, U.smoothstep(0.1, 1, o.speed / T.V_RUN));
+        stride *= R.kind === 'stand' ? kRun : U.lerp(1, kRun, o.run);
         R.x -= o.speed * h;
         R.phase += (o.speed / stride) * h;
-        p.x = R.x; p.gait.phase = R.phase; if (R.kind === 'stand') p.gait.stride = stride;
+        p.x = R.x; p.gait.phase = R.phase; p.gait.stride = stride;
         sc.pose = p;
+        runDust(R, o, p, h);
         if (R.x <= -T.M_LEFT) { sc.mode = 'away'; sc.awayAt = sc.tl; sc.resumeTl = c.teleport; sc.pose.x = S.W + T.M_PARK; }
       }
       girl.step(h, sc.pose);
@@ -13668,6 +13769,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
         GA.fx.shadow(ctx, { x: sh.x, y: G + 4, w: sh.w, h: sh.h, alpha: sh.alpha });
       }
     });
+    safe('dust', function () { if (GA.dust) GA.dust.draw(ctx); });
     safe('swirl.back', function () { if (heavy && GA.swirl) GA.swirl.draw(ctx, t, 'back'); });
     safe('thoughts.back', function () { if (heavy && GA.thoughts) GA.thoughts.draw(ctx, t, 'back'); });
     safe('cubes.back', function () { if (heavy && GA.fx && GA.fx.cubes) { GA.fx.cubes.draw(ctx, t, 'back'); GA.fx.dots.draw(ctx, t, 'back'); } });
@@ -13827,7 +13929,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     S.maxPixels = opts.maxPixels || 7e6;
     S.setup(canvas, opts.stage || {}); // follows the canvas's CSS box (resize handled by site.js)
     sc.buildCore();
-    sc.restart();
+    sc.restart(opts.startAt);
     sc.render();
     // GPU warm-up NOW, while she is still ~0.3 s away from the screen edge: one longer first frame instead of 100 ms stalls during the walk-in
     // or at the first thought / the shatter (every first use of a canvas composite compiles a GPU pipeline once per browser profile)
@@ -13856,6 +13958,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
   var landing = document.getElementById('landing') || root.closest('section');
   var titleEl = document.querySelector('.site-name');
   var booted = false, canvas = null;
+  var FIRST_LOOK = 0.8; // seconds into the walk-in at which the very first frame starts (at 400 u/s she is then ~200 u inside the right edge, not outside it)
 
   // The contract exists immediately (before the boot) so the nav script can always call it.
   function press() { return booted ? scene.press() : false; }
@@ -13940,7 +14043,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     layoutCanvas();
     scene.reduced = reduced.matches;
     scene.visible = landingVisibleNow();
-    scene.init(canvas, { stage: { manualResize: true }, paused: !scene.visible || reduced.matches });
+    scene.init(canvas, { stage: { manualResize: true }, paused: !scene.visible || reduced.matches, startAt: FIRST_LOOK });
     booted = true;
     var r0 = root.getBoundingClientRect(); lastW = r0.width; lastH = r0.height;
     syncNav();
@@ -13978,9 +14081,8 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     }
   }
 
-  // let the page paint and finish its own start-up first, then boot (the walk-in begins within a couple of frames)
-  if (window.requestAnimationFrame) window.requestAnimationFrame(function () { window.setTimeout(boot, 0); });
-  else boot();
+  // boot at once (the script is deferred: the DOM and the stylesheets are ready): the first painted frame already shows her mid-stride at the right edge
+  boot();
 })();
 
 })();
