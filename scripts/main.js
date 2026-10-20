@@ -513,6 +513,15 @@
       measureEdges();
       queueUpdate();
     }, { once: true });
+
+    /* the page is not scrolled while a project is open, but it can be resized or turned; the strips are refreshed once the project is closed again */
+    if (window.MutationObserver) {
+      new MutationObserver(function () {
+        if (!document.body.classList.contains("is-project-open")) {
+          queueUpdate();
+        }
+      }).observe(document.body, { attributes: true, attributeFilter: ["class"] });
+    }
   }
 
   /* A work tile whose picture has not arrived yet shows its empty frame; the picture fades in when it does (no pop-in while scrolling). */
