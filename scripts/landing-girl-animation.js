@@ -6698,6 +6698,8 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     knotIn: 3.2,                  // centre of the gathered-knot ellipsoid this far INSIDE the skull (keeps it overlapping the skull in every pose)
     knotR: [6.4, 4.6, 6.5],       // knot ellipsoid radii (units): along the tail root, across (in the head's f-u plane), lateral
     bandR: [2.4, 6.0],            // hair-tie band radii (along, across)
+    bow: 1,                       // round 11: a little bow on the hair tie (two head-rigid loops, 0 = off); bowSize: loop semi-axes (along, across, lateral), bowOff: loop centre offset (across, back)
+    bowSize: [10.5, 6.8, 3.2], bowOff: [12.5, 5],
     capK: 0,                      // optional hair-volume cap over the back / top of the skull (0 = off: the traced head already carries the reference's hair volume; >0 swells the back of the head)
     capC: [-2, 24],               // cap ellipsoid centre (head-local f, u) and radii (head-local f, c-fraction of the head width, u)
     capR: [37.5, 0.9, 36.5],
@@ -7343,6 +7345,17 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
       if (g > 0.03) {
         var tf_ = R[0] * tieF + R[2] * tu + O[0], tc_ = R[3] * tieF + R[5] * tu + O[1], th_ = R[6] * tieF + R[8] * tu + O[2], b0 = br[0] * g, b1 = br[1] * g;
         ellip(ctx, tf_, tc_, th_, dF * b0, dC * b0, dH * b0, nF * b1, nC * b1, nH * b1, cx * b1, cy * b1, cz * b1);
+        if (HC.bow > 0) {        // the bow: two loops either side of the knot, tilted away from the head (a butterfly in profile), drawn like the band (same ink, same winding)
+          var bs = HC.bowSize, bo = HC.bowOff, bk = HC.bow * g, side;
+          for (side = -1; side <= 1; side += 2) {
+            var lF = side * nF + 0.7 * dF, lC = side * nC + 0.7 * dC, lH = side * nH + 0.7 * dH, ll = sqrt(lF * lF + lC * lC + lH * lH) || 1;
+            lF /= ll; lC /= ll; lH /= ll;
+            var pd = dF * lF + dC * lC + dH * lH, mF = dF - pd * lF, mC = dC - pd * lC, mH = dH - pd * lH, ml = sqrt(mF * mF + mC * mC + mH * mH) || 1;
+            mF /= ml; mC /= ml; mH /= ml;
+            ellip(ctx, tf_ + side * nF * bo[0] * bk + dF * bo[1] * bk, tc_ + side * nC * bo[0] * bk + dC * bo[1] * bk, th_ + side * nH * bo[0] * bk + dH * bo[1] * bk,
+              lF * bs[0] * bk, lC * bs[0] * bk, lH * bs[0] * bk, mF * bs[1] * bk, mC * bs[1] * bk, mH * bs[1] * bk, cx * bs[2] * bk, cy * bs[2] * bk, cz * bs[2] * bk);
+          }
+        }
       }
     }
     var bndObj = { x0: 0, y0: 0, x1: 0, y1: 0 }, cachePath = null, cacheAge = 99, cK = [0, 0, 0, 0, 0, 0, 0, 0];
@@ -7743,7 +7756,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     // ---- FEMININE STANDING POSE (a sweet, relaxed child's stance, only while she stands calmly): weight on one leg with a gentle hip shift and pelvis tilt, the other knee softly bent with the foot a little
     //      forward and turned out, shoulders counter-tilted (the support-side one a touch lower), a gentle S in the spine, a soft head tilt, one hand lightly holding the side of the skirt; the weight
     //      changes slowly (every femPeriod / 2 s) with smooth easing.  Blends in with the stop (idleA) and out for every reaction.
-    var femK = C.femWeight * idleA * (1 - min(1, 2.2 * max(fz, dzy, fl, bow, pk, air, min(1, 3 * abs(sq))))) * (1 - 0.6 * min(1, 2 * ld));
+    var femK = C.femWeight * idleA * (1 - min(1, 2.2 * max(fz, dzy, fl, bow, pk, air, sstep(0, 0.45, abs(sq))))) * (1 - 0.6 * min(1, 2 * ld));          // (round 11: the squash term fades the stance in over ~0.3 s as a squash dies away; the old 3 x |squash| did it in ~0.1 s = the arms dropped in a snap after every hop)
     var wc = Math.tanh(2.2 * sin(TAU * t / C.femPeriod + 1.2)), fw = femK * wc;          // wc > 0: the weight is on her RIGHT leg (screen-left in the front view)
     S.femK = femK; S.fw = fw;
 
@@ -8333,12 +8346,12 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     girl.walkPresetName = function () { return A.walkPreset; };
 
     // ---- per-tick memo: step() (x2 per frame), draw() and anchors() are called with the same pose, so the rig is solved once per distinct pose
-    var memoVer = -1, KEYN = 34, kLast = new Float64Array(KEYN), kNow = new Float64Array(KEYN), sLast = null, anchLast = null;
+    var memoVer = -1, KEYN = 35, kLast = new Float64Array(KEYN), kNow = new Float64Array(KEYN), sLast = null, anchLast = null;
     function poseKey(p, o) {
       var g = p.gait || {}, w = p.wind || {};
       o[0] = p.x; o[1] = p.y; o[2] = p.yaw; o[3] = g.amount; o[4] = g.phase; o[5] = g.speed; o[6] = g.run; o[7] = p.headYaw; o[8] = p.headPitch; o[9] = p.headRoll; o[10] = p.lean; o[11] = p.squash;
       o[12] = p.scratch; o[13] = p.scratchT; o[14] = p.think; o[15] = p.shudder; o[16] = p.shudderT; o[17] = p.air; o[18] = p.peek; o[19] = p.flinch; o[20] = p.dizzy; o[24] = p.bow; o[25] = p.twist; o[26] = p.chestHand; o[21] = w.x; o[22] = w.y; o[23] = p.t;
-      o[27] = p.startle; o[28] = p.spread; o[29] = p.poke; o[30] = p.clutch; o[31] = p.shrug; o[32] = p.thinkT; o[33] = p.reach;
+      o[27] = p.startle; o[28] = p.spread; o[29] = p.poke; o[30] = p.clutch; o[31] = p.shrug; o[32] = p.thinkT; o[33] = p.reach; o[34] = g.stride || 0;
     }
     function solveMemo(pose) {
       poseKey(pose, kNow);
@@ -12997,6 +13010,27 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
       return V_WALK * 0.5 * (1 - Math.cos((Math.PI * tau) / tAcc));
     }
     var amountOf = function (v) { return U.smoothstep(0.01, 0.3, v / V_WALK); }; // full stride until she is nearly stopped (less foot skating)
+    // round 11: the steps SHRINK as she slows to a stop and GROW as she sets off (a real stop is a few short, quick steps; a constant stride at a falling speed is a wide-legged crawl).
+    // phase = integral of speed / (STRIDE x kWalk(speed)); the rig scales its foot travel by the same factor (pose.gait.stride), so the planted feet still do not slide.
+    var kWalk = function (v) { return U.lerp(0.5, 1, U.smoothstep(0.05, 0.75, v / V_WALK)); };
+    var PH_N = 160, decPh = [0], accPh = [0], pi;
+    for (pi = 1; pi <= PH_N; pi++) {
+      var vD = V_WALK * 0.5 * (1 + Math.cos((Math.PI * (pi - 0.5)) / PH_N)), vA = V_WALK * 0.5 * (1 - Math.cos((Math.PI * (pi - 0.5)) / PH_N));
+      decPh.push(decPh[pi - 1] + (vD / (STRIDE * kWalk(vD))) * (tDec / PH_N));
+      accPh.push(accPh[pi - 1] + (vA / (STRIDE * kWalk(vA))) * (tAcc / PH_N));
+    }
+    function tab(a, u) { var f = U.clamp(u) * PH_N, i = Math.min(PH_N - 1, Math.floor(f)); return a[i] + (a[i + 1] - a[i]) * (f - i); }
+    function phaseIn(t) {
+      if (t <= inCruise) return (V_WALK * t) / STRIDE;
+      if (t >= c.walkInEnd) return (V_WALK * inCruise) / STRIDE + decPh[PH_N];
+      return (V_WALK * inCruise) / STRIDE + tab(decPh, (t - inCruise) / tDec);
+    }
+    function phaseOut(t) {
+      var tau = t - c.walkOut0;
+      if (tau <= 0) return 0.25;
+      if (tau >= tAcc) return 0.25 + accPh[PH_N] + (V_WALK * (tau - tAcc)) / STRIDE;
+      return 0.25 + tab(accPh, tau / tAcc);
+    }
     function bump(t, a, b, c1, d) { return U.smoothstep(a, b, t) * (1 - U.smoothstep(c1, d, t)); }
 
     function turnLeftAt(t, headYawIn) {
@@ -13085,7 +13119,8 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
         p.x = xStart - d;
         p.gait.speed = speedIn(t);
         p.gait.amount = amountOf(p.gait.speed);
-        p.gait.phase = d / STRIDE;
+        p.gait.phase = phaseIn(t);
+        p.gait.stride = STRIDE * kWalk(p.gait.speed);
         p.headPitch = 0.04 * Math.sin(t * 5.2) + 0.5 * bump(t, 1.9, 2.4, 3.0, 3.5); // a quick glance up at the empty centre
         return p;
       }
@@ -13162,13 +13197,18 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
         p.x = xStop - dO;
         p.gait.speed = speedOut(t);
         p.gait.amount = amountOf(p.gait.speed);
-        p.gait.phase = dO / STRIDE + 0.25;
+        p.gait.phase = phaseOut(t);
+        p.gait.stride = STRIDE * kWalk(p.gait.speed);
         var tl2 = turnLeftAt(t, 0);
         p.yaw = tl2.yaw; p.headYaw = tl2.headYaw; p.twist = tl2.twist;
         p.headPitch = 0.03 * Math.sin(t * 5.2);
-        p.headYaw = U.clamp(p.headYaw + 0.75 * bump(t, c.walkOut0 + 0.75, c.walkOut0 + 1.05, c.walkOut0 + 1.5, c.walkOut0 + 1.85), -1, 1); // glance back at the rubble
-        p.shrug = 0.5 * bump(t, c.walkOut0 + 0.95, c.walkOut0 + 1.2, c.walkOut0 + 1.42, c.walkOut0 + 1.8);          // ... with a tiny comic shrug ('well, that happened')
-        p.headRoll = 0.2 * p.shrug;
+        // round 11: two looks back over the shoulder at the rubble (a real turn of the head AND the shoulders, ~110 deg in all: the first one long and puzzled with a tiny shrug, 'well, that
+        // happened'; the second one a quick nervous double-check), the head leading the shoulders by ~0.08 s and the pony following
+        var lb1 = bump(t, c.walkOut0 + 0.55, c.walkOut0 + 0.95, c.walkOut0 + 1.55, c.walkOut0 + 1.95), lb2 = bump(t, c.walkOut0 + 2.55, c.walkOut0 + 2.78, c.walkOut0 + 2.98, c.walkOut0 + 3.28);
+        var lb = Math.max(lb1, lb2), lbS = Math.max(bump(t, c.walkOut0 + 0.63, c.walkOut0 + 1.03, c.walkOut0 + 1.5, c.walkOut0 + 1.9), bump(t, c.walkOut0 + 2.62, c.walkOut0 + 2.84, c.walkOut0 + 2.96, c.walkOut0 + 3.2));
+        p.headYaw = U.clamp(p.headYaw + 1.55 * lb, -1.6, 1.6); p.twist += 1.0 * lbS; p.headPitch += -0.12 * lb1 + 0.05 * lb2;
+        p.shrug = 0.5 * bump(t, c.walkOut0 + 1.1, c.walkOut0 + 1.3, c.walkOut0 + 1.5, c.walkOut0 + 1.85);          // ... with a tiny comic shrug ('well, that happened')
+        p.headRoll = 0.2 * p.shrug + 0.18 * lb1;
         return p;
       }
 
@@ -13650,7 +13690,8 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
         // a dash: quick small digging steps that grow with the speed (the rig scales its foot travel by p.gait.stride, so no sliding).  From standing the steps are short from the very first one;
         // from a walk the short steps blend in with the run weight (the walking steps themselves are not touched)
         var kRun = U.lerp(0.38, 1, U.smoothstep(0.1, 1, o.speed / T.V_RUN));
-        stride *= R.kind === 'stand' ? kRun : U.lerp(1, kRun, o.run);
+        var kw = R.kw === undefined ? (R.kw = (R.cap.pose0.gait && R.cap.pose0.gait.stride > 0 ? R.cap.pose0.gait.stride / T.STRIDE : 1)) : R.kw;          // the walking stride factor the baseline had at the press
+        stride *= U.lerp(kw, 1, U.smoothstep(0, 0.5, R.rt)) * (R.kind === 'stand' ? kRun : U.lerp(1, kRun, o.run));
         R.x -= o.speed * h;
         R.phase += (o.speed / stride) * h;
         p.x = R.x; p.gait.phase = R.phase; p.gait.stride = stride;
@@ -13795,7 +13836,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
   // when the median frame interval stays far above the display's refresh the canvas backing store gets a lower pixel ratio (the picture is
   // identical, only a little softer). Steps only go down, at most one per 2 s, never while the thoughts are being dissolved.
   function govern(ts) {
-    var g = sc._gov, d = g.prev ? ts - g.prev : 0, i;
+    var g = sc._gov, d = g.prev ? (ts - g.prev) / (sc._n || 1) : 0, i;          // (drawn on every n-th vsync by pace(): judge the display's own rate, not ours)
     g.prev = ts;
     if (!(d > 0) || d > 250) { g.dts.length = 0; return false; } // first frame / tab was in the background
     g.hist.push(d); if (g.hist.length > 240) g.hist.shift();
@@ -13861,6 +13902,28 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     if (!pending) w.done = true;
   }
 
+  // ---------------------------------------------------------------- frame pacing (round 11)
+  // A frame of this scene costs 4-12 ms of script (girl + thought cloud); the budget of a 144 Hz panel is 6.9 ms, so frames land on every second or third vsync in an irregular mix, which
+  // judders far more than a lower but EVEN rate.  The display rate is read from the rAF intervals (their 10th percentile, which our own slow frames cannot inflate much: the smallest value
+  // seen is kept); the scene is then drawn on every n-th vsync, n = the smallest whole number for which the smoothed script cost fits (n x refresh x 0.8).  Simulated time is always the real
+  // frame time, so the motion stays exactly in step with the clock at any n.  n goes up quickly, and comes back down only after 1.5 s of cheap frames.
+  function pace(cost, ts) {
+    var c = sc._cost = sc._cost ? sc._cost * 0.88 + cost * 0.12 : cost, ref = sc._ref || 16.7, n = sc._n || 1, want;
+    want = Math.min(3, Math.max(1, Math.ceil(c / (0.8 * ref) - 1e-6)));
+    if (want > n) { sc._n = want; sc._paceAt = ts; }
+    else if (n > 1 && Math.ceil(c / (0.6 * ref) - 1e-6) < n && ts - (sc._paceAt || 0) > 1500) { sc._n = n - 1; sc._paceAt = ts; }          // (stricter way down: no flapping around the threshold)
+  }
+  function watchRefresh(d) { // d = rAF interval in ms
+    var r = sc._ring || (sc._ring = []);
+    if (d < 3 || d > 80) return;
+    r.push(d); if (r.length > 90) r.shift();
+    if (++sc._ringN % 15 || r.length < 45) return;
+    var a = r.slice().sort(function (x, y) { return x - y; }), p10 = a[Math.floor(a.length * 0.1)];
+    if (!sc._ref || p10 < sc._ref) sc._ref = Math.max(4, p10);
+    else if ((sc._n || 1) > 1 && p10 > 1.6 * sc._ref) { sc._ref = p10; sc._n = 1; } // the display is slower than we thought (another monitor)
+  }
+  sc._ringN = 0; sc._n = 1; sc._k = 0;
+
   // ---------------------------------------------------------------- player
   function frame(ts) {
     sc._raf = 0;
@@ -13871,9 +13934,12 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
       // simulated time == real frame time: whatever vsync the panel has (60/90/120/144 Hz), each presented frame is exactly one frame later
       sc.advance(dt);
       var ri = sc._ri = sc._ri ? sc._ri * 0.9 + dt * 100 : dt * 1000; // smoothed refresh interval (ms)
+      watchRefresh(dt * 1000);
       var skip = false;
       if (ri < 5.2) { sc._par = !sc._par; skip = sc._par; } // >190 Hz panels: draw every second frame (still evenly spaced)
+      else if (sc._n > 1) { sc._k++; skip = sc._k % sc._n !== 0; } // round 11: an even n-th-vsync cadence while a frame costs more than one refresh (see pace())
       if (!skip) {
+        var tc0 = window.performance.now();
         govern(ts); // may lower the canvas resolution (that clears the canvas: the render below is in the same frame, so nothing flashes)
         // modules do their expensive preparation (layout planning, ink analysis, JIT warm-up of the dissolve) in small slices while the
         // frames are still cheap (walk-in / turn), so nothing hitches during the thinking phase or on the hit frame
@@ -13898,6 +13964,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
             cx2.restore();
           });
         }
+        pace(window.performance.now() - tc0, ts);
       }
     }
     sc._raf = window.requestAnimationFrame(frame);
