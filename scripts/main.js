@@ -414,15 +414,15 @@
   }
 
   /*
-    Dark vignette on pictures at the top and bottom edge of the screen (the CSS is in styles/main.css, next to the edge fades): for every picture
-    that reaches into one of the two edge zones, its distance from the top / bottom of the screen is handed to the CSS (--vig-top, --vig-bottom),
-    which paints the black gradient inside the picture, so it follows the picture as it scrolls. The rest of the page keeps the paper-coloured fade.
+    Dark vignette on pictures at the top and bottom edge of the screen (the CSS is in styles/main.css, next to the edge fades). Every picture gets
+    two strips (top, bottom) with a fixed black gradient as tall as the edge zone. While a picture reaches into an edge zone, its strip is shown
+    and moved by a transform so that it stays pinned to the edge of the screen (full black at the edge, clear at the end of the zone) while the
+    picture scrolls through it. Only a transform changes while scrolling, nothing is repainted; the rest of the page keeps the paper-coloured fade.
   */
   function initImageVignette() {
     var holders = Array.prototype.slice.call(document.querySelectorAll(".work-tile, .archive-bar, .about-portrait"));
     var topEdge = document.querySelector(".viewport-edge-blur-top");
     var bottomEdge = document.querySelector(".viewport-edge-blur-bottom");
-    var rootStyle = document.documentElement.style;
     var frame = 0;
     var topHeight = 0;
     var bottomHeight = 0;
@@ -431,11 +431,41 @@
       return;
     }
 
+    var strips = holders.map(function (holder) {
+      var top = document.createElement("span");
+      var bottom = document.createElement("span");
+
+      top.className = "edge-vignette edge-vignette-top";
+      bottom.className = "edge-vignette edge-vignette-bottom";
+      top.setAttribute("aria-hidden", "true");
+      bottom.setAttribute("aria-hidden", "true");
+      holder.appendChild(top);
+      holder.appendChild(bottom);
+
+      return { top: top, bottom: bottom };
+    });
+
     function measureEdges() {
       topHeight = topEdge.getBoundingClientRect().height;
       bottomHeight = bottomEdge.getBoundingClientRect().height;
-      rootStyle.setProperty("--vig-top-h", topHeight + "px");
-      rootStyle.setProperty("--vig-bottom-h", bottomHeight + "px");
+      document.documentElement.style.setProperty("--vig-top-h", topHeight + "px");
+      document.documentElement.style.setProperty("--vig-bottom-h", bottomHeight + "px");
+    }
+
+    function setStrip(strip, visible, shift) {
+      if (!visible) {
+        if (strip.style.display === "block") {
+          strip.style.display = "";
+        }
+
+        return;
+      }
+
+      if (strip.style.display !== "block") {
+        strip.style.display = "block";
+      }
+
+      strip.style.transform = "translateY(" + shift + "px)";
     }
 
     function update() {
@@ -450,18 +480,19 @@
         return;
       }
 
-      holders.forEach(function (holder) {
-        var rect = holder.getBoundingClientRect();
-        var reachesTop = topOn && rect.top < topHeight && rect.bottom > 0;
-        var reachesBottom = bottomOn && rect.bottom > viewHeight - bottomHeight && rect.top < viewHeight;
+      /* all the measuring first, then all the writing: reads and writes mixed in one loop would make the browser redo the layout for every picture */
+      var rects = holders.map(function (holder) {
+        return holder.getBoundingClientRect();
+      });
 
-        if (reachesTop || reachesBottom) {
-          holder.style.setProperty("--vig-top", reachesTop ? rect.top.toFixed(1) + "px" : "99999px");
-          holder.style.setProperty("--vig-bottom", reachesBottom ? (viewHeight - rect.bottom).toFixed(1) + "px" : "99999px");
-          holder.classList.add("has-edge-vignette");
-        } else if (holder.classList.contains("has-edge-vignette")) {
-          holder.classList.remove("has-edge-vignette");
-        }
+      rects.forEach(function (rect, index) {
+        var top = Math.round(rect.top);
+        var gap = Math.round(viewHeight - rect.bottom);
+        var reachesTop = topOn && top < topHeight && rect.bottom > 0;
+        var reachesBottom = bottomOn && gap < bottomHeight && rect.top < viewHeight;
+
+        setStrip(strips[index].top, reachesTop, -top);
+        setStrip(strips[index].bottom, reachesBottom, gap);
       });
     }
 
