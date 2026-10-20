@@ -4045,6 +4045,13 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
       P.twist = (p0.twist || 0) * (1 - U.smoothstep(0, 0.3, rt));
       P.clutch = (p0.clutch || 0) * (1 - U.smoothstep(0, 0.25, rt)); P.poke = (p0.poke || 0) * (1 - U.smoothstep(0, 0.25, rt)); P.shrug = (p0.shrug || 0) * rel0; P.reach = (p0.reach || 0) * rel0;
       P.wind.x = (p0.wind && p0.wind.x || 0) * rel0; P.wind.y = (p0.wind && p0.wind.y || 0) * rel0;
+      // round 11: everything else the baseline had in progress at the press is released the same way (a press during the hello wave, the deer freeze, the hand at the mouth, a hop ...
+      // used to snap those poses off in one frame: the hand jumped ~200 units)
+      P.thinkT = p0.thinkT >= 0 ? p0.thinkT + rt : -1;          // the think-idle script (weight shift, toe tap, 'aha' perk-up) keeps its clock: the look-down fades it out within ~0.2 s instead of switching it off in one frame
+      P.wave = (p0.wave || 0) * (1 - U.smoothstep(0, 0.3, rt));
+      P.shudder = (p0.shudder || 0) * (1 - U.smoothstep(0, 0.2, rt)); P.shudderT = (p0.shudderT || 0) + rt;
+      P.flinch = (p0.flinch || 0) * (1 - U.smoothstep(0, 0.3, rt));
+      P.startle = (p0.startle || 0) * (1 - U.smoothstep(0, 0.2, rt)); P.spread = (p0.spread || 0) * (1 - U.smoothstep(0, 0.25, rt));
 
       if (kind === 'duck') { // startled peek: a visible flinch, then she slips back out (no cut)
         var startVis = U.clamp((cap.x - (W + M_PARK)) / (cap.xPeek - (W + M_PARK)), 0, 1.2);
@@ -4131,6 +4138,10 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
       P.wind.x += -(standing ? 130 : 110) * bm(0.04, 0.2, 0.3, 0.6) + 160 * bm(TJ, TJ + 0.1, TJ + 0.2, TJ + 0.5);    // the ponytail swings forward and hangs over the shoulder, then whips in the jump
       P.wind.y += (standing ? 170 : 60) * bm(0.1, 0.3, 0.55, 0.85);
 
+      P.chestHand = Math.max(P.chestHand, (p0.chestHand || 0) * (1 - sm(0, 0.35)));          // (a hand at the mouth at the press goes on from there)
+      var relA = 1 - sm(0, 0.18);          // a hop in progress at the press comes down instead of snapping to the floor
+      P.air = Math.max(P.air, (p0.air || 0) * relA); P.y = Math.min(P.y, G + ((p0.y === undefined ? G : p0.y) - G) * relA);
+
       // ---- beat 3: turn back (B: body front -> profile with the head leading and the shoulders ahead of the hips); the glance back over the shoulder (all)
       if (standing) {
         P.yaw = U.lerp(P.yaw, 0, turnK);
@@ -4154,6 +4165,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
         o.speed = Math.max(vLow, vRun);
       }
       o.run = U.smoothstep(0.35, 0.8, o.speed / V_RUN);
+      if (!standing) { var run0 = U.smoothstep(0.35, 0.8, (cap.speed || 0) / V_RUN); o.run = Math.max(0, (o.run - run0) / (1 - run0)); }          // (a press while walking at 400 u/s: the run weight starts from 0, not from the 7 % the walking speed already maps to)
       var spdN = o.speed / V_WALK, amtRun = U.smoothstep(0.01, 0.3, spdN) * sm(TR - 0.02, TR + 0.26);          // the stride builds up over ~0.25 s at the burst (no one-frame leg pop; the rig lifts the swing foot while the amount ramps)
       P.gait.amount = standing ? amtRun : Math.max(amtRun, U.smoothstep(0.01, 0.3, vLow / V_WALK));
       P.gait.run = o.run;
@@ -4733,7 +4745,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
       }
       ctx.restore();
     });
-    if (!pending) w.done = true;
+    if (!pending && (GA.heavyLoaded || GA._heavyFailed)) w.done = true;          // (the thought-cloud script arrives after the first frame: its modules are warmed once they are there)
   }
 
   // ---------------------------------------------------------------- frame pacing (round 11)
@@ -4786,7 +4798,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
           });
         }
         sc.render();
-        if (sc.heavyReady && sc.mode === 'loop' && sc.tl > 0.7 && sc.tl < c.turnFront1 + 0.6) warmUp();
+        if (sc.heavyReady && sc.mode === 'loop' && sc.tl > c.walkInEnd - 0.7 && sc.tl < c.turnFront1 + 0.6) warmUp();          // (round 11: once she is nearly at a stop; the cloud's script arrives after the first frame, and a cold GPU stalls for ~100 ms per new pipeline)
         // second warm-up stage once the cloud exists: allocates/touches the sprite atlas and the entrance scratch canvas (the first GPU-accelerated
         // offscreen canvases) while she stands still, just before the first thought pops
         if (!sc._warm2 && sc.heavyReady && sc.live && sc.mode === 'loop' && sc.tl > c.turnFront1 + 0.1 && sc.tl < c.swirlStart) {
