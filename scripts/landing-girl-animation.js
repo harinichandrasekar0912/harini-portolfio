@@ -1781,7 +1781,8 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     runHsF: 75, runBhs: -12, runE: [[0, 0], [0.14, 0.05], [0.32, 0.2], [0.52, 0.5], [0.72, 0.75], [0.88, 0.924], [1, 1]], runR: 0.1, runZ: [[0.14, 55], [0.32, 122], [0.52, 112], [0.72, 78], [0.88, 46]], runZ1: -25,
     runB: [[0.14, -70], [0.32, -110], [0.52, -75], [0.72, -40], [0.88, -28]], runHeadLevel: 1,          // runHeadLevel 1 = the head stays level in the world while the torso leans          // (u 0.14: the trailing leg still stretched back = the flight 'stretch'; 0.32: heel kicked to the hip; 0.52: tucked; 0.72: knee high; 0.88: reaching, toes pointed)
     idleStance: 22.5, walkStance: 18.5, toeIdle: 26, toeWalk: 5, stanceL: 0, stanceR: 0, toeL: 0, toeR: 0,
-    waveBeta: 84, waveGamma: 142, waveAmp: 26, waveHz: 3.1,          // round 11: the hello wave (upper arm elevation, mean elbow angle, swing amplitude (deg), swing frequency (Hz))
+    waveBeta: 84, waveGamma: 142, waveAmp: 26, waveHz: 3.1,
+    handOm: 30, handZeta: 0.5, handFollow: 0.55,          // round 11: hand follow-through spring (rad/s, damping ratio, how much of it is drawn)          // round 11: the hello wave (upper arm elevation, mean elbow angle, swing amplitude (deg), swing frequency (Hz))
     pelvisIdle: 244.5, bob: 2.5, walkAlpha0: -2, walkXoff: 0, walkLean: 2.5, walkYaw: 6,
     armBetaL: 19, armBetaR: 19, armAlphaL: 4, armAlphaR: 4, armGammaL: 10, armGammaR: 10, swingFwd: 17, swingBack: 17, gammaWalk0: 9, gammaWalk1: 14,
     // run (scurry)
@@ -2651,14 +2652,44 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     }
     girl.solve = function (pose) { return solve(pose, sc); };
     girl.hairSpine = function () { return hair && hair.spine ? { p: hair.spine(), n: hair.spineN() } : null; };
-    girl.reset = function (s) { anchLast = null; if (hair) hair.reset(s === undefined ? seed : s); girl.STRIDE = C.stride * sc; girl.STRIDE_RUN = C.strideRun * sc; };
-    girl.step = function (dt, pose) { anchLast = null; if (hair) hair.step(dt, solveMemo(pose), sc); };
+    // ---- round 11: FOLLOW-THROUGH of the hands (overlapping action).  The rig is a pure function of the pose, so every joint used to arrive at the same instant; each hand now
+    //      rides a damped spring (relative to its shoulder) toward the posed position and the drawing mixes it in: the hand trails a fast arm move by a frame or two, overshoots
+    //      a little when the arm stops and settles (a loose, living wrist), the elbow is re-solved by the IK.  Off in the run (the pump is already a swing), reset on teleports.
+    var AD = [{ x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, on: false }, { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, on: false }];
+    function armDyn(dt, S) {
+      var om = C.handOm, ze = C.handZeta, k = om * om, cdamp = 2 * ze * om;
+      for (var i = 0; i < 2; i++) {
+        var a = S.arm[i], d = AD[i], tx = a.W[0] - a.S[0], ty = a.W[1] - a.S[1], tz = a.W[2] - a.S[2];
+        if (!d.on || Math.abs(tx - d.x) + Math.abs(ty - d.y) + Math.abs(tz - d.z) > 160) { d.x = tx; d.y = ty; d.z = tz; d.vx = d.vy = d.vz = 0; d.on = true; continue; }
+        d.vx += (k * (tx - d.x) - cdamp * d.vx) * dt; d.vy += (k * (ty - d.y) - cdamp * d.vy) * dt; d.vz += (k * (tz - d.z) - cdamp * d.vz) * dt;
+        d.x += d.vx * dt; d.y += d.vy * dt; d.z += d.vz * dt;
+      }
+    }
+    var swapE = [null, null], swapW = [null, null];
+    function armApply(S) {        // swap the sprung hands into the solved rig for this draw (restored by armRestore: the memoised solve stays pure)
+      var mix = C.handFollow * (1 - S.run) * (1 - (S.P.air || 0) * 0.5);
+      for (var i = 0; i < 2; i++) {
+        var a = S.arm[i], d = AD[i]; swapE[i] = null;
+        if (!d.on || mix < 1e-3) continue;
+        var W = [a.S[0] + a.W[0] - a.S[0] + (d.x - (a.W[0] - a.S[0])) * mix, a.S[1] + a.W[1] - a.S[1] + (d.y - (a.W[1] - a.S[1])) * mix, a.S[2] + a.W[2] - a.S[2] + (d.z - (a.W[2] - a.S[2])) * mix];
+        var dd = v3sub(W, a.S), dl = v3len(dd), reach = (C.armU + C.armF) * S.ak * 0.998;
+        if (dl > reach) W = v3mad(a.S, dd, reach / dl);
+        var bend = v3sub(a.E, v3lerp(a.S, a.W, C.armU / (C.armU + C.armF)));
+        swapE[i] = a.E; swapW[i] = a.W;
+        a.E = ik2(a.S, W, v3len(bend) > 1 ? bend : [0, a.side, -1], C.armU * S.ak, C.armF * S.ak); a.W = W;
+      }
+    }
+    function armRestore(S) { for (var i = 0; i < 2; i++) if (swapE[i]) { S.arm[i].E = swapE[i]; S.arm[i].W = swapW[i]; swapE[i] = null; } }
+    girl.reset = function (s) { anchLast = null; AD[0].on = AD[1].on = false; if (hair) hair.reset(s === undefined ? seed : s); girl.STRIDE = C.stride * sc; girl.STRIDE_RUN = C.strideRun * sc; };
+    girl.step = function (dt, pose) { anchLast = null; var S = solveMemo(pose); armDyn(dt, S); if (hair) hair.step(dt, S, sc); };
     girl.draw = function (ctx, pose) {
       var S = solveMemo(pose), dbg = A.dbg || {};
       ctx.save();
       if (sc !== 1) ctx.scale(sc, sc);
       ctx.fillStyle = GA.style ? GA.style.INK : '#0b0b0c';
+      armApply(S);
       if (!dbg.noBody) buildPath(ctx, S);
+      armRestore(S);
       if (hair && !dbg.noHair) hair.draw(ctx, S, sc);
       if (S.startle > 0.02 && !dbg.noBody) drawStartle(ctx, S);
       ctx.restore();
@@ -4381,6 +4412,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
 
   // ---------------------------------------------------------------- hair
   function resetHair(still, t0) {
+    HS.on = false;          // (the head spring starts from the new pose whenever she is re-placed)
     var girl = sc.girl, T = sc.T, i, key = still ? 'still' : 'walk', early = !still && t0 > 0;
     t0 = early ? t0 : 0;
     if (!early && girl.snapshot && girl.restore && sc._snaps[key]) { safe('hair.restore', function () { girl.restore(sc._snaps[key]); }); return; }
@@ -4401,6 +4433,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     sc.mode = 'loop'; sc.tl = t0; sc.R = null; sc.trig = { hit: false, rebuilt: false }; sc.acc = 0; sc._errs = {}; sc.live = true; sc.navOpen = false;
     sc.pose = sc.T.poseAt(t0);
     if (GA.dust) GA.dust.reset();
+    HS.on = false;
     resetHair(false, t0);
     if (sc.heavyReady && !sc.fresh) sc.rebuildModules();
   };
@@ -4486,6 +4519,19 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     ctx.restore();
   }
 
+  /** round 11: the head is carried by a soft damped spring (it is a heavy ball on a neck): it trails a quick turn by ~1.5 frames and overshoots the end of it a little, then settles,
+      instead of every head turn stopping dead on its target.  State lives here (the timeline stays a pure function of time); reset whenever she is re-placed. */
+  var HS = { on: false, y: 0, p: 0, r: 0, vy: 0, vp: 0, vr: 0 };
+  function headSpring(p, h) {
+    var om = 21, k = om * om, c2 = 2 * 0.6 * om;
+    if (!HS.on) { HS.y = p.headYaw || 0; HS.p = p.headPitch || 0; HS.r = p.headRoll || 0; HS.vy = HS.vp = HS.vr = 0; HS.on = true; return; }
+    HS.vy += (k * ((p.headYaw || 0) - HS.y) - c2 * HS.vy) * h; HS.y += HS.vy * h;
+    HS.vp += (k * ((p.headPitch || 0) - HS.p) - c2 * HS.vp) * h; HS.p += HS.vp * h;
+    HS.vr += (k * ((p.headRoll || 0) - HS.r) - c2 * HS.vr) * h; HS.r += HS.vr * h;
+    p.headYaw = HS.y; p.headPitch = HS.p; p.headRoll = HS.r;
+  }
+  sc.resetHeadSpring = function () { HS.on = false; };
+
   /** one simulation step of h seconds (the render loop uses h = the real frame time split in <= 1/120 s steps, tests use exactly DT) */
   function tick(h) {
     h = h || DT;
@@ -4518,6 +4564,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
         sc.pose = T.poseAt(sc.tl); resetHair(false);
       }
       sc.pose = T.poseAt(sc.tl);
+      headSpring(sc.pose, h);
       girl.step(h, sc.pose);
       landingDust(sc.pose, T);
       return;
@@ -4546,6 +4593,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
         runDust(R, o, p, h);
         if (R.x <= -T.M_LEFT) { sc.mode = 'away'; sc.awayAt = sc.tl; sc.resumeTl = c.teleport; sc.pose.x = S.W + T.M_PARK; }
       }
+      headSpring(sc.pose, h);
       girl.step(h, sc.pose);
       landingDust(sc.pose, T);
       return;
