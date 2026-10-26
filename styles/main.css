@@ -435,6 +435,11 @@ body.is-project-open .viewport-edge-blur {
   border-radius: 0 var(--image-radius) var(--image-radius) 0;
 }
 
+.about-portrait picture {
+  display: block;
+  border-radius: inherit;
+}
+
 .about-portrait img {
   width: 100%;
   aspect-ratio: 1 / 1;

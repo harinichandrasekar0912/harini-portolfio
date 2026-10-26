@@ -33,15 +33,18 @@
         <h2 class="section-title" id="about-heading">about me</h2>
         <div class="section-inner about-layout">
           <figure class="about-portrait">
-            <img
-              src="assets/images/about/portrait-placeholder.svg"
-              alt="Portrait placeholder for Harini Chandrasekar"
-              width="720"
-              height="900"
-              sizes="(max-width: 760px) 78vw, 26vw"
-              loading="lazy"
-              decoding="async"
-            >
+            <picture>
+              <source type="image/avif" srcset="assets/images/about/portrait-480.avif 480w, assets/images/about/portrait-800.avif 791w" sizes="(max-width: 760px) 78vw, 46vw">
+              <source type="image/webp" srcset="assets/images/about/portrait-480.webp 480w, assets/images/about/portrait-800.webp 791w" sizes="(max-width: 760px) 78vw, 46vw">
+              <img
+                src="assets/images/about/portrait-800.webp"
+                alt="Harini Chandrasekar sitting on stone steps, smiling"
+                width="791"
+                height="791"
+                loading="lazy"
+                decoding="async"
+              >
+            </picture>
           </figure>
           <div class="about-copy">
             <p>Hi, I'm Harini. I'm an architecture student in Chennai, and I think in pictures. If you say "apple", I see one, colour, light and shadow included, and I can turn it around in my head. My brother can't, and finding that out is still the most interesting argument we've ever had.</p>
