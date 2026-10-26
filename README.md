@@ -29,6 +29,8 @@ scripts/
   navigation-ball.js
   project-viewer.js
   project-data.js
+  landing-girl-animation.js   the landing animation (girl, walk / run, hair, timeline, scene)
+  landing-girl-thoughts.js    the thought cloud (props, swirl), loaded after the first frame
 assets/
   images/
     about/
@@ -74,6 +76,14 @@ To add a project: create its image set in the same sizes, add an entry to `scrip
 - The navigation ball's trips stop with the section title near the top of the screen, the first tile whole and a good part of the second visible (`LANDING_SCREEN_FRACTION` in `scripts/navigation-ball.js`); the ball's top edge always stays at least about 44 px below the top of the screen.
 - Overview tiles and archive bars are promoted to their own compositor layers (`will-change: transform`) so their greyscale and rounded clip are painted once instead of every time they scroll into view.
 - The landing animation's heavy reset waits until the page has stopped scrolling, and its background build waits while the landing is off screen.
+
+## Landing Animation
+
+- `scripts/landing-girl-animation.js` boots as soon as it runs: the first painted frame already shows her mid-stride inside the right edge (`FIRST_LOOK` in the site section). The thought cloud (`scripts/landing-girl-thoughts.js`) is requested at the same moment and only needed about 5 s later, so the first script stays small.
+- The story is a pure function of time (`timeline.js` section): walk in, a hello wave, about 20 s of thinking, the ball, two looks back on the walk out, a peek. The nav `+` starts a reaction (look, take, jump, turn, run away with dust and a look back).
+- Walk and run steps change length with speed (short quick steps when starting or stopping), so the planted feet never slide. Arms swing continuously; the ponytail streams along the body when she looks back.
+- On fast displays the scene is drawn on every n-th refresh while a frame costs more than one refresh (`pace()` in the scene section): an even 72 fps on a 144 Hz screen instead of an uneven mix.
+- Deterministic test hooks: `window.__landingGirl.scene` has `restart(t0)`, `advanceTo(t)`, `press()`, `advanceBy(s)`, `render()`.
 
 ## Deployment
 

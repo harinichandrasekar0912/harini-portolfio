@@ -1778,7 +1778,7 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
     swB: [[0, 0], [0.2, 0.06], [0.45, 0.25], [0.65, 0.44], [0.82, 0.75], [0.93, 1], [1, 1]],
     // GAIT R10 run: heel-strike-equivalent contact point (the ball lands 50 further ahead), ball-landing pitch (deg, toes down), flight keys: world-travel fraction (u, e) + residual
     // landing velocity, ankle height keys (u, z) + touch-down slope, foot pitch keys (u, deg)
-    runHsF: 75, runBhs: -12, runE: [[0, 0], [0.14, 0.05], [0.32, 0.2], [0.52, 0.5], [0.72, 0.75], [0.88, 0.924], [1, 1]], runR: 0.1, runZ: [[0.14, 60], [0.32, 150], [0.52, 125], [0.72, 80], [0.88, 48]], runZ1: -25,
+    runHsF: 75, runBhs: -12, runE: [[0, 0], [0.14, 0.05], [0.32, 0.2], [0.52, 0.5], [0.72, 0.75], [0.88, 0.924], [1, 1]], runR: 0.1, runZ: [[0.14, 55], [0.32, 122], [0.52, 112], [0.72, 78], [0.88, 46]], runZ1: -25,
     runB: [[0.14, -70], [0.32, -110], [0.52, -75], [0.72, -40], [0.88, -28]], runHeadLevel: 1,          // runHeadLevel 1 = the head stays level in the world while the torso leans          // (u 0.14: the trailing leg still stretched back = the flight 'stretch'; 0.32: heel kicked to the hip; 0.52: tucked; 0.72: knee high; 0.88: reaching, toes pointed)
     idleStance: 22.5, walkStance: 18.5, toeIdle: 26, toeWalk: 5, stanceL: 0, stanceR: 0, toeL: 0, toeR: 0,
     waveBeta: 84, waveGamma: 142, waveAmp: 26, waveHz: 3.1,          // round 11: the hello wave (upper arm elevation, mean elbow angle, swing amplitude (deg), swing frequency (Hz))
@@ -4134,7 +4134,10 @@ var GA = (window.__landingGirl = window.__landingGirl || {});
       P.y = G - HJ * 4 * uA * (1 - uA);
       P.spread = sm(TJ, TJ + 0.12) * (1 - sm(TL, TL + 0.2));
       P.startle = sm(TJ - 0.02, TJ + 0.06) * (1 - sm(TJ + 0.24, TJ + 0.36));
-      P.flinch = Math.max(P.flinch, 0.7 * bm(TL - 0.02, TL + 0.1, TL + 0.2, TL + 0.5));          // landed: shoulders up, hands drawn in as little paws (the startled stare)
+      P.flinch = Math.max(P.flinch, 0.7 * bm(TL - 0.02, TL + 0.1, TL + 0.2, TL + 0.5));
+      // round 11: the TAKE - the moment she realises: a sharp recoil (shoulders up, hands drawn in, a little hop back on to her toes) held for ~4 frames right before the crouch
+      var take = bm(TH - 0.2, TH - 0.13, TH - 0.04, TH + 0.03);
+      P.flinch = Math.max(P.flinch, 0.75 * take); P.headPitch += 0.18 * take; P.squash -= 0.12 * take; P.startle = Math.max(P.startle, 0.6 * take);          // landed: shoulders up, hands drawn in as little paws (the startled stare)
       P.wind.x += -(standing ? 130 : 110) * bm(0.04, 0.2, 0.3, 0.6) + 160 * bm(TJ, TJ + 0.1, TJ + 0.2, TJ + 0.5);    // the ponytail swings forward and hangs over the shoulder, then whips in the jump
       P.wind.y += (standing ? 170 : 60) * bm(0.1, 0.3, 0.55, 0.85);
 
